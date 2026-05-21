@@ -1,0 +1,340 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+//
+// ENUMS
+//
+
+enum Role {
+  admin
+  professor
+  student
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+enum AcademicLevel {
+  licence
+  master
+  doctorate
+}
+
+enum TopicStatus {
+  pending
+  approved
+  rejected
+  open
+  full
+  archived
+}
+
+enum ApplicationStatus {
+  pending
+  accepted
+  rejected
+}
+
+//
+// USERS
+//
+
+model User {
+  id String @id @default(uuid())
+
+  email    String? @unique
+  username String? @unique
+
+  password String
+
+  role   Role
+  status UserStatus @default(active)
+
+  isVerified  Boolean   @default(false)
+  lastLoginAt DateTime?
+
+  student   Student?
+  professor Professor?
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  submissions Submission[]
+}
+
+//
+// FACULTIES
+//
+
+model Faculty {
+  id   String @id @default(uuid())
+  name String
+  code String @unique
+
+  departments Department[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// DEPARTMENTS
+//
+
+model Department {
+  id String @id @default(uuid())
+
+  name String
+  code String @unique
+
+  facultyId String
+  faculty   Faculty @relation(fields: [facultyId], references: [id])
+
+  specializations Specialization[]
+  professors      Professor[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// SPECIALIZATIONS
+//
+
+model Specialization {
+  id String @id @default(uuid())
+
+  name  String
+  level AcademicLevel
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  students Student[]
+  topics   GraduationTopic[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// ACADEMIC YEARS
+//
+
+model AcademicYear {
+  id String @id @default(uuid())
+
+  title    String  @unique
+  isActive Boolean @default(false)
+
+  students Student[]
+  topics   GraduationTopic[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// STUDENTS
+//
+
+model Student {
+  id String @id @default(uuid())
+
+  registrationNumber String @unique
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  specializationId String
+  specialization   Specialization @relation(fields: [specializationId], references: [id])
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  applications   TopicApplication[]
+  projectMembers ProjectMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// PROFESSORS
+//
+
+model Professor {
+  id String @id @default(uuid())
+
+  employeeNumber String @unique
+
+  universityEmail String @unique
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  topics GraduationTopic[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// GRADUATION TOPICS
+//
+
+model GraduationTopic {
+  id String @id @default(uuid())
+
+  title       String
+  description String
+
+  status TopicStatus @default(open)
+
+  maxStudents Int
+
+  professorId String
+  professor   Professor @relation(fields: [professorId], references: [id])
+
+  specializationId String
+  specialization   Specialization @relation(fields: [specializationId], references: [id])
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  applications TopicApplication[]
+  projectGroup ProjectGroup?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// TOPIC APPLICATIONS
+//
+
+model TopicApplication {
+  id String @id @default(uuid())
+
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+
+  topicId String
+  topic   GraduationTopic @relation(fields: [topicId], references: [id])
+
+  status ApplicationStatus @default(pending)
+
+  priority Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, topicId])
+}
+
+//
+// PROJECT GROUPS
+//
+
+model ProjectGroup {
+  id String @id @default(uuid())
+
+  topicId String          @unique
+  topic   GraduationTopic @relation(fields: [topicId], references: [id])
+
+  members ProjectMember[]
+
+  milestones Milestone[]
+
+  defense Defense?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// PROJECT MEMBERS
+//
+
+model ProjectMember {
+  id String @id @default(uuid())
+
+  groupId String
+  group   ProjectGroup @relation(fields: [groupId], references: [id])
+
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([groupId, studentId])
+}
+
+//
+// MILESTONES
+//
+
+model Milestone {
+  id String @id @default(uuid())
+
+  title    String
+  deadline DateTime
+
+  groupId String
+  group   ProjectGroup @relation(fields: [groupId], references: [id])
+
+  submissions Submission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// SUBMISSIONS
+//
+
+model Submission {
+  id String @id @default(uuid())
+
+  fileUrl String
+  version Int
+
+  milestoneId String
+  milestone   Milestone @relation(fields: [milestoneId], references: [id])
+
+  uploadedById String
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// DEFENSES
+//
+
+model Defense {
+  id String @id @default(uuid())
+
+  date DateTime
+  room String
+
+  grade Float?
+
+  groupId String       @unique
+  group   ProjectGroup @relation(fields: [groupId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

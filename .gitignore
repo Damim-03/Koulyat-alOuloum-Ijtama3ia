@@ -1,0 +1,64 @@
+# =========================
+# General
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+client/dist/
+Backend/dist/
+
+# Environment
+.env
+.env.*
+!.env.example
+!client/.env.production
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Frontend
+# =========================
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+frontend/next-env.d.ts
+frontend/dist/
+frontend/build/
+
+# =========================
+# Backend (Node + Prisma)
+# =========================
+Backend/node_modules/
+Backend/dist/
+Backend/generated/
+Backend/.env
+client/.env.local
+client/.env
+
+# Prisma
+Backend/prisma/dev.db
+Backend/prisma/dev.db-journal
+
+# Uploads (if user-generated)
+Backend/uploads/*
+!Backend/uploads/.gitkeep
+
+# =========================
+# TypeScript
+# =========================
+*.tsbuildinfo
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
