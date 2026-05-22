@@ -1,7 +1,8 @@
 import { Router } from "express";
+import authRoutes from "../modules/auth/auth.routes";
 
 const mainRoute: Router = Router();
 
-mainRoute.get("/", (req, res) => res.send("Hello World"));
+mainRoute.use("/auth", authRoutes);
 
 export default mainRoute;

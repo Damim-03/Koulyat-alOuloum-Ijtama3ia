@@ -9,10 +9,10 @@ import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import { Server } from "socket.io";
-import { config } from "./config/app.config";
-import { errorHandler } from "./middleware/errorHandler.middleware";
-import { asyncHandler } from "./middleware/asyncHandler.middleware";
-import { HTTPSTATUS } from "./config/http/http.config";
+import { config } from "./core/config/app.config";
+import { errorHandler } from "./core/middleware/errorHandler.middleware";
+import { asyncHandler } from "./core/middleware/asyncHandler.middleware";
+import { HTTPSTATUS } from "./core/config/http/http.config";
 import mainRoute from "./routes/mainRoutes";
 
 //

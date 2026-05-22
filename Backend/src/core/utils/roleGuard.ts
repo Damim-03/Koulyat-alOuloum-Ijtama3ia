@@ -2,9 +2,9 @@ import { Request, Response, NextFunction } from "express";
 
 import { JwtUser } from "../middleware/auth.middleware";
 
-import { PermissionType, RoleType } from "../enums/role.enum";
+import { PermissionType, RoleType } from "../../enums/role.enum";
 
-import { RolePermissions } from "../enums/role.enum";
+import { RolePermissions } from "../../enums/role.enum";
 
 export const roleGuard =
   (
