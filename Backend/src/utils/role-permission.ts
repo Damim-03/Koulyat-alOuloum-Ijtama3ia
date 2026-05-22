@@ -1,4 +1,4 @@
-import { PermissionType, RoleType, Permissions } from "../enums/role.enum";
+import { PermissionType, RoleType, Permissions } from "../core/enums/role.enum";
 
 /**
  * ============================================================
