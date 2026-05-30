@@ -12,6 +12,7 @@ datasource db {
 //
 
 enum Role {
+  owner
   admin
   professor
   student
@@ -43,12 +44,22 @@ enum ApplicationStatus {
   rejected
 }
 
+enum MilestoneStatus {
+  pending
+  in_progress
+  completed
+  overdue
+}
+
 //
 // USERS
 //
 
 model User {
   id String @id @default(uuid())
+
+  firstName String?
+  lastName  String?
 
   email    String? @unique
   username String? @unique
@@ -134,8 +145,8 @@ model AcademicYear {
   title    String  @unique
   isActive Boolean @default(false)
 
-  students Student[]
-  topics   GraduationTopic[]
+  students  Student[]
+  topics    GraduationTopic[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -173,8 +184,7 @@ model Student {
 model Professor {
   id String @id @default(uuid())
 
-  employeeNumber String @unique
-
+  employeeNumber  String @unique
   universityEmail String @unique
 
   userId String @unique
@@ -199,7 +209,7 @@ model GraduationTopic {
   title       String
   description String
 
-  status TopicStatus @default(open)
+  status      TopicStatus @default(pending)
 
   maxStudents Int
 
@@ -232,8 +242,7 @@ model TopicApplication {
   topicId String
   topic   GraduationTopic @relation(fields: [topicId], references: [id])
 
-  status ApplicationStatus @default(pending)
-
+  status   ApplicationStatus @default(pending)
   priority Int
 
   createdAt DateTime @default(now())
@@ -252,11 +261,9 @@ model ProjectGroup {
   topicId String          @unique
   topic   GraduationTopic @relation(fields: [topicId], references: [id])
 
-  members ProjectMember[]
-
+  members    ProjectMember[]
   milestones Milestone[]
-
-  defense Defense?
+  defense    Defense?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -286,10 +293,12 @@ model ProjectMember {
 //
 
 model Milestone {
-  id String @id @default(uuid())
-
-  title    String
-  deadline DateTime
+  id          String          @id @default(uuid())
+  title       String
+  description String?
+  deadline    DateTime
+  status      MilestoneStatus @default(pending)
+  order       Int
 
   groupId String
   group   ProjectGroup @relation(fields: [groupId], references: [id])
@@ -307,8 +316,8 @@ model Milestone {
 model Submission {
   id String @id @default(uuid())
 
-  fileUrl String
-  version Int
+  fileUrl  String
+  version  Int
 
   milestoneId String
   milestone   Milestone @relation(fields: [milestoneId], references: [id])
@@ -327,9 +336,8 @@ model Submission {
 model Defense {
   id String @id @default(uuid())
 
-  date DateTime
-  room String
-
+  date  DateTime
+  room  String
   grade Float?
 
   groupId String       @unique

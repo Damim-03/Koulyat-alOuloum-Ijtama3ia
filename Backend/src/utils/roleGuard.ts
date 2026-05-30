@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 
-import { JwtUser } from "../middleware/auth.middleware";
+import { JwtUser } from "../core/middleware/auth.middleware";
 
 import { PermissionType, RoleType } from "../core/enums/role.enum";
 
