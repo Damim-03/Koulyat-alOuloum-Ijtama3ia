@@ -11,7 +11,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.72 0.15 175); /* mint/teal to match your auth */
+  --primary: oklch(0.72 0.15 175);          /* mint/teal to match your auth */
   --primary-foreground: oklch(0.18 0.04 175);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -44,13 +44,6 @@
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 12%);
   --ring: oklch(0.78 0.14 175);
-}
-
-@theme {
-  --color-ink: #080a0c;
-  --color-panel: #121519;
-  --color-mint: #34d399;
-  --color-teal: #2dd4bf;
 }
 
 @theme inline {
