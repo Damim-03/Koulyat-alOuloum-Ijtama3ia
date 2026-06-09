@@ -103,7 +103,7 @@ export const authMiddleware = async (
 
     req.user = {
       userId: user.id,
-      role: user.role.toUpperCase() as RoleType,
+      role: user.role as RoleType,
     };
 
     return next();

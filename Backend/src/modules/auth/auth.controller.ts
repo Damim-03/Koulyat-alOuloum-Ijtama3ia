@@ -11,6 +11,7 @@ import {
   professorLoginService,
   adminLoginService,
   refreshTokenService,
+  getMeService,
 } from "./auth.service";
 import { BadRequestException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
@@ -79,3 +80,17 @@ export const adminLoginController = handleLogin(
   adminLoginSchema,
   adminLoginService,
 );
+
+export const getMeController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user!.userId;
+    const result = await getMeService(userId);
+    return res.status(HTTPSTATUS.OK).json(result);
+  } catch (error) {
+    next(error);
+  }
+};

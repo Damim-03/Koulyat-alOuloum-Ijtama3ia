@@ -14,7 +14,7 @@ export const RolePermissions: Record<RoleType, PermissionType[]> = {
    * Full system access
    * ============================================================
    */
-  OWNER: Object.values(Permissions),
+  owner: Object.values(Permissions),
 
   /**
    * ============================================================
@@ -22,7 +22,7 @@ export const RolePermissions: Record<RoleType, PermissionType[]> = {
    * Academic & System Management
    * ============================================================
    */
-  ADMIN: [
+  admin: [
     //
     // Users
     //
@@ -83,7 +83,7 @@ export const RolePermissions: Record<RoleType, PermissionType[]> = {
    * Supervision & Topic Management
    * ============================================================
    */
-  PROFESSOR: [
+  professor: [
     //
     // Profile
     //
@@ -144,7 +144,7 @@ export const RolePermissions: Record<RoleType, PermissionType[]> = {
    * Graduation Project Workflow
    * ============================================================
    */
-  STUDENT: [
+  student: [
     //
     // Profile
     //

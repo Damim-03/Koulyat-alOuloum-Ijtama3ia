@@ -3,7 +3,10 @@ import jwt, { SignOptions } from "jsonwebtoken";
 
 import { prisma } from "../../core/prisma/client";
 import { config } from "../../core/config/app.config";
-import { UnauthorizedException } from "../../core/utils/appErros";
+import {
+  NotFoundException,
+  UnauthorizedException,
+} from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { Roles } from "../../core/enums/role.enum";
 import { JwtPayload } from "./auth.types";
@@ -203,4 +206,52 @@ export const refreshTokenService = async (refreshToken: string) => {
   );
 
   return { accessToken };
+};
+
+// داخل auth.service (نفس النمط الموجود)
+//
+// ─── GET ME ──────────────────────────────────────────────────
+//
+
+export const getMeService = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      firstName: true,
+      lastName: true,
+      student: {
+        select: {
+          id: true,
+          registrationNumber: true,
+        },
+      },
+      professor: {
+        select: {
+          id: true,
+          universityEmail: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new NotFoundException("User not found");
+  }
+
+  const profile = user.student ?? user.professor ?? null;
+
+  return {
+    user: {
+      id: profile?.id ?? user.id,
+      role: user.role,
+      email: user.email,
+      registrationNumber: user.student?.registrationNumber,
+      universityEmail: user.professor?.universityEmail,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    },
+  };
 };

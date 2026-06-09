@@ -1,0 +1,232 @@
+{
+  "brand": {
+    "name": "Mudhakkarati Platform",
+    "system": "Mudhakkarati — Graduation Projects Platform",
+    "short": "Mudhakkarati",
+    "nameLatin": "Université Echahid Hamma Lakhdar - El Oued",
+    "nameAr": "Echahid Hamma Lakhdar University — El Oued | Mudhakkarati"
+  },
+  "common": {
+    "home": "Home",
+    "topics": "Topics",
+    "about": "About",
+    "guide": "Guide",
+    "login": "Sign in",
+    "dashboard": "Dashboard",
+    "backToTop": "Top",
+    "logout": "Sign out"
+  },
+  "hero": {
+    "badge": "Official Graduation Portal",
+    "title": "Graduation Projects Platform",
+    "subtitle": "Echahid Hamma Lakhdar University — El Oued",
+    "desc": "An integrated system connecting students with supervising professors, from topic selection to the final defense — with full transparency and follow-up.",
+    "ctaPrimary": "Explore topics",
+    "ctaSecondary": "User guide"
+  },
+  "features": {
+    "title": "Platform features",
+    "desc": "A modern design that makes managing and tracking graduation projects effective and transparent.",
+    "items": [
+      {
+        "title": "Choose topics",
+        "desc": "Browse topics proposed by professors and apply to the one that fits your major."
+      },
+      {
+        "title": "Supervisor follow-up",
+        "desc": "Communicate directly with your supervisor, upload drafts, and get feedback continuously."
+      },
+      {
+        "title": "Milestones",
+        "desc": "Track your project's progress through clear stages with deadlines and live statuses."
+      }
+    ]
+  },
+  "stats": {
+    "items": [
+      {
+        "value": "+2000",
+        "label": "Students",
+        "sub": "managing their projects on the platform"
+      },
+      {
+        "value": "100%",
+        "label": "Digital process",
+        "sub": "from topic selection to submission"
+      },
+      {
+        "value": "+150",
+        "label": "Supervisors",
+        "sub": "across all specializations"
+      }
+    ]
+  },
+  "footer": {
+    "about": "About",
+    "aboutDesc": "A digital platform for managing graduation projects at Echahid Hamma Lakhdar University, El Oued, bringing students and professors together.",
+    "quickLinks": "Quick links",
+    "official": "Official platforms",
+    "contact": "Contact us",
+    "address": "Echahid Hamma Lakhdar University, El Oued, Algeria",
+    "rights": "All rights reserved",
+    "madeWith": "Crafted for the students of El Oued University",
+    "phone": "Phone"
+  },
+  "officialLinks": [
+    {
+      "label": "Ministry of Higher Education",
+      "url": "https://www.mesrs.dz"
+    },
+    {
+      "label": "Progres Portal",
+      "url": "https://progres.mesrs.dz"
+    },
+    {
+      "label": "DGRSDT",
+      "url": "https://www.dgrsdt.dz"
+    }
+  ],
+  "director": {
+    "sectionTitle": "Head of Department's Message",
+    "title": "Toward an academic environment that connects students and supervisors on a clear, organized path",
+    "messages": [
+      "It is my pleasure to welcome you to the graduation-projects platform, designed to help our students and professors track projects with full transparency and organization.",
+      "We built it as a bridge between students and their supervisors — from topic selection to the final defense — ensuring quality work and a clear path.",
+      "We invite all students to make the most of this tool, and we wish them success on their journey to graduation."
+    ],
+    "highlightQuote": "A successful graduation project starts with good organization and continuous communication between student and supervisor.",
+    "fullName": "Prof. John Doe",
+    "role": "Head of the Social Sciences Department",
+    "initials": "H",
+    "name": "Head of Department"
+  },
+  "social": {
+    "facebook": "Facebook",
+    "youtube": "YouTube",
+    "email": "Email"
+  },
+  "roles": {
+    "student": "Student",
+    "professor": "Professor",
+    "admin": "Admin",
+    "owner": "Owner"
+  },
+  "spotlight": {
+    "badge": "Welcome 🎉",
+    "title": "Your account is ready!",
+    "desc": "Head to your dashboard to access your projects and track your tasks.",
+    "later": "Later",
+    "go": "Go now"
+  },
+  "news": {
+    "label": "Latest News",
+    "viewAll": "View all news",
+    "items": [
+      {
+        "date": "Mar 16",
+        "text": "Important: project registration is now open — 2026 cohort"
+      },
+      {
+        "date": "Mar 10",
+        "text": "Defense schedule for June is now available"
+      },
+      {
+        "date": "Mar 4",
+        "text": "Reminder: deadline for professors to submit proposed topics"
+      }
+    ]
+  },
+  "dash": {
+    "dashboard": "Dashboard",
+    "topics": "Topics",
+    "applications": "Applications",
+    "milestones": "Milestones",
+    "students": "Students",
+    "profile": "Profile",
+    "settings": "Settings",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "professorPanel": "Professor Space",
+    "studentPanel": "Student Space",
+    "adminPanel": "Admin Panel",
+    "greeting": "Welcome"
+  },
+  "status": {
+    "pending": "Pending",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "open": "Open",
+    "full": "Full",
+    "archived": "Archived",
+    "accepted": "Accepted",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "overdue": "Overdue"
+  },
+  "pro": {
+    "newTopic": "New topic",
+    "noTopics": "No topics yet",
+    "createFirst": "Create your first topic",
+    "title": "Title",
+    "description": "Description",
+    "maxStudents": "Max students",
+    "specialization": "Specialization",
+    "academicYear": "Academic year",
+    "specializationId": "Specialization ID",
+    "academicYearId": "Academic year ID",
+    "create": "Create",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "viewApplications": "View applications",
+    "applicants": "Applicants",
+    "noApplications": "No applications",
+    "accept": "Accept",
+    "reject": "Reject",
+    "student": "Student",
+    "priority": "Priority",
+    "all": "All",
+    "backToTopics": "Back to topics",
+    "deadline": "Deadline",
+    "order": "Order",
+    "addMilestone": "Add milestone",
+    "noMilestones": "No milestones",
+    "selectGroup": "Select a group",
+    "noGroups": "No groups yet",
+    "confirmDelete": "Are you sure you want to delete?",
+    "idsHint": "Temporary: enter IDs manually (will become dropdowns later)"
+  },
+  "stu": {
+    "dashboard": "Dashboard",
+    "browseTopics": "Browse Topics",
+    "myProject": "My Project",
+    "timeline": "Timeline",
+    "files": "Files",
+    "meetings": "Meetings",
+    "defense": "Defense",
+    "studentPanel": "Student Portal",
+    "dashGreeting": "Welcome",
+    "dashSubtitle": "An overview of your graduation project and latest updates.",
+    "viewProject": "View project",
+    "myApplications": "My Applications",
+    "upcomingMilestones": "Upcoming Milestones",
+    "noApplications": "No applications yet",
+    "noMilestones": "No milestones",
+    "browseTitle": "Browse Topics",
+    "browseDesc": "Discover available graduation project topics across departments, and use the filters to quickly find topics that match your interests.",
+    "filterSpec": "Specialization",
+    "filterLevel": "Academic level",
+    "allSpecs": "All specializations",
+    "allLevels": "All",
+    "levelLicence": "Bachelor",
+    "levelMaster": "Master",
+    "levelDoctorate": "Doctorate",
+    "noTopics": "No matching topics",
+    "supervisor": "Supervisor",
+    "apply": "Apply",
+    "alreadyApplied": "Applied",
+    "full": "Full",
+    "open": "Open"
+  }
+}
