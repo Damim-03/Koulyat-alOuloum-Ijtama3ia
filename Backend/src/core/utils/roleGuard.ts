@@ -21,7 +21,7 @@ export const roleGuard =
     // OWNER bypass
     //
 
-    if (user.role === "OWNER") {
+    if (user.role === "owner") {
       return next();
     }
 
@@ -73,7 +73,7 @@ export const ownerOnly =
       });
     }
 
-    if (user.role !== "OWNER") {
+    if (user.role !== "owner") {
       return res.status(403).json({
         message: "Forbidden: only OWNER can access this resource",
       });
@@ -96,7 +96,7 @@ export const adminOrOwner =
       });
     }
 
-    if (user.role !== "OWNER" && user.role !== "ADMIN") {
+    if (user.role !== "owner" && user.role !== "admin") {
       return res.status(403).json({
         message: "Forbidden: only OWNER or ADMIN can access this resource",
       });

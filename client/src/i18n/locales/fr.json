@@ -1,0 +1,232 @@
+{
+  "brand": {
+    "name": "Plateforme Mudhakkarati",
+    "system": "Mudhakkarati — Plateforme de gestion des PFE",
+    "short": "Mudhakkarati",
+    "nameLatin": "Université Echahid Hamma Lakhdar - El Oued",
+    "nameAr": "Université Echahid Hamma Lakhdar — El Oued | Mudhakkarati"
+  },
+  "common": {
+    "home": "Accueil",
+    "topics": "Sujets",
+    "about": "À propos",
+    "guide": "Guide",
+    "login": "Connexion",
+    "dashboard": "Tableau de bord",
+    "backToTop": "Haut",
+    "logout": "Déconnexion"
+  },
+  "hero": {
+    "badge": "Portail officiel des PFE",
+    "title": "Plateforme de gestion des PFE",
+    "subtitle": "Université Echahid Hamma Lakhdar — El Oued",
+    "desc": "Un système intégré reliant les étudiants aux encadrants, du choix du sujet à la soutenance — en toute transparence et suivi.",
+    "ctaPrimary": "Découvrir les sujets",
+    "ctaSecondary": "Guide d'utilisation"
+  },
+  "features": {
+    "title": "Fonctionnalités",
+    "desc": "Un design moderne qui facilite la gestion et le suivi des projets de fin d'études.",
+    "items": [
+      {
+        "title": "Choix des sujets",
+        "desc": "Parcourez les sujets proposés par les enseignants et postulez à celui qui correspond à votre spécialité."
+      },
+      {
+        "title": "Suivi des encadrants",
+        "desc": "Communiquez directement avec votre encadrant, déposez vos brouillons et recevez un retour continu."
+      },
+      {
+        "title": "Jalons",
+        "desc": "Suivez l'avancement de votre projet par étapes claires avec échéances et statuts en direct."
+      }
+    ]
+  },
+  "stats": {
+    "items": [
+      {
+        "value": "+2000",
+        "label": "Étudiants",
+        "sub": "gèrent leurs projets sur la plateforme"
+      },
+      {
+        "value": "100%",
+        "label": "Processus numérique",
+        "sub": "du choix du sujet au dépôt"
+      },
+      {
+        "value": "+150",
+        "label": "Encadrants",
+        "sub": "dans toutes les spécialités"
+      }
+    ]
+  },
+  "footer": {
+    "about": "À propos",
+    "aboutDesc": "Une plateforme numérique de gestion des projets de fin d'études à l'Université Echahid Hamma Lakhdar, El Oued, réunissant étudiants et enseignants.",
+    "quickLinks": "Liens rapides",
+    "official": "Plateformes officielles",
+    "contact": "Contactez-nous",
+    "address": "Université Echahid Hamma Lakhdar, El Oued, Algérie",
+    "rights": "Tous droits réservés",
+    "madeWith": "Conçu pour les étudiants de l'Université d'El Oued",
+    "phone": "Téléphone"
+  },
+  "officialLinks": [
+    {
+      "label": "Ministère de l'Enseignement Supérieur",
+      "url": "https://www.mesrs.dz"
+    },
+    {
+      "label": "Portail Progres",
+      "url": "https://progres.mesrs.dz"
+    },
+    {
+      "label": "DGRSDT",
+      "url": "https://www.dgrsdt.dz"
+    }
+  ],
+  "director": {
+    "sectionTitle": "Mot du chef de département",
+    "title": "Vers un environnement académique qui relie l'étudiant à son encadrant sur un parcours clair et organisé",
+    "messages": [
+      "J'ai le plaisir de vous accueillir sur la plateforme de gestion des projets de fin d'études, conçue pour aider nos étudiants et enseignants à suivre les projets en toute transparence.",
+      "Nous l'avons pensée comme un pont entre l'étudiant et son encadrant — du choix du sujet à la soutenance — afin de garantir la qualité du travail et la clarté du parcours.",
+      "Nous invitons tous les étudiants à tirer profit de cet outil et leur souhaitons réussite dans leur parcours vers le diplôme."
+    ],
+    "highlightQuote": "La réussite d'un projet de fin d'études commence par une bonne organisation et une communication continue entre l'étudiant et son encadrant.",
+    "fullName": "Pr. Jean Dupont",
+    "role": "Chef du département des sciences sociales",
+    "initials": "C",
+    "name": "Chef de département"
+  },
+  "social": {
+    "facebook": "Facebook",
+    "youtube": "YouTube",
+    "email": "Email"
+  },
+  "roles": {
+    "student": "Étudiant",
+    "professor": "Enseignant",
+    "admin": "Admin",
+    "owner": "Propriétaire"
+  },
+  "spotlight": {
+    "badge": "Bienvenue 🎉",
+    "title": "Votre compte est prêt !",
+    "desc": "Accédez à votre tableau de bord pour gérer vos projets et suivre vos tâches.",
+    "later": "Plus tard",
+    "go": "Y aller"
+  },
+  "news": {
+    "label": "Dernières actualités",
+    "viewAll": "Voir toutes les actualités",
+    "items": [
+      {
+        "date": "16 mars",
+        "text": "Important : les inscriptions aux projets sont ouvertes — promo 2026"
+      },
+      {
+        "date": "10 mars",
+        "text": "Le calendrier des soutenances de juin est disponible"
+      },
+      {
+        "date": "4 mars",
+        "text": "Rappel : date limite de dépôt des sujets proposés par les enseignants"
+      }
+    ]
+  },
+  "dash": {
+    "dashboard": "Tableau de bord",
+    "topics": "Sujets",
+    "applications": "Candidatures",
+    "milestones": "Jalons",
+    "students": "Étudiants",
+    "profile": "Profil",
+    "settings": "Paramètres",
+    "collapse": "Réduire",
+    "expand": "Agrandir",
+    "professorPanel": "Espace enseignant",
+    "studentPanel": "Espace étudiant",
+    "adminPanel": "Panneau d'administration",
+    "greeting": "Bienvenue"
+  },
+  "status": {
+    "pending": "En attente",
+    "approved": "Approuvé",
+    "rejected": "Rejeté",
+    "open": "Ouvert",
+    "full": "Complet",
+    "archived": "Archivé",
+    "accepted": "Accepté",
+    "in_progress": "En cours",
+    "completed": "Terminé",
+    "overdue": "En retard"
+  },
+  "pro": {
+    "newTopic": "Nouveau sujet",
+    "noTopics": "Aucun sujet",
+    "createFirst": "Créez votre premier sujet",
+    "title": "Titre",
+    "description": "Description",
+    "maxStudents": "Étudiants max",
+    "specialization": "Spécialité",
+    "academicYear": "Année universitaire",
+    "specializationId": "ID de spécialité",
+    "academicYearId": "ID d'année",
+    "create": "Créer",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "viewApplications": "Voir les candidatures",
+    "applicants": "Candidats",
+    "noApplications": "Aucune candidature",
+    "accept": "Accepter",
+    "reject": "Rejeter",
+    "student": "Étudiant",
+    "priority": "Priorité",
+    "all": "Tous",
+    "backToTopics": "Retour aux sujets",
+    "deadline": "Échéance",
+    "order": "Ordre",
+    "addMilestone": "Ajouter un jalon",
+    "noMilestones": "Aucun jalon",
+    "selectGroup": "Choisir un groupe",
+    "noGroups": "Aucun groupe",
+    "confirmDelete": "Confirmer la suppression ?",
+    "idsHint": "Temporaire : saisissez les ID manuellement"
+  },
+  "stu": {
+    "dashboard": "Tableau de bord",
+    "browseTopics": "Parcourir les sujets",
+    "myProject": "Mon projet",
+    "timeline": "Chronologie",
+    "files": "Fichiers",
+    "meetings": "Réunions",
+    "defense": "Soutenance",
+    "studentPanel": "Espace étudiant",
+    "dashGreeting": "Bienvenue",
+    "dashSubtitle": "Un aperçu de votre projet de fin d'études et des dernières mises à jour.",
+    "viewProject": "Voir le projet",
+    "myApplications": "Mes candidatures",
+    "upcomingMilestones": "Jalons à venir",
+    "noApplications": "Aucune candidature",
+    "noMilestones": "Aucun jalon",
+    "browseTitle": "Parcourir les sujets",
+    "browseDesc": "Découvrez les sujets de projets de fin d'études disponibles dans les différents départements, et utilisez les filtres pour trouver rapidement les sujets correspondant à vos intérêts.",
+    "filterSpec": "Spécialité",
+    "filterLevel": "Niveau académique",
+    "allSpecs": "Toutes les spécialités",
+    "allLevels": "Tous",
+    "levelLicence": "Licence",
+    "levelMaster": "Master",
+    "levelDoctorate": "Doctorat",
+    "noTopics": "Aucun sujet correspondant",
+    "supervisor": "Encadrant",
+    "apply": "Postuler",
+    "alreadyApplied": "Déjà postulé",
+    "full": "Complet",
+    "open": "Ouvert"
+  }
+}

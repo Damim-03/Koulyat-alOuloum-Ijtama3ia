@@ -1,7 +1,21 @@
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&family=Tajawal:wght@400;500;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: "Tajawal", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Cairo", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink: #080a0c;
+  --color-panel: #121519;
+  --color-fg: #eef2f5;
+  --color-muted: #8a929c; /* ← أضف هذا (يستعمله text-muted في الـ auth) */
+  --color-muted2: #5d646d;
+  --color-mint: #34d399;
+  --color-teal: #2dd4bf;
+}
 
 :root {
   --radius: 0.625rem;
@@ -11,7 +25,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.72 0.15 175); /* mint/teal to match your auth */
+  --primary: oklch(0.72 0.15 175);
   --primary-foreground: oklch(0.18 0.04 175);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -46,13 +60,6 @@
   --ring: oklch(0.78 0.14 175);
 }
 
-@theme {
-  --color-ink: #080a0c;
-  --color-panel: #121519;
-  --color-mint: #34d399;
-  --color-teal: #2dd4bf;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -78,11 +85,131 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* ── Brand tokens (auth + app) ───────────────────────────────── */
+@theme {
+  --font-sans: "Tajawal", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Cairo", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink: #080a0c;
+  --color-panel: #121519;
+  --color-fg: #eef2f5;
+  --color-muted: #8a929c;
+  --color-muted2: #5d646d;
+  --color-mint: #34d399;
+  --color-teal: #2dd4bf;
+}
+
+/* radial glow background for auth screens */
+@layer utilities {
+  .auth-bg {
+    background:
+      radial-gradient(
+        900px 520px at 86% 10%,
+        rgba(45, 212, 191, 0.1),
+        transparent 60%
+      ),
+      radial-gradient(
+        720px 520px at 8% 92%,
+        rgba(52, 211, 153, 0.06),
+        transparent 60%
+      ),
+      var(--color-ink);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* ============================================================
+   APPEND THIS TO src/index.css
+   (home page theme: cream + forest + gold. Distinct token names
+    so it never collides with the dark auth tokens.)
+   Also REPLACE your Google Fonts @import line at the very top
+   of index.css with the one below (adds IBM Plex Serif + Work Sans).
+   ============================================================ */
+
+/* TOP OF FILE — replace the existing @import url(... fonts ...) with: */
+/*
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&family=IBM+Plex+Serif:wght@500;600;700&family=Tajawal:wght@400;500;700&family=Work+Sans:wght@400;500;600;700&display=swap");
+*/
+
+@theme {
+  /* fonts */
+  --font-serif: "IBM Plex Serif", Georgia, serif;
+  --font-body: "Work Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* home palette */
+  --color-forest: #26423d; /* primary  */
+  --color-forest-deep: #1a312d;
+  --color-gold: #c1965a; /* secondary */
+  --color-gold-soft: #d4af75;
+  --color-sage: #4a7066; /* tertiary */
+  --color-soft-sage: #8eb29e; /* neutral  */
+
+  --color-cream: #f5edda; /* page bg   */
+  --color-cream-2: #fbf6ea;
+  --color-cream-card: #fffaf2; /* card bg   */
+  --color-clay: #6b6357; /* muted text on cream */
+}
+
+@layer utilities {
+  /* dot matrix used on the dark forest sections */
+  .dot-matrix {
+    background-image: radial-gradient(
+      rgba(202, 233, 226, 0.12) 1px,
+      transparent 1px
+    );
+    background-size: 22px 22px;
+  }
+  /* warm radial atmosphere for the hero */
+  .forest-glow {
+    background-color: var(--color-forest);
+    background-image:
+      radial-gradient(
+        circle at 12% 18%,
+        rgba(193, 150, 90, 0.12) 0%,
+        transparent 28%
+      ),
+      radial-gradient(
+        circle at 85% 75%,
+        rgba(142, 178, 158, 0.1) 0%,
+        transparent 32%
+      );
+  }
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }

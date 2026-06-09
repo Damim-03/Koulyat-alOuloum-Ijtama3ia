@@ -1,5 +1,5 @@
 import { client } from "../../../lib/api/client";
-import type { LoginResponse } from "../../../types/auth";
+import type { LoginResponse, MeResponse } from "../../../types/auth";
 import type {
   StudentLoginDTO,
   ProfessorLoginDTO,
@@ -22,4 +22,6 @@ export const authApi = {
     client
       .post<{ accessToken: string }>("/auth/refresh", { refreshToken })
       .then((r) => r.data),
+
+  me: () => client.get<MeResponse>("/auth/me").then((r) => r.data),
 };
