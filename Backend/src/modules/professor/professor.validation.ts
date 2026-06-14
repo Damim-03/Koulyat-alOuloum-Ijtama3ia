@@ -7,12 +7,17 @@ export const createTopicSchema = z.object({
   maxStudents: z.number().min(1).max(10),
   specializationId: z.string().min(1, "Specialization is required"),
   academicYearId: z.string().min(1, "Academic year is required"),
+  // Rich project details — sent by the professor, reviewed by admin.
+  requirements: z.array(z.string().trim().min(1)).optional().default([]),
+  objectives: z.array(z.string().trim().min(1)).optional().default([]),
 });
 
 export const updateTopicSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
   maxStudents: z.number().min(1).max(10).optional(),
+  requirements: z.array(z.string().trim().min(1)).optional(),
+  objectives: z.array(z.string().trim().min(1)).optional(),
 });
 
 // ─── APPLICATIONS ──────────────────────────────────────────────

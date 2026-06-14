@@ -1,56 +1,19 @@
 import { useState, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import {
-  LayoutDashboard,
-  ListChecks,
-  FolderKanban,
-  CalendarClock,
-  FileText,
-  Users,
-  GraduationCap,
-} from "lucide-react";
+import { LayoutDashboard, ListChecks, Inbox, FolderKanban } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { PATHS } from "../../../routes/paths";
-import {
-  DashboardSidebar,
-  type NavItem,
-} from "../Dashboard/dashboard-sidebar";
-import { SessionGuard } from "../../../components/session/session-guard";
+import { DashboardSidebar, type NavItem } from "../Dashboard/dashboard-sidebar";
 import { DashboardHeader } from "../Dashboard/dashboard-header";
+import { SessionGuard } from "../../session/session-guard";
+
+const R = PATHS.student.root;
 
 const NAV: NavItem[] = [
-  {
-    to: PATHS.student.root,
-    labelKey: "dash.dashboard",
-    icon: LayoutDashboard,
-    end: true,
-  },
-  {
-    to: `${PATHS.student.root}/topics`,
-    labelKey: "dash.browseTopics",
-    icon: ListChecks,
-  },
-  {
-    to: `${PATHS.student.root}/project`,
-    labelKey: "dash.myProject",
-    icon: FolderKanban,
-  },
-  {
-    to: `${PATHS.student.root}/timeline`,
-    labelKey: "dash.timeline",
-    icon: CalendarClock,
-  },
-  { to: `${PATHS.student.root}/files`, labelKey: "dash.files", icon: FileText },
-  {
-    to: `${PATHS.student.root}/meetings`,
-    labelKey: "dash.meetings",
-    icon: Users,
-  },
-  {
-    to: `${PATHS.student.root}/defense`,
-    labelKey: "dash.defense",
-    icon: GraduationCap,
-  },
+  { to: R, labelKey: "dash.dashboard", icon: LayoutDashboard, end: true },
+  { to: `${R}/topics`, labelKey: "dash.browseTopics", icon: ListChecks },
+  { to: `${R}/requests`, labelKey: "dash.myRequests", icon: Inbox },
+  { to: `${R}/project`, labelKey: "dash.myProject", icon: FolderKanban },
 ];
 
 export function StudentLayout() {

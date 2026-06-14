@@ -130,6 +130,7 @@ export const RolePermissions: Record<RoleType, PermissionType[]> = {
     Permissions.CANCEL_APPLICATION,
     Permissions.VIEW_OWN_APPLICATIONS,
     Permissions.VIEW_TOPIC_APPLICATIONS,
+    Permissions.VIEW_GROUPS,
     Permissions.ACCEPT_APPLICATIONS,
     Permissions.REJECT_APPLICATIONS,
 
@@ -139,6 +140,7 @@ export const RolePermissions: Record<RoleType, PermissionType[]> = {
     Permissions.VIEW_MILESTONES,
     Permissions.CREATE_MILESTONES,
     Permissions.UPDATE_MILESTONES,
+    Permissions.DELETE_MILESTONES,
 
     Permissions.UPLOAD_SUBMISSIONS,
     Permissions.COMMENT_ON_SUBMISSIONS,
@@ -227,13 +229,15 @@ export const RolePermissions: Record<RoleType, PermissionType[]> = {
     Permissions.ACCEPT_APPLICATIONS,
     Permissions.REJECT_APPLICATIONS,
 
-    // Projects
+    // Projects / Groups
     Permissions.VIEW_SUPERVISED_PROJECTS,
+    Permissions.VIEW_GROUPS,
 
     // Milestones
     Permissions.VIEW_MILESTONES,
     Permissions.CREATE_MILESTONES,
     Permissions.UPDATE_MILESTONES,
+    Permissions.DELETE_MILESTONES,
 
     // Submissions
     Permissions.COMMENT_ON_SUBMISSIONS,
