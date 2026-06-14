@@ -694,7 +694,11 @@ export const getTopicByIdService = async (id: string) => {
   return topic;
 };
 
-const setTopicStatus = async (id: string, status: string) => {
+const setTopicStatus = async (
+  id: string,
+  status: string,
+  rejectionReason?: string | null,
+) => {
   const found = await prisma.graduationTopic.findUnique({ where: { id } });
   if (!found)
     throw new NotFoundException(
@@ -703,7 +707,11 @@ const setTopicStatus = async (id: string, status: string) => {
     );
   return prisma.graduationTopic.update({
     where: { id },
-    data: { status: status as never },
+    data: {
+      status: status as never,
+      // Persist the reason on reject; clear it otherwise.
+      rejectionReason: status === "rejected" ? (rejectionReason ?? null) : null,
+    },
   });
 };
 
@@ -712,8 +720,8 @@ export const approveTopicService = (id: string) =>
 export const archiveTopicService = (id: string) =>
   setTopicStatus(id, "archived");
 
-export const rejectTopicService = async (id: string, _data: RejectTopicDTO) => {
-  return setTopicStatus(id, "rejected");
+export const rejectTopicService = async (id: string, data: RejectTopicDTO) => {
+  return setTopicStatus(id, "rejected", data.reason);
 };
 
 //
@@ -887,6 +895,9 @@ export const listDefensesService = async (q: ListQueryDTO) => {
             },
           },
         },
+        committee: {
+          include: { professor: { include: { user: { select: userSelect } } } },
+        },
       },
       orderBy: { date: "asc" },
       skip: (q.page - 1) * q.limit,
@@ -922,6 +933,22 @@ export const createDefenseService = async (data: CreateDefenseDTO) => {
       date: new Date(data.date),
       room: data.room,
       grade: data.grade,
+      status: data.status,
+      notes: data.notes,
+      // Create committee members alongside the defense if provided.
+      committee: data.committee?.length
+        ? {
+            create: data.committee.map((m) => ({
+              professorId: m.professorId,
+              role: m.role as never,
+            })),
+          }
+        : undefined,
+    },
+    include: {
+      committee: {
+        include: { professor: { include: { user: { select: userSelect } } } },
+      },
     },
   });
 };
@@ -936,12 +963,35 @@ export const updateDefenseService = async (
       "Defense not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+
+  // If a committee list is provided, replace the existing one wholesale.
+  if (data.committee) {
+    await prisma.defenseCommitteeMember.deleteMany({
+      where: { defenseId: id },
+    });
+  }
+
   return prisma.defense.update({
     where: { id },
     data: {
       date: data.date ? new Date(data.date) : undefined,
       room: data.room,
       grade: data.grade,
+      status: data.status,
+      notes: data.notes,
+      committee: data.committee?.length
+        ? {
+            create: data.committee.map((m) => ({
+              professorId: m.professorId,
+              role: m.role as never,
+            })),
+          }
+        : undefined,
+    },
+    include: {
+      committee: {
+        include: { professor: { include: { user: { select: userSelect } } } },
+      },
     },
   });
 };

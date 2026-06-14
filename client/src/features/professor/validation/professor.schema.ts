@@ -1,13 +1,23 @@
 import { z } from "zod";
 
 // ─── TOPICS ────────────────────────────────────────────────────
-// mirrors backend professor.validation (createTopicSchema)
+// Mirrors backend professor.validation (createTopicSchema / updateTopicSchema),
+// including the requirements[] and objectives[] project-detail fields.
 export const createTopicSchema = z.object({
   title: z.string().min(1, "العنوان مطلوب"),
   description: z.string().min(1, "الوصف مطلوب"),
-  maxStudents: z.coerce.number().min(1).max(10),
+  maxStudents: z.coerce.number().min(1, "1 على الأقل").max(10, "10 كحد أقصى"),
   specializationId: z.string().min(1, "التخصص مطلوب"),
   academicYearId: z.string().min(1, "السنة الجامعية مطلوبة"),
+  // Repeatable detail lists. Empty rows are stripped in the form before submit.
+  requirements: z
+    .array(z.string().trim().min(1, "لا يمكن ترك السطر فارغاً"))
+    .optional()
+    .default([]),
+  objectives: z
+    .array(z.string().trim().min(1, "لا يمكن ترك السطر فارغاً"))
+    .optional()
+    .default([]),
 });
 export type CreateTopicInput = z.infer<typeof createTopicSchema>;
 
@@ -15,6 +25,8 @@ export const updateTopicSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
   maxStudents: z.coerce.number().min(1).max(10).optional(),
+  requirements: z.array(z.string().trim().min(1)).optional(),
+  objectives: z.array(z.string().trim().min(1)).optional(),
 });
 export type UpdateTopicInput = z.infer<typeof updateTopicSchema>;
 
@@ -23,7 +35,7 @@ export const createMilestoneSchema = z.object({
   title: z.string().min(1, "العنوان مطلوب"),
   description: z.string().optional(),
   deadline: z.string().min(1, "التاريخ مطلوب"),
-  order: z.coerce.number().int().min(1),
+  order: z.coerce.number().int().min(1, "الترتيب مطلوب"),
 });
 export type CreateMilestoneInput = z.infer<typeof createMilestoneSchema>;
 

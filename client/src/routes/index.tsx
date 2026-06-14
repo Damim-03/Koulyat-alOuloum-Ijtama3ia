@@ -18,11 +18,12 @@ import { StudentLayout } from "../components/layout/role-layouts/Student-layout"
 import { AdminLayout } from "../components/layout/role-layouts/Admin-layout";
 
 // Professor pages
-import { ProfessorDashboardPage } from "../features/professor/pages/dashboard.page";
+import { ProfessorDashboardPage } from "../features/professor/pages/Professor-dashboard.page";
 import { ProfessorTopicsPage } from "../features/professor/pages/topics.page";
-//import { ProfessorTopicDetailPage } from "../features/professor/pages/topic-detail.page";
-import { ProfessorApplicationsPage } from "../features/professor/pages/applications.page";
-import { ProfessorMilestonesPage } from "../features/professor/pages/milestones.page";
+import { ProfessorTopicDetailPage } from "../features/professor/pages/topic-detail.page";
+import { ProfessorApplicationsPage } from "../features/professor/pages/Professor-applications.page";
+import { ProfessorProjectsPage } from "../features/professor/pages/Professor-projects.page";
+import { ProfessorProjectDetailPage } from "../features/professor/pages/project-detail.page";
 
 // Student pages
 import { StudentDashboardPage } from "../features/student/pages/dashboard.page";
@@ -30,6 +31,20 @@ import { StudentBrowseTopicsPage } from "../features/student/pages/browse-topics
 
 // Admin pages
 import { AdminDashboardPage } from "../features/admin/pages/dashboard.page";
+import { AdminStudentsPage } from "../features/admin/pages/Student.page";
+import { AdminUsersPage } from "../features/admin/pages/Users.page";
+import { AdminProfessorsPage } from "../features/admin/pages/professors.page";
+import { AdminAcademicStructurePage } from "../features/admin/pages/academic.page";
+import { AdminTopicsPage } from "../features/admin/pages/topics.page";
+import { AdminDefensesPage } from "../features/admin/pages/defenses.page";
+import { AdminDepartmentsPage } from "../features/admin/pages/departments.page";
+import { AdminApplicationsPage } from "../features/admin/pages/applications.page";
+import { AdminFacultiesPage } from "../features/admin/pages/faculties.page";
+import { AdminProjectsPage } from "../features/admin/pages/projects.page";
+import { ProfessorMilestonesPage } from "../features/professor/pages/Professor-milestones.page";
+import { StudentMyRequestsPage } from "../features/student/pages/my-requests.page";
+import { StudentMyProjectPage } from "../features/student/pages/my-project.page";
+import { StudentTopicDetailPage } from "../features/student/pages/topic-detail.page";
 
 export function AppRouter() {
   return (
@@ -70,7 +85,7 @@ export function AppRouter() {
           path="professor"
           element={
             <ProtectedRoute>
-              <RoleRoute roles={[Role.PROFESSOR]}>
+              <RoleRoute roles={[Role.PROFESSOR, Role.OWNER]}>
                 <ProfessorLayout />
               </RoleRoute>
             </ProtectedRoute>
@@ -78,9 +93,14 @@ export function AppRouter() {
         >
           <Route index element={<ProfessorDashboardPage />} />
           <Route path="topics" element={<ProfessorTopicsPage />} />
-          {/* <Route path="topics/:id" element={<ProfessorTopicDetailPage />} /> */}
+          <Route path="topics/:id" element={<ProfessorTopicDetailPage />} />
           <Route path="applications" element={<ProfessorApplicationsPage />} />
           <Route path="milestones" element={<ProfessorMilestonesPage />} />
+          <Route path="groups" element={<ProfessorProjectsPage />} />
+          <Route
+            path="groups/:groupId"
+            element={<ProfessorProjectDetailPage />}
+          />
         </Route>
 
         {/* ==================== STUDENT ==================== */}
@@ -96,6 +116,9 @@ export function AppRouter() {
         >
           <Route index element={<StudentDashboardPage />} />
           <Route path="topics" element={<StudentBrowseTopicsPage />} />
+          <Route path="topics/:id" element={<StudentTopicDetailPage />} />
+          <Route path="requests" element={<StudentMyRequestsPage />} />
+          <Route path="project" element={<StudentMyProjectPage />} />
         </Route>
 
         {/* ==================== ADMIN ==================== */}
@@ -110,6 +133,23 @@ export function AppRouter() {
           }
         >
           <Route index element={<AdminDashboardPage />} />
+          <Route path="students" element={<AdminStudentsPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="professors" element={<AdminProfessorsPage />} />
+          <Route
+            path="specializations"
+            element={<AdminAcademicStructurePage />}
+          />
+          <Route path="topics" element={<AdminTopicsPage />} />
+          <Route path="defenses" element={<AdminDefensesPage />} />
+          <Route path="departments" element={<AdminDepartmentsPage />} />
+          <Route path="applications" element={<AdminApplicationsPage />} />
+          <Route path="projects" element={<AdminProjectsPage />} />
+          <Route
+            path="academic-years"
+            element={<AdminAcademicStructurePage />}
+          />
+          <Route path="faculties" element={<AdminFacultiesPage />} />
         </Route>
       </Route>
 

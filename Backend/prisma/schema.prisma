@@ -8,7 +8,9 @@ datasource db {
 }
 
 //
-// ENUMS
+// ════════════════════════════════════════════════════════════
+//  ENUMS
+// ════════════════════════════════════════════════════════════
 //
 
 enum Role {
@@ -44,6 +46,14 @@ enum ApplicationStatus {
   rejected
 }
 
+// Status of a whole-group request submitted by a student leader and
+// reviewed by the administration.
+enum GroupRequestStatus {
+  pending
+  accepted
+  rejected
+}
+
 enum MilestoneStatus {
   pending
   in_progress
@@ -51,8 +61,34 @@ enum MilestoneStatus {
   overdue
 }
 
+enum DefenseStatus {
+  scheduled
+  completed
+  cancelled
+}
+
+enum CommitteeRole {
+  president
+  supervisor
+  examiner
+}
+
+enum NotificationType {
+  application_accepted
+  application_rejected
+  topic_approved
+  topic_rejected
+  milestone_due
+  milestone_feedback
+  defense_scheduled
+  defense_graded
+  general
+}
+
 //
-// USERS
+// ════════════════════════════════════════════════════════════
+//  USERS
+// ════════════════════════════════════════════════════════════
 //
 
 model User {
@@ -66,6 +102,9 @@ model User {
 
   password String
 
+  phone     String?
+  avatarUrl String?
+
   role   Role
   status UserStatus @default(active)
 
@@ -75,13 +114,17 @@ model User {
   student   Student?
   professor Professor?
 
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  submissions Submission[]
+  submissions   Submission[]
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 //
-// FACULTIES
+// ════════════════════════════════════════════════════════════
+//  FACULTIES
+// ════════════════════════════════════════════════════════════
 //
 
 model Faculty {
@@ -96,7 +139,9 @@ model Faculty {
 }
 
 //
-// DEPARTMENTS
+// ════════════════════════════════════════════════════════════
+//  DEPARTMENTS
+// ════════════════════════════════════════════════════════════
 //
 
 model Department {
@@ -116,7 +161,9 @@ model Department {
 }
 
 //
-// SPECIALIZATIONS
+// ════════════════════════════════════════════════════════════
+//  SPECIALIZATIONS
+// ════════════════════════════════════════════════════════════
 //
 
 model Specialization {
@@ -136,7 +183,9 @@ model Specialization {
 }
 
 //
-// ACADEMIC YEARS
+// ════════════════════════════════════════════════════════════
+//  ACADEMIC YEARS
+// ════════════════════════════════════════════════════════════
 //
 
 model AcademicYear {
@@ -145,15 +194,17 @@ model AcademicYear {
   title    String  @unique
   isActive Boolean @default(false)
 
-  students  Student[]
-  topics    GraduationTopic[]
+  students Student[]
+  topics   GraduationTopic[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 //
-// STUDENTS
+// ════════════════════════════════════════════════════════════
+//  STUDENTS
+// ════════════════════════════════════════════════════════════
 //
 
 model Student {
@@ -173,12 +224,18 @@ model Student {
   applications   TopicApplication[]
   projectMembers ProjectMember[]
 
+  // Group requests this student leads, and memberships in others' requests.
+  ledGroupRequests    GroupRequest[]       @relation("GroupRequestLeader")
+  groupRequestMembers GroupRequestMember[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 //
-// PROFESSORS
+// ════════════════════════════════════════════════════════════
+//  PROFESSORS
+// ════════════════════════════════════════════════════════════
 //
 
 model Professor {
@@ -193,14 +250,17 @@ model Professor {
   departmentId String
   department   Department @relation(fields: [departmentId], references: [id])
 
-  topics GraduationTopic[]
+  topics           GraduationTopic[]
+  committeeMembers DefenseCommitteeMember[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 //
-// GRADUATION TOPICS
+// ════════════════════════════════════════════════════════════
+//  GRADUATION TOPICS
+// ════════════════════════════════════════════════════════════
 //
 
 model GraduationTopic {
@@ -209,7 +269,14 @@ model GraduationTopic {
   title       String
   description String
 
-  status      TopicStatus @default(pending)
+  // Rich content for the topic detail view.
+  requirements String[] @default([])
+  objectives   String[] @default([])
+
+  status TopicStatus @default(pending)
+
+  // Reason recorded when a topic is rejected (optional).
+  rejectionReason String?
 
   maxStudents Int
 
@@ -222,15 +289,18 @@ model GraduationTopic {
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
 
-  applications TopicApplication[]
-  projectGroup ProjectGroup?
+  applications  TopicApplication[]
+  groupRequests GroupRequest[]
+  projectGroup  ProjectGroup?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 //
-// TOPIC APPLICATIONS
+// ════════════════════════════════════════════════════════════
+//  TOPIC APPLICATIONS
+// ════════════════════════════════════════════════════════════
 //
 
 model TopicApplication {
@@ -245,6 +315,9 @@ model TopicApplication {
   status   ApplicationStatus @default(pending)
   priority Int
 
+  // Reason recorded when an application is rejected (optional).
+  rejectionReason String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -252,7 +325,60 @@ model TopicApplication {
 }
 
 //
-// PROJECT GROUPS
+// ════════════════════════════════════════════════════════════
+//  GROUP REQUESTS
+//  A student leader assembles a team and submits ONE request for a
+//  topic. The administration reviews members + priority, then
+//  accepts (creating the ProjectGroup) or rejects.
+// ════════════════════════════════════════════════════════════
+//
+
+model GroupRequest {
+  id String @id @default(uuid())
+
+  // The topic this team wants.
+  topicId String
+  topic   GraduationTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  // The responsible student (the leader who submits the request).
+  leaderStudentId String
+  leader          Student @relation("GroupRequestLeader", fields: [leaderStudentId], references: [id])
+
+  // Choice priority for this topic (1 = first choice).
+  priority Int @default(1)
+
+  status          GroupRequestStatus @default(pending)
+  rejectionReason String?
+
+  // All team members (the leader is included here too).
+  members GroupRequestMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // A leader can submit only one request per topic.
+  @@unique([leaderStudentId, topicId])
+}
+
+model GroupRequestMember {
+  id String @id @default(uuid())
+
+  requestId String
+  request   GroupRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  // A student appears once per request.
+  @@unique([requestId, studentId])
+}
+
+//
+// ════════════════════════════════════════════════════════════
+//  PROJECT GROUPS
+// ════════════════════════════════════════════════════════════
 //
 
 model ProjectGroup {
@@ -270,7 +396,9 @@ model ProjectGroup {
 }
 
 //
-// PROJECT MEMBERS
+// ════════════════════════════════════════════════════════════
+//  PROJECT MEMBERS
+// ════════════════════════════════════════════════════════════
 //
 
 model ProjectMember {
@@ -289,7 +417,9 @@ model ProjectMember {
 }
 
 //
-// MILESTONES
+// ════════════════════════════════════════════════════════════
+//  MILESTONES
+// ════════════════════════════════════════════════════════════
 //
 
 model Milestone {
@@ -310,13 +440,18 @@ model Milestone {
 }
 
 //
-// SUBMISSIONS
+// ════════════════════════════════════════════════════════════
+//  SUBMISSIONS
+// ════════════════════════════════════════════════════════════
 //
 
 model Submission {
   id String @id @default(uuid())
 
   fileUrl  String
+  fileName String
+  fileSize Int?
+  mimeType String?
   version  Int
 
   milestoneId String
@@ -330,7 +465,9 @@ model Submission {
 }
 
 //
-// DEFENSES
+// ════════════════════════════════════════════════════════════
+//  DEFENSES
+// ════════════════════════════════════════════════════════════
 //
 
 model Defense {
@@ -340,8 +477,61 @@ model Defense {
   room  String
   grade Float?
 
+  status DefenseStatus @default(scheduled)
+  notes  String?
+
   groupId String       @unique
   group   ProjectGroup @relation(fields: [groupId], references: [id])
+
+  committee DefenseCommitteeMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// ════════════════════════════════════════════════════════════
+//  DEFENSE COMMITTEE MEMBERS
+// ════════════════════════════════════════════════════════════
+//
+
+model DefenseCommitteeMember {
+  id String @id @default(uuid())
+
+  defenseId String
+  defense   Defense @relation(fields: [defenseId], references: [id], onDelete: Cascade)
+
+  professorId String
+  professor   Professor @relation(fields: [professorId], references: [id])
+
+  role CommitteeRole
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([defenseId, professorId])
+}
+
+//
+// ════════════════════════════════════════════════════════════
+//  NOTIFICATIONS
+// ════════════════════════════════════════════════════════════
+//
+
+model Notification {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type    NotificationType @default(general)
+  title   String
+  message String
+
+  // Optional deep-link target (e.g. "/student/applications").
+  link String?
+
+  isRead Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

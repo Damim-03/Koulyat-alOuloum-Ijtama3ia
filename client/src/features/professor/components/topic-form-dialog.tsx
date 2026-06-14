@@ -1,197 +1,382 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import { useForm, useFieldArray } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
-import { X } from "lucide-react";
+import { createPortal } from "react-dom";
+import {
+  X,
+  Type,
+  FileText,
+  Users2,
+  Layers,
+  CalendarDays,
+  ListChecks,
+  Target,
+  Plus,
+  Trash2,
+  Save,
+  Info,
+} from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
-import { useCreateTopic, useUpdateTopic } from "../hooks/Professor-hook";
+import {
+  useCreateTopic,
+  useUpdateTopic,
+  useSpecializations,
+  useAcademicYears,
+} from "../hooks/Professor-hook";
+import {
+  createTopicSchema,
+  type CreateTopicInput,
+} from "../validation/professor.schema";
 import type { Topic } from "../../../types/professor.types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  topic?: Topic | null; // when set → edit mode
+  topic?: Topic | null; // set → edit mode
 }
+
+const field =
+  "w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30 placeholder:text-clay/50";
 
 export function TopicFormDialog({ open, onClose, topic }: Props) {
   const { t } = useTranslation();
   const { dir } = useLanguage();
-  const create = useCreateTopic();
-  const update = useUpdateTopic();
   const editing = !!topic;
 
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    maxStudents: 1,
-    specializationId: "",
-    academicYearId: "",
+  const { data: specializations } = useSpecializations();
+  const { data: academicYears } = useAcademicYears();
+  const create = useCreateTopic();
+  const update = useUpdateTopic();
+  const busy = create.isPending || update.isPending;
+
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<CreateTopicInput>({
+    resolver: zodResolver(createTopicSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      maxStudents: 1,
+      specializationId: "",
+      academicYearId: "",
+      requirements: [],
+      objectives: [],
+    },
   });
 
+  const reqArray = useFieldArray({ control, name: "requirements" as never });
+  const objArray = useFieldArray({ control, name: "objectives" as never });
+
   useEffect(() => {
+    if (!open) return;
     if (topic) {
-      setForm({
+      reset({
         title: topic.title,
         description: topic.description,
         maxStudents: topic.maxStudents,
-        specializationId: topic.specializationId,
-        academicYearId: topic.academicYearId,
+        specializationId: topic.specializationId ?? "",
+        academicYearId: topic.academicYearId ?? "",
+        requirements: topic.requirements ?? [],
+        objectives: topic.objectives ?? [],
       });
     } else {
-      setForm({
+      reset({
         title: "",
         description: "",
         maxStudents: 1,
         specializationId: "",
         academicYearId: "",
+        requirements: [],
+        objectives: [],
       });
     }
-  }, [topic, open]);
+  }, [open, topic, reset]);
+
+  function onSubmit(values: CreateTopicInput) {
+    // Strip empty rows from the repeatable lists.
+    const clean = {
+      ...values,
+      requirements: (values.requirements ?? []).filter((r) => r.trim() !== ""),
+      objectives: (values.objectives ?? []).filter((o) => o.trim() !== ""),
+    };
+    if (editing && topic) {
+      update.mutate({ id: topic.id, data: clean }, { onSuccess: onClose });
+    } else {
+      create.mutate(clean, { onSuccess: onClose });
+    }
+  }
 
   if (!open) return null;
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editing) {
-      update.mutate(
-        {
-          id: topic!.id,
-          data: {
-            title: form.title,
-            description: form.description,
-            maxStudents: Number(form.maxStudents),
-          },
-        },
-        { onSuccess: onClose },
-      );
-    } else {
-      create.mutate(
-        { ...form, maxStudents: Number(form.maxStudents) },
-        { onSuccess: onClose },
-      );
-    }
-  };
-
-  const busy = create.isPending || update.isPending;
-  const field =
-    "w-full rounded-lg border border-forest/15 bg-white px-3 py-2 text-sm text-forest outline-none focus:border-gold";
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-forest-deep/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      onMouseDown={onClose}
+    >
+      <div className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm" />
       <div
         dir={dir}
-        className="relative w-full max-w-lg rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-2xl"
+        onMouseDown={(e) => e.stopPropagation()}
+        className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-cream-card shadow-2xl"
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-serif text-lg font-bold text-forest">
-            {editing ? t("pro.edit") : t("pro.newTopic")}
-          </h3>
-          <button
-            onClick={onClose}
-            className="grid size-8 place-items-center rounded-lg text-clay hover:bg-forest/5"
-          >
-            <X size={18} />
-          </button>
+        {/* Header */}
+        <div className="relative bg-forest px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="grid size-11 place-items-center rounded-full bg-cream/15 text-cream">
+                <FileText size={20} />
+              </div>
+              <div>
+                <h2 className="font-serif text-lg font-bold text-cream">
+                  {editing ? t("pro.editTopic") : t("pro.newTopic")}
+                </h2>
+                <p className="text-xs text-cream/70">
+                  {t("pro.topicDialogSubtitle")}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="grid size-8 place-items-center rounded-full text-cream/80 transition hover:bg-cream/15 hover:text-cream"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-l from-gold to-gold-soft" />
         </div>
 
-        <form onSubmit={submit} className="space-y-3">
-          <div>
-            <label className="mb-1 block text-[13px] font-medium text-forest">
-              {t("pro.title")}
-            </label>
+        {/* Body (scrollable) */}
+        <form
+          id="topic-form"
+          onSubmit={handleSubmit(onSubmit)}
+          className="max-h-[60vh] space-y-4 overflow-y-auto px-6 py-5"
+        >
+          {/* Title */}
+          <Field
+            label={t("pro.title")}
+            icon={Type}
+            error={errors.title?.message}
+          >
             <input
+              {...register("title")}
               className={field}
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              required
+              placeholder={t("pro.titlePlaceholder")}
             />
-          </div>
+          </Field>
 
-          <div>
-            <label className="mb-1 block text-[13px] font-medium text-forest">
-              {t("pro.description")}
-            </label>
+          {/* Description */}
+          <Field
+            label={t("pro.description")}
+            icon={FileText}
+            error={errors.description?.message}
+          >
             <textarea
+              {...register("description")}
               className={`${field} min-h-24 resize-y`}
-              value={form.description}
-              onChange={(e) =>
-                setForm({ ...form, description: e.target.value })
-              }
-              required
+              placeholder={t("pro.descriptionPlaceholder")}
             />
+          </Field>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {/* Max students */}
+            <Field
+              label={t("pro.maxStudents")}
+              icon={Users2}
+              error={errors.maxStudents?.message}
+            >
+              <input
+                type="number"
+                min={1}
+                max={10}
+                {...register("maxStudents")}
+                className={field}
+              />
+            </Field>
+
+            {/* Specialization */}
+            <Field
+              label={t("pro.specialization")}
+              icon={Layers}
+              error={errors.specializationId?.message}
+            >
+              <select {...register("specializationId")} className={field}>
+                <option value="">{t("pro.selectSpecialization")}</option>
+                {specializations?.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            {/* Academic year */}
+            <Field
+              label={t("pro.academicYear")}
+              icon={CalendarDays}
+              error={errors.academicYearId?.message}
+            >
+              <select {...register("academicYearId")} className={field}>
+                <option value="">{t("pro.selectYear")}</option>
+                {academicYears?.map((y) => (
+                  <option key={y.id} value={y.id}>
+                    {y.title}
+                    {y.isActive ? " ●" : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </div>
 
-          <div>
-            <label className="mb-1 block text-[13px] font-medium text-forest">
-              {t("pro.maxStudents")}
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              className={field}
-              value={form.maxStudents}
-              onChange={(e) =>
-                setForm({ ...form, maxStudents: Number(e.target.value) })
-              }
-              required
-            />
-          </div>
+          {/* Requirements builder */}
+          <ListBuilder
+            label={t("pro.requirements")}
+            icon={ListChecks}
+            addLabel={t("pro.addRequirement")}
+            fields={reqArray.fields}
+            register={register}
+            name="requirements"
+            onAdd={() => reqArray.append("" as never)}
+            onRemove={(i) => reqArray.remove(i)}
+            field={field}
+          />
 
-          {!editing && (
-            <>
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
-                {t("pro.idsHint")}
-              </p>
-              <div>
-                <label className="mb-1 block text-[13px] font-medium text-forest">
-                  {t("pro.specializationId")}
-                </label>
-                <input
-                  className={field}
-                  value={form.specializationId}
-                  onChange={(e) =>
-                    setForm({ ...form, specializationId: e.target.value })
-                  }
-                  required
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[13px] font-medium text-forest">
-                  {t("pro.academicYearId")}
-                </label>
-                <input
-                  className={field}
-                  value={form.academicYearId}
-                  onChange={(e) =>
-                    setForm({ ...form, academicYearId: e.target.value })
-                  }
-                  required
-                />
-              </div>
-            </>
-          )}
+          {/* Objectives builder */}
+          <ListBuilder
+            label={t("pro.objectives")}
+            icon={Target}
+            addLabel={t("pro.addObjective")}
+            fields={objArray.fields}
+            register={register}
+            name="objectives"
+            onAdd={() => objArray.append("" as never)}
+            onRemove={(i) => objArray.remove(i)}
+            field={field}
+          />
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-forest/15 px-4 py-2 text-sm font-medium text-clay hover:bg-forest/5"
-            >
-              {t("pro.cancel")}
-            </button>
-            <button
-              type="submit"
-              disabled={busy}
-              className="rounded-lg bg-linear-to-br from-gold to-gold-soft px-5 py-2 text-sm font-bold text-forest-deep disabled:opacity-60"
-            >
-              {editing ? t("pro.save") : t("pro.create")}
-            </button>
+          {/* Send-to-admin note */}
+          <div className="flex items-start gap-2 rounded-xl bg-cream-2 px-4 py-3">
+            <Info size={16} className="mt-0.5 shrink-0 text-gold" />
+            <p className="text-[11px] leading-relaxed text-clay">
+              {t("pro.sendToAdminNote")}
+            </p>
           </div>
         </form>
+
+        {/* Footer */}
+        <div className="flex items-center gap-3 border-t border-forest/10 bg-cream-2 px-6 py-4">
+          <button
+            type="submit"
+            form="topic-form"
+            disabled={busy}
+            className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:opacity-60"
+          >
+            <Save size={16} />
+            {busy
+              ? t("pro.saving")
+              : editing
+                ? t("pro.save")
+                : t("pro.sendToAdmin")}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-forest/20 px-5 py-2.5 text-sm font-semibold text-forest transition hover:bg-forest/5"
+          >
+            {t("pro.cancel")}
+          </button>
+        </div>
       </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function ListBuilder({
+  label,
+  icon: Icon,
+  addLabel,
+  fields,
+  register,
+  name,
+  onAdd,
+  onRemove,
+  field,
+}: {
+  label: string;
+  icon: typeof ListChecks;
+  addLabel: string;
+  fields: { id: string }[];
+  register: any;
+  name: "requirements" | "objectives";
+  onAdd: () => void;
+  onRemove: (i: number) => void;
+  field: string;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <label className="flex items-center gap-1.5 text-xs font-medium text-forest">
+          <Icon size={14} className="text-clay" />
+          {label}
+        </label>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex items-center gap-1 rounded-lg bg-forest/10 px-2.5 py-1 text-[11px] font-semibold text-forest transition hover:bg-forest/15"
+        >
+          <Plus size={12} />
+          {addLabel}
+        </button>
+      </div>
+      {fields.length === 0 ? (
+        <p className="rounded-lg bg-cream-2 px-3 py-2 text-[11px] text-clay">
+          {"\u2014"}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {fields.map((f, i) => (
+            <div key={f.id} className="flex items-center gap-2">
+              <input {...register(`${name}.${i}` as const)} className={field} />
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                className="grid size-9 shrink-0 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  icon: Icon,
+  error,
+  children,
+}: {
+  label: string;
+  icon?: typeof Type;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-forest">
+        {Icon && <Icon size={14} className="text-clay" />}
+        {label}
+      </label>
+      {children}
+      {error && <p className="mt-1 text-[11px] text-red-500">{error}</p>}
     </div>
   );
 }

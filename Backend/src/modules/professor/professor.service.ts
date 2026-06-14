@@ -49,6 +49,8 @@ export const createTopicService = async (
       maxStudents: data.maxStudents,
       specializationId: data.specializationId,
       academicYearId: data.academicYearId,
+      requirements: data.requirements ?? [],
+      objectives: data.objectives ?? [],
       professorId: professor.id,
       status: "pending",
     },

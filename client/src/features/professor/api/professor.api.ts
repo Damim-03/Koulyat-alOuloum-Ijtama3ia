@@ -1,5 +1,12 @@
 import { client } from "../../../lib/api/client";
-import type { Topic, Application, ProjectGroup, Milestone } from "../../../types/professor.types";
+import type {
+  Topic,
+  Application,
+  ProjectGroup,
+  Milestone,
+  SpecializationLite,
+  AcademicYearLite,
+} from "../../../types/professor.types";
 import type {
   CreateTopicInput,
   UpdateTopicInput,
@@ -59,4 +66,14 @@ export const professorApi = {
       .then((r) => r.data.milestone),
   deleteMilestone: (id: string) =>
     client.delete(`${BASE}/milestones/${id}`).then((r) => r.data),
+
+  // ── Common lookups (form dropdowns) — hit /common/*, NOT /professor ──
+  listSpecializations: () =>
+    client
+      .get<{ specializations: SpecializationLite[] }>(`/common/specializations`)
+      .then((r) => r.data.specializations),
+  listAcademicYears: () =>
+    client
+      .get<{ academicYears: AcademicYearLite[] }>(`/common/academic-years`)
+      .then((r) => r.data.academicYears),
 };

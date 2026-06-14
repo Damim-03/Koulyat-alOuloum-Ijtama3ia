@@ -221,11 +221,24 @@ export type AssignStudentDTO = z.infer<typeof assignStudentSchema>;
 // ─── DEFENSES ─────────────────────────────────────────────────
 //
 
+const DefenseStatusEnum = z.enum(["scheduled", "completed", "cancelled"]);
+const CommitteeRoleEnum = z.enum(["president", "supervisor", "examiner"]);
+
+// A single committee member entry (professor + their role).
+const committeeMemberSchema = z.object({
+  professorId: z.string().uuid(),
+  role: CommitteeRoleEnum,
+});
+
 export const createDefenseSchema = z.object({
   groupId: z.string().uuid(),
   date: z.string().datetime({ message: "date must be ISO datetime" }),
   room: z.string().trim().min(1),
   grade: z.number().min(0).max(20).optional(),
+  status: DefenseStatusEnum.optional(),
+  notes: z.string().trim().optional(),
+  // Optional committee assigned at scheduling time.
+  committee: z.array(committeeMemberSchema).optional(),
 });
 export type CreateDefenseDTO = z.infer<typeof createDefenseSchema>;
 
@@ -233,5 +246,9 @@ export const updateDefenseSchema = z.object({
   date: z.string().datetime().optional(),
   room: z.string().trim().min(1).optional(),
   grade: z.number().min(0).max(20).optional(),
+  status: DefenseStatusEnum.optional(),
+  notes: z.string().trim().optional(),
+  // When provided, the committee is fully replaced with this list.
+  committee: z.array(committeeMemberSchema).optional(),
 });
 export type UpdateDefenseDTO = z.infer<typeof updateDefenseSchema>;

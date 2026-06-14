@@ -1,123 +1,240 @@
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import {
   FolderKanban,
   Inbox,
-  Milestone as MilestoneIcon,
   CalendarClock,
+  FileText,
   ArrowLeft,
+  Plus,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
-import { LocaleLink } from "../../../i18n/locales/components/locale-link";
-import { PATHS } from "../../../routes/paths";
-import {
-  useStudentProject,
-  useStudentApplications,
-  useStudentMilestones,
-} from "../hooks/Student-hook";
-import { StatusBadge } from "../components/status-badge";
+import { useMyProject, useMyGroupRequests } from "../hooks/Student-hook";
+
+const REQ_STATUS: Record<string, string> = {
+  pending: "bg-amber-100 text-amber-700",
+  accepted: "bg-emerald-100 text-emerald-700",
+  rejected: "bg-red-100 text-red-700",
+};
+
+const MS_DOT: Record<string, string> = {
+  pending: "bg-amber-400",
+  in_progress: "bg-sky-400",
+  completed: "bg-emerald-400",
+  overdue: "bg-red-400",
+};
 
 export function StudentDashboardPage() {
-  const { t } = useTranslation();
-  const { data: project } = useStudentProject();
-  const { data: applications } = useStudentApplications();
-  const { data: milestones } = useStudentMilestones();
+  const { t, i18n } = useTranslation();
+  const { data: project } = useMyProject();
+  const { data: requests } = useMyGroupRequests();
 
-  const upcoming = (milestones ?? [])
-    .filter((m) => m.status === "pending" || m.status === "in_progress")
-    .sort((a, b) => a.order - b.order)
-    .slice(0, 3);
+  const reqList = requests ?? [];
+  const milestones = project?.milestones ?? [];
+
+  const stats = useMemo(() => {
+    const pending = reqList.filter((r) => r.status === "pending").length;
+    const completed = milestones.filter((m) => m.status === "completed").length;
+    return {
+      requests: reqList.length,
+      pending,
+      hasProject: !!project,
+      milestonesDone: completed,
+      milestonesTotal: milestones.length,
+    };
+  }, [reqList, milestones, project]);
+
+  const upcoming = useMemo(
+    () =>
+      [...milestones]
+        .filter((m) => m.status === "pending" || m.status === "in_progress")
+        .sort((a, b) => a.order - b.order)
+        .slice(0, 3),
+    [milestones],
+  );
+
+  function fmtDate(iso?: string) {
+    if (!iso) return "\u2014";
+    try {
+      return new Intl.DateTimeFormat(i18n.language || "ar", {
+        dateStyle: "medium",
+      }).format(new Date(iso));
+    } catch {
+      return iso;
+    }
+  }
 
   return (
-    <div>
-      <h2 className="mb-1 font-serif text-2xl font-bold text-forest">{t("stu.dashGreeting")}</h2>
-      <p className="mb-6 text-sm text-clay">{t("stu.dashSubtitle")}</p>
-
-      {project && (
-        <div className="mb-5 rounded-2xl border border-forest/10 bg-gradient-to-br from-forest to-forest-deep p-6 text-cream">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[12px] text-soft-sage">{t("stu.myProject")}</p>
-              <h3 className="truncate font-serif text-lg font-bold">{project.topic.title}</h3>
-            </div>
-            <span className="shrink-0 font-serif text-3xl font-bold text-gold">{project.progress}%</span>
-          </div>
-          <div className="h-2.5 overflow-hidden rounded-full bg-cream/15">
-            <div className="h-full rounded-full bg-gradient-to-r from-gold-soft to-gold" style={{ width: `${project.progress}%` }} />
-          </div>
-          <LocaleLink to={`${PATHS.student.root}/project`} className="mt-4 inline-flex items-center gap-1 text-[13px] font-medium text-gold-soft hover:text-gold">
-            {t("stu.viewProject")} <ArrowLeft size={14} />
-          </LocaleLink>
-        </div>
-      )}
-
-      <div className="mb-5 grid gap-4 sm:grid-cols-3">
-        <StatTile icon={Inbox} label={t("stu.myApplications")} value={applications?.length ?? 0} to={`${PATHS.student.root}/topics`} />
-        <StatTile icon={CalendarClock} label={t("stu.meetings")} value={project?.stats.meetings ?? 0} to={`${PATHS.student.root}/meetings`} />
-        <StatTile icon={MilestoneIcon} label={t("stu.timeline")} value={upcoming.length} to={`${PATHS.student.root}/timeline`} />
+    <div className="font-body">
+      {/* Greeting */}
+      <div className="mb-8">
+        <h1 className="font-serif text-2xl font-bold text-forest lg:text-3xl">
+          {t("stu.dashGreeting")}
+        </h1>
+        <p className="mt-1.5 text-sm text-clay">{t("stu.dashSubtitle")}</p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <section className="rounded-2xl border border-forest/10 bg-cream-card p-5">
-          <h3 className="mb-3 flex items-center gap-2 font-serif text-base font-bold text-forest">
-            <Inbox size={16} className="text-gold" /> {t("stu.myApplications")}
-          </h3>
-          {!applications || applications.length === 0 ? (
-            <EmptyMini label={t("stu.noApplications")} />
-          ) : (
-            <div className="space-y-2">
-              {applications.map((a) => (
-                <div key={a.id} className="flex items-center justify-between gap-2 rounded-xl border border-forest/10 bg-white/50 p-3">
-                  <p className="min-w-0 truncate text-[13px] font-medium text-forest">{a.topic?.title}</p>
-                  <StatusBadge status={a.status} />
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+      {/* Stat tiles */}
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatTile
+          icon={Inbox}
+          value={stats.requests}
+          label={t("stu.myRequestsTitle")}
+          tint="bg-soft-sage/30 text-forest"
+        />
+        <StatTile
+          icon={Clock}
+          value={stats.pending}
+          label={t("stu.reqStatus.pending")}
+          tint="bg-amber-100 text-amber-600"
+        />
+        <StatTile
+          icon={FolderKanban}
+          value={stats.hasProject ? 1 : 0}
+          label={t("stu.myProject")}
+          tint="bg-gold/15 text-gold"
+        />
+        <StatTile
+          icon={CheckCircle2}
+          value={stats.milestonesDone}
+          label={t("stu.completedMilestones")}
+          tint="bg-emerald-100 text-emerald-600"
+        />
+      </div>
 
-        <section className="rounded-2xl border border-forest/10 bg-cream-card p-5">
-          <h3 className="mb-3 flex items-center gap-2 font-serif text-base font-bold text-forest">
-            <MilestoneIcon size={16} className="text-gold" /> {t("stu.upcomingMilestones")}
-          </h3>
-          {upcoming.length === 0 ? (
-            <EmptyMini label={t("stu.noMilestones")} />
-          ) : (
-            <div className="space-y-2">
-              {upcoming.map((m) => (
-                <div key={m.id} className="flex items-center justify-between gap-2 rounded-xl border border-forest/10 bg-white/50 p-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-[13px] font-medium text-forest">{m.title}</p>
-                    <p className="text-[11px] text-clay">{new Date(m.deadline).toLocaleDateString()}</p>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Recent requests */}
+        <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)] lg:col-span-7">
+          <div className="flex items-center justify-between border-b border-forest/10 px-5 py-4">
+            <h3 className="font-serif text-lg font-bold text-forest">
+              {t("stu.myRequestsTitle")}
+            </h3>
+            <Link
+              to="../requests"
+              className="flex items-center gap-1 text-xs text-sage transition hover:text-forest"
+            >
+              {t("stu.viewAll")}
+              <ArrowLeft size={14} />
+            </Link>
+          </div>
+          <div className="p-4">
+            {reqList.length === 0 ? (
+              <div className="py-10 text-center">
+                <p className="mb-3 text-sm text-clay">
+                  {t("stu.noRequestsYet")}
+                </p>
+                <Link
+                  to="../topics"
+                  className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft"
+                >
+                  <Plus size={16} />
+                  {t("stu.browseTopics")}
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {reqList.slice(0, 4).map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between rounded-xl border border-forest/10 bg-cream-2 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-forest">
+                        {r.topic?.title ?? "\u2014"}
+                      </p>
+                      <p className="text-[11px] text-clay">
+                        {t("stu.priorityN", { n: r.priority })}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${REQ_STATUS[r.status]}`}
+                    >
+                      {t(`stu.reqStatus.${r.status}`, {
+                        defaultValue: r.status,
+                      })}
+                    </span>
                   </div>
-                  <StatusBadge status={m.status} />
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Upcoming milestones / project status */}
+        <div className="lg:col-span-5">
+          <div className="rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 font-serif text-base font-bold text-forest">
+                <CalendarClock size={18} className="text-gold" />
+                {t("stu.upcomingMilestones")}
+              </h3>
+              {stats.hasProject && (
+                <Link
+                  to="../project"
+                  className="text-xs text-sage transition hover:text-forest"
+                >
+                  {t("stu.viewAll")}
+                </Link>
+              )}
             </div>
-          )}
-        </section>
+
+            {!stats.hasProject ? (
+              <div className="py-8 text-center">
+                <div className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-cream-2 text-clay">
+                  <FolderKanban size={22} />
+                </div>
+                <p className="text-xs text-clay">{t("stu.noProjectYet")}</p>
+              </div>
+            ) : upcoming.length === 0 ? (
+              <p className="py-6 text-center text-xs text-clay">
+                {t("stu.noUpcomingMilestones")}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {upcoming.map((m) => (
+                  <div key={m.id} className="flex items-center gap-3">
+                    <span
+                      className={`size-2.5 shrink-0 rounded-full ${MS_DOT[m.status] ?? "bg-gray-400"}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-forest">{m.title}</p>
+                      <p className="text-[11px] text-clay">
+                        {fmtDate(m.deadline)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function StatTile({ icon: Icon, label, value, to }: { icon: typeof Inbox; label: string; value: number; to: string }) {
+function StatTile({
+  icon: Icon,
+  value,
+  label,
+  tint,
+}: {
+  icon: typeof FileText;
+  value: number;
+  label: string;
+  tint: string;
+}) {
   return (
-    <LocaleLink to={to} className="flex items-center gap-3 rounded-2xl border border-forest/10 bg-cream-card p-4 transition hover:-translate-y-px hover:shadow-md hover:shadow-forest/5">
-      <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-forest/8 text-forest">
-        <Icon size={20} />
-      </span>
-      <div className="min-w-0">
-        <p className="font-serif text-2xl font-bold text-forest">{value}</p>
-        <p className="truncate text-[12px] text-clay">{label}</p>
+    <div className="flex flex-col items-center rounded-2xl border border-forest/10 bg-cream-card p-5 text-center shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+      <div
+        className={`mb-3 grid size-12 place-items-center rounded-full ${tint}`}
+      >
+        <Icon size={22} />
       </div>
-    </LocaleLink>
-  );
-}
-
-function EmptyMini({ label }: { label: string }) {
-  return (
-    <div className="grid place-items-center rounded-xl border-2 border-dashed border-forest/15 py-8 text-center">
-      <FolderKanban size={28} className="mb-1 text-forest/25" />
-      <p className="text-[13px] text-clay">{label}</p>
+      <p className="font-serif text-2xl font-bold text-forest">{value}</p>
+      <p className="mt-1 text-[11px] font-medium text-clay">{label}</p>
     </div>
   );
 }

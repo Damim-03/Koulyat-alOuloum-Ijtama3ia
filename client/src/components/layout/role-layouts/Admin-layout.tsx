@@ -3,27 +3,50 @@ import { Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Users,
-  ListChecks,
+  GraduationCap,
+  UserCog,
+  Building2,
+  Network,
   Layers,
   CalendarDays,
-  BarChart3,
+  FileText,
+  ClipboardList,
+  FolderKanban,
+  MessagesSquare,
 } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { PATHS } from "../../../routes/paths";
-import {
-  DashboardSidebar,
-  type NavItem,
-} from "../Dashboard/dashboard-sidebar";
+import { DashboardSidebar, type NavItem } from "../Dashboard/dashboard-sidebar";
 import { DashboardHeader } from "../Dashboard/dashboard-header";
 import { SessionGuard } from "../../session/session-guard";
 
+const R = PATHS.admin.root;
+
 const NAV: NavItem[] = [
-  { to: PATHS.admin.root, labelKey: "dash.dashboard", icon: LayoutDashboard, end: true },
-  { to: `${PATHS.admin.root}/users`, labelKey: "dash.users", icon: Users },
-  { to: `${PATHS.admin.root}/topics`, labelKey: "dash.topics", icon: ListChecks },
-  { to: `${PATHS.admin.root}/specializations`, labelKey: "dash.specializations", icon: Layers },
-  { to: `${PATHS.admin.root}/academic-years`, labelKey: "dash.academicYears", icon: CalendarDays },
-  { to: `${PATHS.admin.root}/reports`, labelKey: "dash.reports", icon: BarChart3 },
+  { to: R, labelKey: "dash.dashboard", icon: LayoutDashboard, end: true },
+  { to: `${R}/users`, labelKey: "dash.users", icon: Users },
+  { to: `${R}/students`, labelKey: "dash.students", icon: GraduationCap },
+  { to: `${R}/professors`, labelKey: "dash.professors", icon: UserCog },
+  { to: `${R}/faculties`, labelKey: "admin.faculties", icon: Building2 },
+  { to: `${R}/departments`, labelKey: "admin.departments", icon: Network },
+  {
+    to: `${R}/specializations`,
+    labelKey: "dash.specializations",
+    icon: Layers,
+  },
+  {
+    to: `${R}/academic-years`,
+    labelKey: "dash.academicYears",
+    icon: CalendarDays,
+  },
+  { to: `${R}/topics`, labelKey: "dash.topics", icon: FileText },
+  {
+    to: `${R}/applications`,
+    labelKey: "admin.applications",
+    icon: ClipboardList,
+  },
+  { to: `${R}/projects`, labelKey: "admin.projects", icon: FolderKanban },
+  { to: `${R}/defenses`, labelKey: "dash.defense", icon: MessagesSquare },
 ];
 
 export function AdminLayout() {

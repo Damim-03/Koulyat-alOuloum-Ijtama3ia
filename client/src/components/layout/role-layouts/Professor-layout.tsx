@@ -1,34 +1,26 @@
 import { useState, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, ListChecks, Inbox, Milestone } from "lucide-react";
+import {
+  LayoutDashboard,
+  ListChecks,
+  Inbox,
+  Milestone,
+  FolderKanban,
+} from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { PATHS } from "../../../routes/paths";
 import { DashboardSidebar, type NavItem } from "../Dashboard/dashboard-sidebar";
 import { DashboardHeader } from "../Dashboard/dashboard-header";
 import { SessionGuard } from "../../session/session-guard";
 
+const R = PATHS.professor.root;
+
 const NAV: NavItem[] = [
-  {
-    to: PATHS.professor.root,
-    labelKey: "dash.dashboard",
-    icon: LayoutDashboard,
-    end: true,
-  },
-  {
-    to: `${PATHS.professor.root}/topics`,
-    labelKey: "dash.topics",
-    icon: ListChecks,
-  },
-  {
-    to: `${PATHS.professor.root}/applications`,
-    labelKey: "dash.applications",
-    icon: Inbox,
-  },
-  {
-    to: `${PATHS.professor.root}/milestones`,
-    labelKey: "dash.milestones",
-    icon: Milestone,
-  },
+  { to: R, labelKey: "dash.dashboard", icon: LayoutDashboard, end: true },
+  { to: `${R}/topics`, labelKey: "dash.topics", icon: ListChecks },
+  { to: `${R}/applications`, labelKey: "dash.applications", icon: Inbox },
+  { to: `${R}/groups`, labelKey: "dash.myProjects", icon: FolderKanban },
+  { to: `${R}/milestones`, labelKey: "dash.milestones", icon: Milestone },
 ];
 
 export function ProfessorLayout() {
