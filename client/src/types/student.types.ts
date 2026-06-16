@@ -70,7 +70,24 @@ export interface GroupRequest {
   priority: number;
   status: GroupRequestStatus;
   rejectionReason?: string | null;
-  topic?: { id: string; title: string; status?: TopicStatus };
+  topic?: {
+    id: string;
+    title: string;
+    status?: TopicStatus;
+
+    professor?: {
+      id: string;
+      user?: {
+        firstName?: string | null;
+        lastName?: string | null;
+      };
+    };
+
+    academicYear?: {
+      id: string;
+      title: string;
+    };
+  };
   members?: GroupRequestMember[];
   createdAt: string;
 }
