@@ -1,5 +1,10 @@
 import { TopicStatus } from "../../generated/prisma";
 
+export interface TopicReference {
+  title: string;
+  url: string;
+}
+
 export interface CreateTopicInput {
   title: string;
   description: string;
@@ -8,6 +13,7 @@ export interface CreateTopicInput {
   academicYearId: string;
   requirements?: string[];
   objectives?: string[];
+  references?: TopicReference[];
 }
 
 export interface UpdateTopicInput {
@@ -16,4 +22,5 @@ export interface UpdateTopicInput {
   maxStudents?: number;
   requirements?: string[];
   objectives?: string[];
+  references?: TopicReference[];
 }

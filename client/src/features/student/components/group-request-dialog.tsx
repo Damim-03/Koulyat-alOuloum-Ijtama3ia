@@ -188,7 +188,7 @@ export function GroupRequestDialog({ open, onClose, topic }: Props) {
             </div>
           </div>
           {/* golden gradient line */}
-          <div className="absolute inset-x-0 bottom-0 h-[3px] bg-gradient-to-l from-gold/20 via-gold to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-0.75 bg-linear-to-l from-gold/20 via-gold to-transparent" />
         </div>
 
         {/* body */}
@@ -360,7 +360,7 @@ export function GroupRequestDialog({ open, onClose, topic }: Props) {
                 {...register("priority")}
                 className="w-14 rounded-lg border border-forest/15 bg-cream-card px-2 py-1.5 text-center text-sm font-bold text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/25"
               />
-              <span className="max-w-[90px] text-[10px] leading-tight text-clay">
+              <span className="max-w-22.5 text-[10px] leading-tight text-clay">
                 {t("stu.priorityHint")}
               </span>
             </div>

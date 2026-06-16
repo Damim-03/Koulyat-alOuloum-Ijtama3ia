@@ -631,6 +631,35 @@
     "room": "Salle",
     "roomPlaceholder": "ex. Salle 12",
     "defenseDialogSubtitle": "Définir le projet, la date et la salle",
-    "generate": "Générer"
+    "generate": "Générer",
+    "accept": "Accepter"
+  },
+  "prof": {
+    "newTopic": "Proposer un nouveau sujet",
+    "newTopicSubtitle": "La proposition sera envoyée à l’administration",
+    "submitToAdmin": "Envoyer à l’administration",
+    "submitting": "Envoi…",
+    "cancel": "Annuler",
+    "topicTitle": "Titre du sujet",
+    "topicTitlePlaceholder": "ex. Système de gestion intelligent par ML",
+    "topicDescription": "Description",
+    "topicDescriptionPlaceholder": "Expliquez l’idée du projet et son intérêt…",
+    "maxStudents": "Nb d’étudiants",
+    "specialization": "Spécialité",
+    "selectSpecialization": "Choisir la spécialité",
+    "academicYear": "Année universitaire",
+    "selectYear": "Choisir l’année",
+    "requirements": "Prérequis",
+    "requirementPlaceholder": "ex. Maîtrise de Python",
+    "addRequirement": "Ajouter un prérequis",
+    "objectives": "Objectifs",
+    "objectivePlaceholder": "ex. Modèle avec 85%+ de précision",
+    "addObjective": "Ajouter un objectif",
+    "references": "Liens et références pour les étudiants",
+    "referencesHint": "Ajoutez des articles, vidéos ou sources utiles (titre + lien).",
+    "referenceTitlePlaceholder": "Titre de la référence (ex. Article sur YOLO)",
+    "addReference": "Ajouter une référence",
+    "noReferencesYet": "Aucune référence pour l’instant",
+    "referencesError": "Vérifiez les titres et liens des références"
   }
 }

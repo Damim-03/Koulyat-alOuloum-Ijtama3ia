@@ -211,7 +211,7 @@ export function ProfessorTopicDetailPage() {
                 <tr key={a.id} className="transition-colors hover:bg-forest/[0.03]">
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="grid size-9 place-items-center rounded-full bg-gradient-to-br from-forest to-forest-deep text-xs font-bold text-cream">
+                      <div className="grid size-9 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream">
                         {initials(a.student?.user?.firstName, a.student?.user?.lastName)}
                       </div>
                       <span className="text-sm font-medium text-forest">{studentName(a)}</span>

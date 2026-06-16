@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Search, Check, X, Archive } from "lucide-react";
+import { Search, Check, X, Archive, Eye } from "lucide-react";
 import {
   useAdminTopics,
   useApproveTopic,
@@ -34,6 +35,10 @@ const PAGE_SIZE = 10;
 
 export function AdminTopicsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { lang } = useParams();
+
+  const openTopic = (id: string) => navigate(`/${lang}/admin/topics/${id}`);
 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -202,16 +207,21 @@ export function AdminTopicsPage() {
                   className="transition-colors hover:bg-forest/[0.03]"
                 >
                   <td className="px-5 py-3.5">
-                    <p className="text-sm font-medium text-forest">
-                      {tp.title}
-                    </p>
+                    <button
+                      onClick={() => openTopic(tp.id)}
+                      className="text-right"
+                    >
+                      <p className="text-sm font-medium text-forest transition hover:text-gold">
+                        {tp.title}
+                      </p>
+                    </button>
                     <p className="text-[11px] text-clay" dir="ltr">
                       ID: {tp.id.slice(0, 8)}
                     </p>
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">
-                      <div className="grid size-7 place-items-center rounded-full bg-gradient-to-br from-forest to-forest-deep text-[10px] font-bold text-cream">
+                      <div className="grid size-7 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream">
                         {initials(
                           tp.professor?.user?.firstName,
                           tp.professor?.user?.lastName,
@@ -237,6 +247,13 @@ export function AdminTopicsPage() {
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => openTopic(tp.id)}
+                        className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+                        title={t("admin.view")}
+                      >
+                        <Eye size={16} />
+                      </button>
                       <button
                         onClick={() => approve.mutate(tp.id)}
                         disabled={tp.status === "approved"}

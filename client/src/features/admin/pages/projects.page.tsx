@@ -83,7 +83,7 @@ export function AdminProjectsPage() {
                     <p className="text-[10px] text-clay">{t("admin.supervisor")}</p>
                     <p className="text-xs font-medium text-forest">{profName(p)}</p>
                   </div>
-                  <div className="grid size-7 place-items-center rounded-full bg-gradient-to-br from-forest to-forest-deep text-[10px] font-bold text-cream">
+                  <div className="grid size-7 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream">
                     {initials(p.topic?.professor?.user?.firstName, p.topic?.professor?.user?.lastName)}
                   </div>
                 </div>
@@ -103,7 +103,7 @@ export function AdminProjectsPage() {
                       {members.slice(0, 3).map((m) => (
                         <div
                           key={m.id}
-                          className="grid size-6 place-items-center rounded-full border-2 border-cream-card bg-gradient-to-br from-sage to-forest text-[9px] font-bold text-cream"
+                          className="grid size-6 place-items-center rounded-full border-2 border-cream-card bg-linear-to-br from-sage to-forest text-[9px] font-bold text-cream"
                         >
                           {initials(m.student?.user?.firstName, m.student?.user?.lastName)}
                         </div>

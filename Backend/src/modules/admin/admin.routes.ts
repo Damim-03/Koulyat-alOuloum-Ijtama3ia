@@ -53,6 +53,8 @@ import {
   archiveTopicController,
   // applications
   listApplicationsController,
+  acceptApplicationController,
+  rejectApplicationController,
   // projects
   listProjectsController,
   getProjectController,
@@ -136,7 +138,10 @@ adminRoutes.delete("/specializations/:id", deleteSpecializationController);
 adminRoutes.get("/academic-years", listAcademicYearsController);
 adminRoutes.post("/academic-years", createAcademicYearController);
 adminRoutes.patch("/academic-years/:id", updateAcademicYearController);
-adminRoutes.patch("/academic-years/:id/activate", activateAcademicYearController);
+adminRoutes.patch(
+  "/academic-years/:id/activate",
+  activateAcademicYearController,
+);
 adminRoutes.delete("/academic-years/:id", deleteAcademicYearController);
 
 //
@@ -152,6 +157,8 @@ adminRoutes.patch("/topics/:id/archive", archiveTopicController);
 // ─── APPLICATIONS ─────────────────────────────────────────────
 //
 adminRoutes.get("/applications", listApplicationsController);
+adminRoutes.patch("/applications/:id/accept", acceptApplicationController);
+adminRoutes.patch("/applications/:id/reject", rejectApplicationController);
 
 //
 // ─── PROJECTS ─────────────────────────────────────────────────

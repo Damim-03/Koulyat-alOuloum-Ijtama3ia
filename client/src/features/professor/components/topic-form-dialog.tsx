@@ -12,6 +12,7 @@ import {
   CalendarDays,
   ListChecks,
   Target,
+  Link2,
   Plus,
   Trash2,
   Save,
@@ -66,11 +67,13 @@ export function TopicFormDialog({ open, onClose, topic }: Props) {
       academicYearId: "",
       requirements: [],
       objectives: [],
+      references: [],
     },
   });
 
   const reqArray = useFieldArray({ control, name: "requirements" as never });
   const objArray = useFieldArray({ control, name: "objectives" as never });
+  const refArray = useFieldArray({ control, name: "references" as never });
 
   useEffect(() => {
     if (!open) return;
@@ -83,6 +86,7 @@ export function TopicFormDialog({ open, onClose, topic }: Props) {
         academicYearId: topic.academicYearId ?? "",
         requirements: topic.requirements ?? [],
         objectives: topic.objectives ?? [],
+        references: topic.references ?? [],
       });
     } else {
       reset({
@@ -93,6 +97,7 @@ export function TopicFormDialog({ open, onClose, topic }: Props) {
         academicYearId: "",
         requirements: [],
         objectives: [],
+        references: [],
       });
     }
   }, [open, topic, reset]);
@@ -103,6 +108,10 @@ export function TopicFormDialog({ open, onClose, topic }: Props) {
       ...values,
       requirements: (values.requirements ?? []).filter((r) => r.trim() !== ""),
       objectives: (values.objectives ?? []).filter((o) => o.trim() !== ""),
+      // Keep only references that have both a title and a url.
+      references: (values.references ?? []).filter(
+        (r) => r.title.trim() !== "" && r.url.trim() !== "",
+      ),
     };
     if (editing && topic) {
       update.mutate({ id: topic.id, data: clean }, { onSuccess: onClose });
@@ -115,7 +124,7 @@ export function TopicFormDialog({ open, onClose, topic }: Props) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      className="fixed inset-0 z-100 flex items-center justify-center p-4"
       onMouseDown={onClose}
     >
       <div className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm" />
@@ -147,7 +156,7 @@ export function TopicFormDialog({ open, onClose, topic }: Props) {
               <X size={18} />
             </button>
           </div>
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-l from-gold to-gold-soft" />
+          <div className="absolute inset-x-0 bottom-0 h-1 bg-linear-to-l from-gold to-gold-soft" />
         </div>
 
         {/* Body (scrollable) */}
@@ -257,6 +266,75 @@ export function TopicFormDialog({ open, onClose, topic }: Props) {
             onRemove={(i) => objArray.remove(i)}
             field={field}
           />
+
+          {/* References builder (title + url) — helps students */}
+          <div className="rounded-xl bg-cream-2 p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-forest">
+                <Link2 size={14} className="text-clay" />
+                {t("pro.references")}
+              </label>
+              <button
+                type="button"
+                onClick={() => refArray.append({ title: "", url: "" } as never)}
+                className="inline-flex items-center gap-1 rounded-lg bg-forest/10 px-2.5 py-1 text-[11px] font-semibold text-forest transition hover:bg-forest/15"
+              >
+                <Plus size={12} />
+                {t("pro.addReference")}
+              </button>
+            </div>
+            <p className="mb-2.5 text-[11px] text-clay">
+              {t("pro.referencesHint")}
+            </p>
+
+            {refArray.fields.length === 0 ? (
+              <p className="rounded-lg bg-cream-card px-3 py-2 text-[11px] text-clay">
+                {t("pro.noReferencesYet")}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {refArray.fields.map((f, i) => (
+                  <div
+                    key={f.id}
+                    className="flex flex-col gap-2 rounded-lg bg-cream-card p-2 sm:flex-row sm:items-start"
+                  >
+                    <div className="flex-1">
+                      <input
+                        {...register(`references.${i}.title` as const)}
+                        className={field}
+                        placeholder={t("pro.referenceTitlePlaceholder")}
+                      />
+                      {errors.references?.[i]?.title && (
+                        <p className="mt-1 text-[11px] text-red-500">
+                          {errors.references[i]?.title?.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        {...register(`references.${i}.url` as const)}
+                        dir="ltr"
+                        className={field}
+                        placeholder="https://..."
+                      />
+                      {errors.references?.[i]?.url && (
+                        <p className="mt-1 text-[11px] text-red-500">
+                          {errors.references[i]?.url?.message}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => refArray.remove(i)}
+                      className="grid size-9 shrink-0 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Send-to-admin note */}
           <div className="flex items-start gap-2 rounded-xl bg-cream-2 px-4 py-3">

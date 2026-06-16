@@ -745,6 +745,103 @@ export const listApplicationsService = async (q: ListQueryDTO) => {
   return { items, total, page: q.page, limit: q.limit };
 };
 
+// ─── ACCEPT APPLICATION (admin decision) ──────────────────────
+// Moved from the professor module: the ADMIN now decides on topic
+// applications. Same group-forming logic, without the professor
+// ownership check.
+export const acceptApplicationService = async (applicationId: string) => {
+  const application = await prisma.topicApplication.findUnique({
+    where: { id: applicationId },
+    include: {
+      topic: { include: { projectGroup: { include: { members: true } } } },
+    },
+  });
+  if (!application)
+    throw new NotFoundException(
+      "Application not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (application.status === "accepted")
+    throw new BadRequestException(
+      "Application is already accepted",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  const topic = application.topic;
+  const currentMembers = topic.projectGroup?.members.length ?? 0;
+  if (currentMembers >= topic.maxStudents)
+    throw new BadRequestException(
+      "This topic is already full",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  return prisma.$transaction(async (tx) => {
+    const group =
+      topic.projectGroup ??
+      (await tx.projectGroup.create({ data: { topicId: topic.id } }));
+
+    await tx.projectMember.upsert({
+      where: {
+        groupId_studentId: {
+          groupId: group.id,
+          studentId: application.studentId,
+        },
+      },
+      create: { groupId: group.id, studentId: application.studentId },
+      update: {},
+    });
+
+    const updated = await tx.topicApplication.update({
+      where: { id: application.id },
+      data: { status: "accepted" },
+    });
+
+    const memberCount = await tx.projectMember.count({
+      where: { groupId: group.id },
+    });
+    if (memberCount >= topic.maxStudents) {
+      await tx.graduationTopic.update({
+        where: { id: topic.id },
+        data: { status: "full" },
+      });
+      await tx.topicApplication.updateMany({
+        where: { topicId: topic.id, status: "pending" },
+        data: { status: "rejected" },
+      });
+    }
+
+    return updated;
+  });
+};
+
+// ─── REJECT APPLICATION (admin decision) ──────────────────────
+export const rejectApplicationService = async (
+  applicationId: string,
+  rejectionReason?: string,
+) => {
+  const application = await prisma.topicApplication.findUnique({
+    where: { id: applicationId },
+  });
+  if (!application)
+    throw new NotFoundException(
+      "Application not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (application.status === "rejected")
+    throw new BadRequestException(
+      "Application is already rejected",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  return prisma.topicApplication.update({
+    where: { id: applicationId },
+    data: {
+      status: "rejected",
+      ...(rejectionReason !== undefined ? { rejectionReason } : {}),
+    },
+  });
+};
+
 //
 // ════════ PROJECTS (groups) ════════
 //

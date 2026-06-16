@@ -137,7 +137,7 @@ export function StudentMyProjectPage() {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           {/* supervisor */}
           <div className="flex items-center gap-3 rounded-xl bg-forest px-4 py-3 text-cream-2">
-            <div className="grid size-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-forest to-forest-deep text-sm font-bold text-gold-soft ring-2 ring-gold/30">
+            <div className="grid size-10 shrink-0 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-sm font-bold text-gold-soft ring-2 ring-gold/30">
               {initials(profName)}
             </div>
             <div className="min-w-0">
@@ -174,7 +174,7 @@ export function StudentMyProjectPage() {
                     <div
                       key={m.id ?? i}
                       title={nm}
-                      className="grid size-9 place-items-center rounded-full border-2 border-cream-card bg-gradient-to-br from-sage to-forest text-xs font-bold text-cream"
+                      className="grid size-9 place-items-center rounded-full border-2 border-cream-card bg-linear-to-br from-sage to-forest text-xs font-bold text-cream"
                     >
                       {initials(nm)}
                     </div>
@@ -218,7 +218,7 @@ export function StudentMyProjectPage() {
                   >
                     {/* spine */}
                     {!isLast && (
-                      <span className="absolute top-10 bottom-0 start-[19px] w-0.5 bg-clay/15" />
+                      <span className="absolute top-10 bottom-0 inset-s-4.75 w-0.5 bg-clay/15" />
                     )}
                     {/* node */}
                     <div
@@ -300,7 +300,7 @@ export function StudentMyProjectPage() {
             </div>
             <div className="h-2.5 w-full overflow-hidden rounded-full bg-cream-2">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-gold to-gold-soft transition-all"
+                className="h-full rounded-full bg-linear-to-r from-gold to-gold-soft transition-all"
                 style={{ width: `${percent}%` }}
               />
             </div>

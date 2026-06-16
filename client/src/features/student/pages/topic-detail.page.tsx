@@ -212,7 +212,7 @@ export function StudentTopicDetailPage() {
               {t("stu.projectDetails")}
             </h2>
             {descriptionLines.length ? (
-              <div className="space-y-3 text-base leading-relaxed text-clay [text-align:justify]">
+              <div className="space-y-3 text-base leading-relaxed text-clay text-justify">
                 {descriptionLines.map((p, i) => (
                   <p key={i}>{p}</p>
                 ))}
@@ -253,7 +253,7 @@ export function StudentTopicDetailPage() {
                 {t("stu.supervisor")}
               </h3>
               <div className="flex items-center gap-4">
-                <div className="grid size-16 shrink-0 place-items-center rounded-full bg-gradient-to-br from-forest to-forest-deep font-serif text-xl font-bold text-gold-soft ring-2 ring-gold/30">
+                <div className="grid size-16 shrink-0 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep font-serif text-xl font-bold text-gold-soft ring-2 ring-gold/30">
                   {initials(profName)}
                 </div>
                 <h4 className="min-w-0 font-serif text-lg text-cream">
@@ -305,7 +305,7 @@ export function StudentTopicDetailPage() {
                 alt={v.title ?? ""}
                 className="size-full object-cover"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-forest/85 to-transparent" />
+              <div className="absolute inset-0 bg-linear-to-t from-forest/85 to-transparent" />
               <div className="absolute inset-x-4 bottom-4 text-cream">
                 <p className="flex items-center gap-1.5 text-xs opacity-80">
                   <FlaskConical className="size-3.5" />
