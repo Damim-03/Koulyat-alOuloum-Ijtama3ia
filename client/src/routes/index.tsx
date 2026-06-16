@@ -21,7 +21,6 @@ import { AdminLayout } from "../components/layout/role-layouts/Admin-layout";
 import { ProfessorDashboardPage } from "../features/professor/pages/Professor-dashboard.page";
 import { ProfessorTopicsPage } from "../features/professor/pages/topics.page";
 import { ProfessorTopicDetailPage } from "../features/professor/pages/topic-detail.page";
-import { ProfessorApplicationsPage } from "../features/professor/pages/Professor-applications.page";
 import { ProfessorProjectsPage } from "../features/professor/pages/Professor-projects.page";
 import { ProfessorProjectDetailPage } from "../features/professor/pages/project-detail.page";
 
@@ -45,6 +44,7 @@ import { ProfessorMilestonesPage } from "../features/professor/pages/Professor-m
 import { StudentMyRequestsPage } from "../features/student/pages/my-requests.page";
 import { StudentMyProjectPage } from "../features/student/pages/my-project.page";
 import { StudentTopicDetailPage } from "../features/student/pages/topic-detail.page";
+import { AdminTopicDetailPage } from "../features/admin/pages/topic-detail.page";
 
 export function AppRouter() {
   return (
@@ -94,7 +94,7 @@ export function AppRouter() {
           <Route index element={<ProfessorDashboardPage />} />
           <Route path="topics" element={<ProfessorTopicsPage />} />
           <Route path="topics/:id" element={<ProfessorTopicDetailPage />} />
-          <Route path="applications" element={<ProfessorApplicationsPage />} />
+          {/* طلبات الالتحاق انتقل قرارها إلى الإدارة — أُزيل مسار الأستاذ */}
           <Route path="milestones" element={<ProfessorMilestonesPage />} />
           <Route path="groups" element={<ProfessorProjectsPage />} />
           <Route
@@ -141,6 +141,7 @@ export function AppRouter() {
             element={<AdminAcademicStructurePage />}
           />
           <Route path="topics" element={<AdminTopicsPage />} />
+          <Route path="topics/:id" element={<AdminTopicDetailPage />} />
           <Route path="defenses" element={<AdminDefensesPage />} />
           <Route path="departments" element={<AdminDepartmentsPage />} />
           <Route path="applications" element={<AdminApplicationsPage />} />

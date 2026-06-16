@@ -128,7 +128,7 @@ export function AdminAcademicStructurePage() {
         <div className="lg:col-span-8">
           {/* Filters */}
           <div className="mb-5 flex flex-wrap items-center gap-3">
-            <div className="relative min-w-[220px] flex-1">
+            <div className="relative min-w-55 flex-1">
               <Search
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-clay"
                 size={18}

@@ -216,7 +216,7 @@ export function AdminDefensesPage() {
                     {members.slice(0, 3).map((m) => (
                       <div
                         key={m.id}
-                        className="grid size-7 place-items-center rounded-full border-2 border-cream-card bg-gradient-to-br from-forest to-forest-deep text-[10px] font-bold text-cream"
+                        className="grid size-7 place-items-center rounded-full border-2 border-cream-card bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream"
                       >
                         {initials(
                           m.student?.user?.firstName,

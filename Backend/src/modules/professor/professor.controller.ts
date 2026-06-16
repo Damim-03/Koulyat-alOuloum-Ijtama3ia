@@ -2,7 +2,12 @@ import { Request, Response, NextFunction } from "express";
 import { HTTPSTATUS } from "../../core/config/http/http.config";
 import { BadRequestException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
-import { createMilestoneSchema, createTopicSchema, listApplicationsSchema, updateMilestoneSchema, updateTopicSchema } from "./professor.validation";
+import {
+  createMilestoneSchema,
+  createTopicSchema,
+  updateMilestoneSchema,
+  updateTopicSchema,
+} from "./professor.validation";
 import {
   createTopicService,
   getMyTopicsService,
@@ -11,12 +16,9 @@ import {
   deleteTopicService,
   getGroupByIdService,
   getMyGroupsService,
-  acceptApplicationService,
   createMilestoneService,
   deleteMilestoneService,
-  getApplicationsService,
   getMilestonesService,
-  rejectApplicationService,
   updateMilestoneService,
 } from "./professor.service";
 
@@ -149,68 +151,6 @@ export const getGroupByIdController = async (
 };
 
 //
-// ─── APPLICATIONS ─────────────────────────────────────────────
-//
-
-export const getApplicationsController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  const parsed = listApplicationsSchema.safeParse(req.query);
-  if (!parsed.success) {
-    return next(
-      new BadRequestException("Validation error", ErrorCodeEnum.VALIDATION_ERROR),
-    );
-  }
-  try {
-    const applications = await getApplicationsService(
-      req.user!.userId,
-      parsed.data,
-    );
-    return res.status(HTTPSTATUS.OK).json({ applications });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const acceptApplicationController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const application = await acceptApplicationService(
-      req.user!.userId,
-      req.params.id as string,
-    );
-    return res
-      .status(HTTPSTATUS.OK)
-      .json({ message: "Application accepted", application });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const rejectApplicationController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const application = await rejectApplicationService(
-      req.user!.userId,
-      req.params.id as string,
-    );
-    return res
-      .status(HTTPSTATUS.OK)
-      .json({ message: "Application rejected", application });
-  } catch (error) {
-    next(error);
-  }
-};
-
-//
 // ─── MILESTONES ───────────────────────────────────────────────
 //
 
@@ -222,7 +162,10 @@ export const createMilestoneController = async (
   const parsed = createMilestoneSchema.safeParse(req.body);
   if (!parsed.success) {
     return next(
-      new BadRequestException("Validation error", ErrorCodeEnum.VALIDATION_ERROR),
+      new BadRequestException(
+        "Validation error",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      ),
     );
   }
   try {
@@ -263,7 +206,10 @@ export const updateMilestoneController = async (
   const parsed = updateMilestoneSchema.safeParse(req.body);
   if (!parsed.success) {
     return next(
-      new BadRequestException("Validation error", ErrorCodeEnum.VALIDATION_ERROR),
+      new BadRequestException(
+        "Validation error",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      ),
     );
   }
   try {

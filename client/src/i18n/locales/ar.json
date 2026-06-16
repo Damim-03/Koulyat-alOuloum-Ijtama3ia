@@ -631,6 +631,35 @@
     "room": "القاعة",
     "roomPlaceholder": "مثال: قاعة 12",
     "defenseDialogSubtitle": "حدّد المشروع والموعد والقاعة",
-    "generate": "توليد"
+    "generate": "توليد",
+    "accept": "قبول"
+  },
+  "prof": {
+    "newTopic": "اقتراح موضوع جديد",
+    "newTopicSubtitle": "سيُرسل المقترح إلى الإدارة للمراجعة",
+    "submitToAdmin": "إرسال إلى الإدارة",
+    "submitting": "جارٍ الإرسال…",
+    "cancel": "إلغاء",
+    "topicTitle": "عنوان الموضوع",
+    "topicTitlePlaceholder": "مثال: نظام إدارة ذكي باستخدام تعلم الآلة",
+    "topicDescription": "وصف الموضوع",
+    "topicDescriptionPlaceholder": "اشرح فكرة المشروع وأهميته…",
+    "maxStudents": "عدد الطلاب",
+    "specialization": "التخصص",
+    "selectSpecialization": "اختر التخصص",
+    "academicYear": "السنة الدراسية",
+    "selectYear": "اختر السنة الدراسية",
+    "requirements": "المتطلبات",
+    "requirementPlaceholder": "مثال: إتقان Python",
+    "addRequirement": "إضافة متطلّب",
+    "objectives": "الأهداف",
+    "objectivePlaceholder": "مثال: بناء نموذج بدقّة 85%+",
+    "addObjective": "إضافة هدف",
+    "references": "روابط ومراجع تساعد الطلاب",
+    "referencesHint": "أضف مقالات أو فيديوهات أو مصادر مفيدة (عنوان + رابط).",
+    "referenceTitlePlaceholder": "عنوان المرجع (مثال: مقال عن YOLO)",
+    "addReference": "إضافة مرجع",
+    "noReferencesYet": "لا توجد مراجع بعد",
+    "referencesError": "تحقّق من عناوين وروابط المراجع"
   }
 }

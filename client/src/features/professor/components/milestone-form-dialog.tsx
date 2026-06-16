@@ -80,7 +80,7 @@ export function MilestoneFormDialog({ open, onClose, groupId, milestone }: Props
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-100 flex items-center justify-center p-4" onMouseDown={onClose}>
       <div className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm" />
       <div dir={dir} onMouseDown={(e) => e.stopPropagation()} className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl bg-cream-card shadow-2xl">
         {/* Header */}
@@ -101,7 +101,7 @@ export function MilestoneFormDialog({ open, onClose, groupId, milestone }: Props
               <X size={18} />
             </button>
           </div>
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-l from-gold to-gold-soft" />
+          <div className="absolute inset-x-0 bottom-0 h-1 bg-linear-to-l from-gold to-gold-soft" />
         </div>
 
         {/* Body */}

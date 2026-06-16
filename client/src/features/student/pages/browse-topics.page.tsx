@@ -163,7 +163,7 @@ export function StudentBrowseTopicsPage() {
                 </div>
 
                 {/* CTA مرئي فقط — الكرت كله رابط، فلا نضع زرّ حقيقي بداخله */}
-                <span className="mt-auto inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-forest to-forest-deep py-2.5 text-[13px] font-bold text-cream transition group-hover:-translate-y-px">
+                <span className="mt-auto inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-linear-to-br from-forest to-forest-deep py-2.5 text-[13px] font-bold text-cream transition group-hover:-translate-y-px">
                   {t("stu.viewDetails")}
                   <ArrowLeft size={14} className="rtl:rotate-180" />
                 </span>

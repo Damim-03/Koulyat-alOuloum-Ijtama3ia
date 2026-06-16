@@ -275,6 +275,9 @@ model GraduationTopic {
 
   status TopicStatus @default(pending)
 
+  // Stored as JSON: [{ "title": "...", "url": "https://..." }]
+  references Json @default("[]")
+
   // Reason recorded when a topic is rejected (optional).
   rejectionReason String?
 

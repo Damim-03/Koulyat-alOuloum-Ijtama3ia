@@ -216,7 +216,7 @@ export function StudentMyRequestsPage() {
                                     ? ` · ${m.student.registrationNumber}`
                                     : ""
                                 }`}
-                                className={`relative grid size-8 place-items-center rounded-full border-2 border-cream-card bg-gradient-to-br from-forest to-forest-deep text-[10px] font-bold text-cream ${
+                                className={`relative grid size-8 place-items-center rounded-full border-2 border-cream-card bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream ${
                                   isLeader ? "ring-2 ring-gold" : ""
                                 }`}
                               >

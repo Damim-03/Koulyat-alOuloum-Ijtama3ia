@@ -351,6 +351,13 @@ export function useAdminTopics(params?: ListParams) {
     queryFn: () => adminApi.listTopics(params),
   });
 }
+export function useAdminTopic(id: string) {
+  return useQuery({
+    queryKey: ["admin", "topic", id],
+    queryFn: () => adminApi.getTopic(id),
+    enabled: !!id,
+  });
+}
 export function useApproveTopic() {
   const qc = useQueryClient();
   return useMutation({
@@ -391,6 +398,31 @@ export function useAdminApplications(params?: ListParams) {
   return useQuery({
     queryKey: KEYS.applications(params),
     queryFn: () => adminApi.listApplications(params),
+  });
+}
+export function useAcceptApplication() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.acceptApplication(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "applications"] });
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      toast.success("تم قبول الطلب");
+    },
+    onError: () => toast.error("تعذّر قبول الطلب"),
+  });
+}
+export function useRejectApplication() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      adminApi.rejectApplication(id, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "applications"] });
+      toast.success("تم رفض الطلب");
+    },
+    onError: () => toast.error("تعذّر رفض الطلب"),
   });
 }
 

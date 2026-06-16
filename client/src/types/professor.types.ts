@@ -1,8 +1,4 @@
-import type {
-  TopicStatus,
-  ApplicationStatus,
-  MilestoneStatus,
-} from "./enums";
+import type { TopicStatus, ApplicationStatus, MilestoneStatus } from "./enums";
 
 // ════════════════════════════════════════════════════════════
 //  Professor feature — shared types
@@ -17,6 +13,12 @@ export interface UserRef {
   firstName: string | null;
   lastName: string | null;
   email?: string | null;
+}
+
+// ── Reference link that helps students (title + url) ──
+export interface TopicReference {
+  title: string;
+  url: string;
 }
 
 // ── Lookups (from /common/* — for form dropdowns) ──
@@ -48,6 +50,7 @@ export interface Topic {
   description: string;
   requirements: string[];
   objectives: string[];
+  references?: TopicReference[];
   status: TopicStatus;
   rejectionReason?: string | null;
   maxStudents: number;
@@ -88,7 +91,11 @@ export interface Submission {
   fileSize?: number | null;
   mimeType?: string | null;
   version: number;
-  uploadedBy?: { id: string; firstName: string | null; lastName: string | null };
+  uploadedBy?: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+  };
   createdAt: string;
 }
 

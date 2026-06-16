@@ -3,6 +3,12 @@ import { z } from "zod";
 // ─── TOPICS ────────────────────────────────────────────────────
 // Mirrors backend professor.validation (createTopicSchema / updateTopicSchema),
 // including the requirements[] and objectives[] project-detail fields.
+
+export const topicReferenceSchema = z.object({
+  title: z.string().trim().min(1, "عنوان المرجع مطلوب"),
+  url: z.string().trim().url("رابط غير صحيح"),
+});
+
 export const createTopicSchema = z.object({
   title: z.string().min(1, "العنوان مطلوب"),
   description: z.string().min(1, "الوصف مطلوب"),
@@ -18,6 +24,7 @@ export const createTopicSchema = z.object({
     .array(z.string().trim().min(1, "لا يمكن ترك السطر فارغاً"))
     .optional()
     .default([]),
+  references: z.array(topicReferenceSchema).max(20).optional().default([]),
 });
 export type CreateTopicInput = z.infer<typeof createTopicSchema>;
 

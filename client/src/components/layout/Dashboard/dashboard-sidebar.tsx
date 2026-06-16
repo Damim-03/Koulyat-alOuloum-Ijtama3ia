@@ -30,7 +30,7 @@ export function DashboardSidebar({ items, panelKey, collapsed, onToggle }: Props
     >
       {/* brand */}
       <div className="flex h-16 items-center gap-3 border-b border-white/10 px-3">
-        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-gold to-gold-soft text-forest-deep shadow-lg shadow-gold/20">
+        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-linear-to-br from-gold to-gold-soft text-forest-deep shadow-lg shadow-gold/20">
           <GraduationCap size={20} strokeWidth={2.2} />
         </div>
         {!collapsed && (
@@ -58,7 +58,7 @@ export function DashboardSidebar({ items, panelKey, collapsed, onToggle }: Props
                   collapsed ? "justify-center" : ""
                 } ${
                   isActive
-                    ? "bg-gradient-to-br from-gold to-gold-soft text-forest-deep shadow-md shadow-gold/20"
+                    ? "bg-linear-to-br from-gold to-gold-soft text-forest-deep shadow-md shadow-gold/20"
                     : "text-cream/70 hover:bg-white/8 hover:text-cream"
                 }`
               }

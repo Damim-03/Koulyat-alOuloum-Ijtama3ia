@@ -631,6 +631,35 @@
     "room": "Room",
     "roomPlaceholder": "e.g. Room 12",
     "defenseDialogSubtitle": "Set the project, date and room",
-    "generate": "Generate"
+    "generate": "Generate",
+    "accept": "Accept"
+  },
+  "prof": {
+    "newTopic": "Propose a new topic",
+    "newTopicSubtitle": "The proposal will be sent to admin for review",
+    "submitToAdmin": "Send to admin",
+    "submitting": "Submitting…",
+    "cancel": "Cancel",
+    "topicTitle": "Topic title",
+    "topicTitlePlaceholder": "e.g. Smart management system using ML",
+    "topicDescription": "Description",
+    "topicDescriptionPlaceholder": "Explain the project idea and its value…",
+    "maxStudents": "Max students",
+    "specialization": "Specialization",
+    "selectSpecialization": "Select specialization",
+    "academicYear": "Academic year",
+    "selectYear": "Select year",
+    "requirements": "Requirements",
+    "requirementPlaceholder": "e.g. Proficiency in Python",
+    "addRequirement": "Add requirement",
+    "objectives": "Objectives",
+    "objectivePlaceholder": "e.g. Build a model with 85%+ accuracy",
+    "addObjective": "Add objective",
+    "references": "Reference links to help students",
+    "referencesHint": "Add helpful articles, videos or sources (title + link).",
+    "referenceTitlePlaceholder": "Reference title (e.g. Article on YOLO)",
+    "addReference": "Add reference",
+    "noReferencesYet": "No references yet",
+    "referencesError": "Check the reference titles and links"
   }
 }

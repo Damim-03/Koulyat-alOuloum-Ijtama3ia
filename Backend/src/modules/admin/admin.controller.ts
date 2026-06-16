@@ -32,10 +32,16 @@ import {
 import * as svc from "./admin.service";
 
 // Small helper: validate body and throw a uniform error on failure.
-function parseBody<T>(schema: { safeParse: (v: unknown) => any }, body: unknown) {
+function parseBody<T>(
+  schema: { safeParse: (v: unknown) => any },
+  body: unknown,
+) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
-    throw new BadRequestException("Validation error", ErrorCodeEnum.VALIDATION_ERROR);
+    throw new BadRequestException(
+      "Validation error",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
   }
   return parsed.data as T;
 }
@@ -61,7 +67,11 @@ export const getOverviewStatsController = async (
 // ─── USERS ────────────────────────────────────────────────────
 //
 
-export const listUsersController = async (req: Request, res: Response, next: NextFunction) => {
+export const listUsersController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const q = parseBody(listUsersSchema, req.query);
     const data = await svc.listUsersService(q as never);
@@ -71,7 +81,11 @@ export const listUsersController = async (req: Request, res: Response, next: Nex
   }
 };
 
-export const getUserController = async (req: Request, res: Response, next: NextFunction) => {
+export const getUserController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const user = await svc.getUserByIdService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json({ user });
@@ -80,47 +94,78 @@ export const getUserController = async (req: Request, res: Response, next: NextF
   }
 };
 
-export const createUserController = async (req: Request, res: Response, next: NextFunction) => {
+export const createUserController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(createUserSchema, req.body);
     const user = await svc.createUserService(data as never);
-    return res.status(HTTPSTATUS.CREATED).json({ message: "User created", user });
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "User created", user });
   } catch (e) {
     next(e);
   }
 };
 
-export const updateUserController = async (req: Request, res: Response, next: NextFunction) => {
+export const updateUserController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(updateUserSchema, req.body);
-    const user = await svc.updateUserService(req.params.id as string, data as never);
+    const user = await svc.updateUserService(
+      req.params.id as string,
+      data as never,
+    );
     return res.status(HTTPSTATUS.OK).json({ message: "User updated", user });
   } catch (e) {
     next(e);
   }
 };
 
-export const updateUserStatusController = async (req: Request, res: Response, next: NextFunction) => {
+export const updateUserStatusController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(updateUserStatusSchema, req.body);
-    const user = await svc.updateUserStatusService(req.params.id as string, data as never);
+    const user = await svc.updateUserStatusService(
+      req.params.id as string,
+      data as never,
+    );
     return res.status(HTTPSTATUS.OK).json({ message: "Status updated", user });
   } catch (e) {
     next(e);
   }
 };
 
-export const resetUserPasswordController = async (req: Request, res: Response, next: NextFunction) => {
+export const resetUserPasswordController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(resetPasswordSchema, req.body);
-    const result = await svc.resetUserPasswordService(req.params.id as string, data as never);
+    const result = await svc.resetUserPasswordService(
+      req.params.id as string,
+      data as never,
+    );
     return res.status(HTTPSTATUS.OK).json(result);
   } catch (e) {
     next(e);
   }
 };
 
-export const deleteUserController = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteUserController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const result = await svc.deleteUserService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json(result);
@@ -133,7 +178,11 @@ export const deleteUserController = async (req: Request, res: Response, next: Ne
 // ─── STUDENTS ─────────────────────────────────────────────────
 //
 
-export const listStudentsController = async (req: Request, res: Response, next: NextFunction) => {
+export const listStudentsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const q = parseBody(listStudentsSchema, req.query);
     const data = await svc.listStudentsService(q as never);
@@ -143,7 +192,11 @@ export const listStudentsController = async (req: Request, res: Response, next: 
   }
 };
 
-export const getStudentController = async (req: Request, res: Response, next: NextFunction) => {
+export const getStudentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const student = await svc.getStudentByIdService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json({ student });
@@ -152,27 +205,46 @@ export const getStudentController = async (req: Request, res: Response, next: Ne
   }
 };
 
-export const createStudentController = async (req: Request, res: Response, next: NextFunction) => {
+export const createStudentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(createStudentSchema, req.body);
     const student = await svc.createStudentService(data as never);
-    return res.status(HTTPSTATUS.CREATED).json({ message: "Student created", student });
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Student created", student });
   } catch (e) {
     next(e);
   }
 };
 
-export const updateStudentController = async (req: Request, res: Response, next: NextFunction) => {
+export const updateStudentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(updateStudentSchema, req.body);
-    const student = await svc.updateStudentService(req.params.id as string, data as never);
-    return res.status(HTTPSTATUS.OK).json({ message: "Student updated", student });
+    const student = await svc.updateStudentService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Student updated", student });
   } catch (e) {
     next(e);
   }
 };
 
-export const deleteStudentController = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteStudentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const result = await svc.deleteStudentService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json(result);
@@ -185,7 +257,11 @@ export const deleteStudentController = async (req: Request, res: Response, next:
 // ─── PROFESSORS ───────────────────────────────────────────────
 //
 
-export const listProfessorsController = async (req: Request, res: Response, next: NextFunction) => {
+export const listProfessorsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const q = parseBody(listQuerySchema, req.query);
     const data = await svc.listProfessorsService(q as never);
@@ -195,36 +271,61 @@ export const listProfessorsController = async (req: Request, res: Response, next
   }
 };
 
-export const getProfessorController = async (req: Request, res: Response, next: NextFunction) => {
+export const getProfessorController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const professor = await svc.getProfessorByIdService(req.params.id as string);
+    const professor = await svc.getProfessorByIdService(
+      req.params.id as string,
+    );
     return res.status(HTTPSTATUS.OK).json({ professor });
   } catch (e) {
     next(e);
   }
 };
 
-export const createProfessorController = async (req: Request, res: Response, next: NextFunction) => {
+export const createProfessorController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(createProfessorSchema, req.body);
     const professor = await svc.createProfessorService(data as never);
-    return res.status(HTTPSTATUS.CREATED).json({ message: "Professor created", professor });
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Professor created", professor });
   } catch (e) {
     next(e);
   }
 };
 
-export const updateProfessorController = async (req: Request, res: Response, next: NextFunction) => {
+export const updateProfessorController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(updateProfessorSchema, req.body);
-    const professor = await svc.updateProfessorService(req.params.id as string, data as never);
-    return res.status(HTTPSTATUS.OK).json({ message: "Professor updated", professor });
+    const professor = await svc.updateProfessorService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Professor updated", professor });
   } catch (e) {
     next(e);
   }
 };
 
-export const deleteProfessorController = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteProfessorController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const result = await svc.deleteProfessorService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json(result);
@@ -237,7 +338,11 @@ export const deleteProfessorController = async (req: Request, res: Response, nex
 // ─── FACULTIES ────────────────────────────────────────────────
 //
 
-export const listFacultiesController = async (_req: Request, res: Response, next: NextFunction) => {
+export const listFacultiesController = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const faculties = await svc.listFacultiesService();
     return res.status(HTTPSTATUS.OK).json({ faculties });
@@ -246,27 +351,46 @@ export const listFacultiesController = async (_req: Request, res: Response, next
   }
 };
 
-export const createFacultyController = async (req: Request, res: Response, next: NextFunction) => {
+export const createFacultyController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(createFacultySchema, req.body);
     const faculty = await svc.createFacultyService(data as never);
-    return res.status(HTTPSTATUS.CREATED).json({ message: "Faculty created", faculty });
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Faculty created", faculty });
   } catch (e) {
     next(e);
   }
 };
 
-export const updateFacultyController = async (req: Request, res: Response, next: NextFunction) => {
+export const updateFacultyController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(updateFacultySchema, req.body);
-    const faculty = await svc.updateFacultyService(req.params.id as string, data as never);
-    return res.status(HTTPSTATUS.OK).json({ message: "Faculty updated", faculty });
+    const faculty = await svc.updateFacultyService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Faculty updated", faculty });
   } catch (e) {
     next(e);
   }
 };
 
-export const deleteFacultyController = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteFacultyController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const result = await svc.deleteFacultyService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json(result);
@@ -279,7 +403,11 @@ export const deleteFacultyController = async (req: Request, res: Response, next:
 // ─── DEPARTMENTS ──────────────────────────────────────────────
 //
 
-export const listDepartmentsController = async (_req: Request, res: Response, next: NextFunction) => {
+export const listDepartmentsController = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const departments = await svc.listDepartmentsService();
     return res.status(HTTPSTATUS.OK).json({ departments });
@@ -288,27 +416,46 @@ export const listDepartmentsController = async (_req: Request, res: Response, ne
   }
 };
 
-export const createDepartmentController = async (req: Request, res: Response, next: NextFunction) => {
+export const createDepartmentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(createDepartmentSchema, req.body);
     const department = await svc.createDepartmentService(data as never);
-    return res.status(HTTPSTATUS.CREATED).json({ message: "Department created", department });
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Department created", department });
   } catch (e) {
     next(e);
   }
 };
 
-export const updateDepartmentController = async (req: Request, res: Response, next: NextFunction) => {
+export const updateDepartmentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(updateDepartmentSchema, req.body);
-    const department = await svc.updateDepartmentService(req.params.id as string, data as never);
-    return res.status(HTTPSTATUS.OK).json({ message: "Department updated", department });
+    const department = await svc.updateDepartmentService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Department updated", department });
   } catch (e) {
     next(e);
   }
 };
 
-export const deleteDepartmentController = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteDepartmentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const result = await svc.deleteDepartmentService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json(result);
@@ -321,7 +468,11 @@ export const deleteDepartmentController = async (req: Request, res: Response, ne
 // ─── SPECIALIZATIONS ──────────────────────────────────────────
 //
 
-export const listSpecializationsController = async (_req: Request, res: Response, next: NextFunction) => {
+export const listSpecializationsController = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const specializations = await svc.listSpecializationsService();
     return res.status(HTTPSTATUS.OK).json({ specializations });
@@ -330,29 +481,50 @@ export const listSpecializationsController = async (_req: Request, res: Response
   }
 };
 
-export const createSpecializationController = async (req: Request, res: Response, next: NextFunction) => {
+export const createSpecializationController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(createSpecializationSchema, req.body);
     const specialization = await svc.createSpecializationService(data as never);
-    return res.status(HTTPSTATUS.CREATED).json({ message: "Specialization created", specialization });
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Specialization created", specialization });
   } catch (e) {
     next(e);
   }
 };
 
-export const updateSpecializationController = async (req: Request, res: Response, next: NextFunction) => {
+export const updateSpecializationController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(updateSpecializationSchema, req.body);
-    const specialization = await svc.updateSpecializationService(req.params.id as string, data as never);
-    return res.status(HTTPSTATUS.OK).json({ message: "Specialization updated", specialization });
+    const specialization = await svc.updateSpecializationService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Specialization updated", specialization });
   } catch (e) {
     next(e);
   }
 };
 
-export const deleteSpecializationController = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteSpecializationController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const result = await svc.deleteSpecializationService(req.params.id as string);
+    const result = await svc.deleteSpecializationService(
+      req.params.id as string,
+    );
     return res.status(HTTPSTATUS.OK).json(result);
   } catch (e) {
     next(e);
@@ -363,7 +535,11 @@ export const deleteSpecializationController = async (req: Request, res: Response
 // ─── ACADEMIC YEARS ───────────────────────────────────────────
 //
 
-export const listAcademicYearsController = async (_req: Request, res: Response, next: NextFunction) => {
+export const listAcademicYearsController = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const academicYears = await svc.listAcademicYearsService();
     return res.status(HTTPSTATUS.OK).json({ academicYears });
@@ -372,36 +548,63 @@ export const listAcademicYearsController = async (_req: Request, res: Response, 
   }
 };
 
-export const createAcademicYearController = async (req: Request, res: Response, next: NextFunction) => {
+export const createAcademicYearController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(createAcademicYearSchema, req.body);
     const academicYear = await svc.createAcademicYearService(data as never);
-    return res.status(HTTPSTATUS.CREATED).json({ message: "Academic year created", academicYear });
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Academic year created", academicYear });
   } catch (e) {
     next(e);
   }
 };
 
-export const updateAcademicYearController = async (req: Request, res: Response, next: NextFunction) => {
+export const updateAcademicYearController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(updateAcademicYearSchema, req.body);
-    const academicYear = await svc.updateAcademicYearService(req.params.id as string, data as never);
-    return res.status(HTTPSTATUS.OK).json({ message: "Academic year updated", academicYear });
+    const academicYear = await svc.updateAcademicYearService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Academic year updated", academicYear });
   } catch (e) {
     next(e);
   }
 };
 
-export const activateAcademicYearController = async (req: Request, res: Response, next: NextFunction) => {
+export const activateAcademicYearController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const academicYear = await svc.activateAcademicYearService(req.params.id as string);
-    return res.status(HTTPSTATUS.OK).json({ message: "Academic year activated", academicYear });
+    const academicYear = await svc.activateAcademicYearService(
+      req.params.id as string,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Academic year activated", academicYear });
   } catch (e) {
     next(e);
   }
 };
 
-export const deleteAcademicYearController = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteAcademicYearController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const result = await svc.deleteAcademicYearService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json(result);
@@ -414,7 +617,11 @@ export const deleteAcademicYearController = async (req: Request, res: Response, 
 // ─── TOPICS ───────────────────────────────────────────────────
 //
 
-export const listTopicsController = async (req: Request, res: Response, next: NextFunction) => {
+export const listTopicsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const q = parseBody(listTopicsSchema, req.query);
     const data = await svc.listTopicsService(q as never);
@@ -424,7 +631,11 @@ export const listTopicsController = async (req: Request, res: Response, next: Ne
   }
 };
 
-export const getTopicController = async (req: Request, res: Response, next: NextFunction) => {
+export const getTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const topic = await svc.getTopicByIdService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json({ topic });
@@ -433,7 +644,11 @@ export const getTopicController = async (req: Request, res: Response, next: Next
   }
 };
 
-export const approveTopicController = async (req: Request, res: Response, next: NextFunction) => {
+export const approveTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const topic = await svc.approveTopicService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json({ message: "Topic approved", topic });
@@ -442,17 +657,28 @@ export const approveTopicController = async (req: Request, res: Response, next: 
   }
 };
 
-export const rejectTopicController = async (req: Request, res: Response, next: NextFunction) => {
+export const rejectTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(rejectTopicSchema, req.body ?? {});
-    const topic = await svc.rejectTopicService(req.params.id as string, data as never);
+    const topic = await svc.rejectTopicService(
+      req.params.id as string,
+      data as never,
+    );
     return res.status(HTTPSTATUS.OK).json({ message: "Topic rejected", topic });
   } catch (e) {
     next(e);
   }
 };
 
-export const archiveTopicController = async (req: Request, res: Response, next: NextFunction) => {
+export const archiveTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const topic = await svc.archiveTopicService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json({ message: "Topic archived", topic });
@@ -465,7 +691,11 @@ export const archiveTopicController = async (req: Request, res: Response, next: 
 // ─── APPLICATIONS ─────────────────────────────────────────────
 //
 
-export const listApplicationsController = async (req: Request, res: Response, next: NextFunction) => {
+export const listApplicationsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const q = parseBody(listQuerySchema, req.query);
     const data = await svc.listApplicationsService(q as never);
@@ -475,11 +705,50 @@ export const listApplicationsController = async (req: Request, res: Response, ne
   }
 };
 
+export const acceptApplicationController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const application = await svc.acceptApplicationService(
+      req.params.id as string,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Application accepted", application });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const rejectApplicationController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const application = await svc.rejectApplicationService(
+      req.params.id as string,
+      (req.body?.reason as string) ?? undefined,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Application rejected", application });
+  } catch (e) {
+    next(e);
+  }
+};
+
 //
 // ─── PROJECTS ─────────────────────────────────────────────────
 //
 
-export const listProjectsController = async (req: Request, res: Response, next: NextFunction) => {
+export const listProjectsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const q = parseBody(listQuerySchema, req.query);
     const data = await svc.listProjectsService(q as never);
@@ -489,7 +758,11 @@ export const listProjectsController = async (req: Request, res: Response, next: 
   }
 };
 
-export const getProjectController = async (req: Request, res: Response, next: NextFunction) => {
+export const getProjectController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const project = await svc.getProjectByIdService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json({ project });
@@ -498,29 +771,53 @@ export const getProjectController = async (req: Request, res: Response, next: Ne
   }
 };
 
-export const changeSupervisorController = async (req: Request, res: Response, next: NextFunction) => {
+export const changeSupervisorController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(changeSupervisorSchema, req.body);
-    const project = await svc.changeSupervisorService(req.params.id as string, data as never);
-    return res.status(HTTPSTATUS.OK).json({ message: "Supervisor changed", project });
+    const project = await svc.changeSupervisorService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Supervisor changed", project });
   } catch (e) {
     next(e);
   }
 };
 
-export const assignStudentController = async (req: Request, res: Response, next: NextFunction) => {
+export const assignStudentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(assignStudentSchema, req.body);
-    const project = await svc.assignStudentService(req.params.id as string, data as never);
-    return res.status(HTTPSTATUS.OK).json({ message: "Student assigned", project });
+    const project = await svc.assignStudentService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Student assigned", project });
   } catch (e) {
     next(e);
   }
 };
 
-export const listGroupMilestonesController = async (req: Request, res: Response, next: NextFunction) => {
+export const listGroupMilestonesController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const milestones = await svc.listGroupMilestonesService(req.params.groupId as string);
+    const milestones = await svc.listGroupMilestonesService(
+      req.params.groupId as string,
+    );
     return res.status(HTTPSTATUS.OK).json({ milestones });
   } catch (e) {
     next(e);
@@ -531,7 +828,11 @@ export const listGroupMilestonesController = async (req: Request, res: Response,
 // ─── DEFENSES ─────────────────────────────────────────────────
 //
 
-export const listDefensesController = async (req: Request, res: Response, next: NextFunction) => {
+export const listDefensesController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const q = parseBody(listQuerySchema, req.query);
     const data = await svc.listDefensesService(q as never);
@@ -541,27 +842,46 @@ export const listDefensesController = async (req: Request, res: Response, next: 
   }
 };
 
-export const createDefenseController = async (req: Request, res: Response, next: NextFunction) => {
+export const createDefenseController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(createDefenseSchema, req.body);
     const defense = await svc.createDefenseService(data as never);
-    return res.status(HTTPSTATUS.CREATED).json({ message: "Defense scheduled", defense });
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Defense scheduled", defense });
   } catch (e) {
     next(e);
   }
 };
 
-export const updateDefenseController = async (req: Request, res: Response, next: NextFunction) => {
+export const updateDefenseController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const data = parseBody(updateDefenseSchema, req.body);
-    const defense = await svc.updateDefenseService(req.params.id as string, data as never);
-    return res.status(HTTPSTATUS.OK).json({ message: "Defense updated", defense });
+    const defense = await svc.updateDefenseService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Defense updated", defense });
   } catch (e) {
     next(e);
   }
 };
 
-export const deleteDefenseController = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteDefenseController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const result = await svc.deleteDefenseService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json(result);

@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+// A single helpful reference for students: a title + a valid URL.
+const referenceSchema = z.object({
+  title: z.string().trim().min(1, "عنوان المرجع مطلوب"),
+  url: z.string().trim().url("رابط غير صحيح"),
+});
+
 // ─── TOPICS ────────────────────────────────────────────────────
 export const createTopicSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -10,6 +16,12 @@ export const createTopicSchema = z.object({
   // Rich project details — sent by the professor, reviewed by admin.
   requirements: z.array(z.string().trim().min(1)).optional().default([]),
   objectives: z.array(z.string().trim().min(1)).optional().default([]),
+  // Reference links (articles, videos…) that help students.
+  references: z
+    .array(referenceSchema)
+    .max(20, "عدد كبير من المراجع")
+    .optional()
+    .default([]),
 });
 
 export const updateTopicSchema = z.object({
@@ -18,6 +30,10 @@ export const updateTopicSchema = z.object({
   maxStudents: z.number().min(1).max(10).optional(),
   requirements: z.array(z.string().trim().min(1)).optional(),
   objectives: z.array(z.string().trim().min(1)).optional(),
+  references: z
+    .array(referenceSchema)
+    .max(20, "عدد كبير من المراجع")
+    .optional(),
 });
 
 // ─── APPLICATIONS ──────────────────────────────────────────────
@@ -43,6 +59,7 @@ export const updateMilestoneSchema = z.object({
 });
 
 // ─── TYPES ─────────────────────────────────────────────────────
+export type TopicReference = z.infer<typeof referenceSchema>;
 export type CreateTopicDTO = z.infer<typeof createTopicSchema>;
 export type UpdateTopicDTO = z.infer<typeof updateTopicSchema>;
 export type ListApplicationsDTO = z.infer<typeof listApplicationsSchema>;

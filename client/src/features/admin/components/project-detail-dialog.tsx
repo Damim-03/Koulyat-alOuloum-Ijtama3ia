@@ -77,7 +77,7 @@ export function ProjectDetailDialog({ projectId, open, onClose }: Props) {
               {members.length === 0 && <p className="text-xs text-clay">{t("admin.noMembers")}</p>}
               {members.map((m) => (
                 <div key={m.id} className="flex items-center gap-2 rounded-full bg-cream-2 px-3 py-1">
-                  <div className="grid size-6 place-items-center rounded-full bg-gradient-to-br from-forest to-forest-deep text-[9px] font-bold text-cream">
+                  <div className="grid size-6 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-[9px] font-bold text-cream">
                     {initials(m.student?.user?.firstName, m.student?.user?.lastName)}
                   </div>
                   <span className="text-xs text-forest">

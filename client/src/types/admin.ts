@@ -86,6 +86,7 @@ export interface Professor {
 
 // ── Topics / Applications / Projects / Defenses ──
 export interface AdminTopic {
+  references: TopicReference[];
   id: string;
   title: string;
   description: string;
