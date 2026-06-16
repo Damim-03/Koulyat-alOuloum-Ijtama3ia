@@ -13,6 +13,7 @@ import type {
   AdminApplication,
   AdminProject,
   AdminDefense,
+  AdminGroupRequest,
 } from "../../../types/admin";
 
 const BASE = "/admin";
@@ -197,6 +198,22 @@ export const adminApi = {
   rejectApplication: (id: string, reason?: string) =>
     client
       .patch(`${BASE}/applications/${id}/reject`, { reason })
+      .then((r) => r.data),
+
+  // ── Group Requests ──
+  listGroupRequests: (params?: ListParams) =>
+    client
+      .get<Paginated<AdminGroupRequest>>(`${BASE}/group-requests`, { params })
+      .then((r) => r.data),
+  getGroupRequest: (id: string) =>
+    client
+      .get<{ groupRequest: AdminGroupRequest }>(`${BASE}/group-requests/${id}`)
+      .then((r) => r.data.groupRequest),
+  acceptGroupRequest: (id: string) =>
+    client.patch(`${BASE}/group-requests/${id}/accept`).then((r) => r.data),
+  rejectGroupRequest: (id: string, reason?: string) =>
+    client
+      .patch(`${BASE}/group-requests/${id}/reject`, { reason })
       .then((r) => r.data),
 
   // ── Projects ──

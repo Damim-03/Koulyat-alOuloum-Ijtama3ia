@@ -426,6 +426,46 @@ export function useRejectApplication() {
   });
 }
 
+// ─── GROUP REQUESTS ───
+export function useGroupRequests(params?: ListParams) {
+  return useQuery({
+    queryKey: ["admin", "group-requests", params ?? {}],
+    queryFn: () => adminApi.listGroupRequests(params),
+  });
+}
+export function useGroupRequest(id: string | null) {
+  return useQuery({
+    queryKey: ["admin", "group-request", id],
+    queryFn: () => adminApi.getGroupRequest(id as string),
+    enabled: !!id,
+  });
+}
+export function useAcceptGroupRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.acceptGroupRequest(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "group-requests"] });
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      toast.success("تم قبول الطلب وإنشاء المجموعة");
+    },
+    onError: () => toast.error("تعذّر قبول الطلب"),
+  });
+}
+export function useRejectGroupRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      adminApi.rejectGroupRequest(id, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "group-requests"] });
+      toast.success("تم رفض الطلب");
+    },
+    onError: () => toast.error("تعذّر رفض الطلب"),
+  });
+}
+
 // ─── PROJECTS ───
 export function useAdminProjects(params?: ListParams) {
   return useQuery({

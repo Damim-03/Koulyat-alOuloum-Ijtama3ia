@@ -8,6 +8,12 @@ export interface Paginated<T> {
   limit: number;
 }
 
+export interface TopicReference {
+  id: string;
+  title: string;
+  url: string;
+}
+
 export interface UserLite {
   id: string;
   firstName: string | null;
@@ -146,4 +152,28 @@ export interface AdminDefense {
   notes?: string | null;
   committee?: DefenseCommitteeMember[];
   group?: AdminProject;
+}
+
+export interface AdminGroupRequestMember {
+  id: string;
+  student?: {
+    id: string;
+    registrationNumber: string;
+    user?: { firstName: string | null; lastName: string | null } | null;
+  };
+}
+
+export interface AdminGroupRequest {
+  id: string;
+  status: "pending" | "accepted" | "rejected";
+  priority: number;
+  rejectionReason?: string | null;
+  createdAt: string;
+  topic?: { id: string; title: string; status?: string } | null;
+  leader?: {
+    id: string;
+    registrationNumber: string;
+    user?: { firstName: string | null; lastName: string | null } | null;
+  } | null;
+  members?: AdminGroupRequestMember[];
 }

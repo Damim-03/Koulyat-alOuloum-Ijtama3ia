@@ -889,3 +889,70 @@ export const deleteDefenseController = async (
     next(e);
   }
 };
+//
+// ─── GROUP REQUESTS ───────────────────────────────────────────
+//
+
+export const listGroupRequestsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const q = parseBody(listQuerySchema, req.query);
+    const data = await svc.listGroupRequestsService(q as never);
+    return res.status(HTTPSTATUS.OK).json(data);
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const getGroupRequestController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const groupRequest = await svc.getGroupRequestService(
+      req.params.id as string,
+    );
+    return res.status(HTTPSTATUS.OK).json({ groupRequest });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const acceptGroupRequestController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const groupRequest = await svc.acceptGroupRequestService(
+      req.params.id as string,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Group request accepted", groupRequest });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const rejectGroupRequestController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const groupRequest = await svc.rejectGroupRequestService(
+      req.params.id as string,
+      (req.body?.reason as string) ?? undefined,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Group request rejected", groupRequest });
+  } catch (e) {
+    next(e);
+  }
+};

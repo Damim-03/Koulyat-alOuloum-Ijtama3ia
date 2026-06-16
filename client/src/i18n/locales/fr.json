@@ -632,7 +632,14 @@
     "roomPlaceholder": "ex. Salle 12",
     "defenseDialogSubtitle": "Définir le projet, la date et la salle",
     "generate": "Générer",
-    "accept": "Accepter"
+    "accept": "Accepter",
+    "groupRequestsTitle": "Demandes de groupe",
+    "groupRequestsSubtitle": "Examinez les demandes d’équipe soumises par les étudiants.",
+    "totalRequests": "Total des demandes",
+    "searchGroupRequest": "Rechercher une demande…",
+    "noGroupRequests": "Aucune demande de groupe",
+    "priorityN": "Priorité {{n}}",
+    "membersCount": "{{count}} membres"
   },
   "prof": {
     "newTopic": "Proposer un nouveau sujet",
