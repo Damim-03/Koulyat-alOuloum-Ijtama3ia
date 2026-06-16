@@ -41,6 +41,11 @@ const NAV: NavItem[] = [
   },
   { to: `${R}/topics`, labelKey: "dash.topics", icon: FileText },
   {
+    to: `${R}/group-requests`,
+    labelKey: "admin.groupRequestsTitle",
+    icon: Users,
+  },
+  {
     to: `${R}/applications`,
     labelKey: "admin.applications",
     icon: ClipboardList,

@@ -632,7 +632,14 @@
     "roomPlaceholder": "مثال: قاعة 12",
     "defenseDialogSubtitle": "حدّد المشروع والموعد والقاعة",
     "generate": "توليد",
-    "accept": "قبول"
+    "accept": "قبول",
+    "groupRequestsTitle": "طلبات المجموعات",
+    "groupRequestsSubtitle": "متابعة طلبات الفرق المقدّمة من الطلاب للالتحاق بالمواضيع.",
+    "totalRequests": "إجمالي الطلبات",
+    "searchGroupRequest": "ابحث عن طلب…",
+    "noGroupRequests": "لا توجد طلبات مجموعات",
+    "priorityN": "أولوية {{n}}",
+    "membersCount": "{{count}} أعضاء"
   },
   "prof": {
     "newTopic": "اقتراح موضوع جديد",

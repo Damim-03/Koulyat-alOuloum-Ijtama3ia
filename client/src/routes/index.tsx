@@ -45,6 +45,7 @@ import { StudentMyRequestsPage } from "../features/student/pages/my-requests.pag
 import { StudentMyProjectPage } from "../features/student/pages/my-project.page";
 import { StudentTopicDetailPage } from "../features/student/pages/topic-detail.page";
 import { AdminTopicDetailPage } from "../features/admin/pages/topic-detail.page";
+import { AdminGroupRequestsPage } from "../features/admin/pages/group-requests.page";
 
 export function AppRouter() {
   return (
@@ -142,6 +143,7 @@ export function AppRouter() {
           />
           <Route path="topics" element={<AdminTopicsPage />} />
           <Route path="topics/:id" element={<AdminTopicDetailPage />} />
+          <Route path="group-requests" element={<AdminGroupRequestsPage />} />
           <Route path="defenses" element={<AdminDefensesPage />} />
           <Route path="departments" element={<AdminDepartmentsPage />} />
           <Route path="applications" element={<AdminApplicationsPage />} />

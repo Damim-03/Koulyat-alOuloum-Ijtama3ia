@@ -15,6 +15,12 @@ const RoleEnum = z.enum(["owner", "admin", "professor", "student"]);
 const StatusEnum = z.enum(["active", "suspended"]);
 const LevelEnum = z.enum(["licence", "master", "doctorate"]);
 
+export const listGroupRequestsSchema = listQuerySchema.extend({
+  status: z.enum(["pending", "accepted", "rejected", "all"]).optional(),
+});
+
+export type ListGroupRequestsDTO = z.infer<typeof listGroupRequestsSchema>;
+
 //
 // ─── USERS ────────────────────────────────────────────────────
 //

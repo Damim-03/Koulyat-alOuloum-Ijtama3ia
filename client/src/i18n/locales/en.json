@@ -632,7 +632,14 @@
     "roomPlaceholder": "e.g. Room 12",
     "defenseDialogSubtitle": "Set the project, date and room",
     "generate": "Generate",
-    "accept": "Accept"
+    "accept": "Accept",
+    "groupRequestsTitle": "Group requests",
+    "groupRequestsSubtitle": "Review team requests submitted by students to join topics.",
+    "totalRequests": "Total requests",
+    "searchGroupRequest": "Search a request…",
+    "noGroupRequests": "No group requests",
+    "priorityN": "Priority {{n}}",
+    "membersCount": "{{count}} members"
   },
   "prof": {
     "newTopic": "Propose a new topic",

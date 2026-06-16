@@ -55,6 +55,10 @@ import {
   listApplicationsController,
   acceptApplicationController,
   rejectApplicationController,
+  listGroupRequestsController,
+  getGroupRequestController,
+  acceptGroupRequestController,
+  rejectGroupRequestController,
   // projects
   listProjectsController,
   getProjectController,
@@ -159,6 +163,12 @@ adminRoutes.patch("/topics/:id/archive", archiveTopicController);
 adminRoutes.get("/applications", listApplicationsController);
 adminRoutes.patch("/applications/:id/accept", acceptApplicationController);
 adminRoutes.patch("/applications/:id/reject", rejectApplicationController);
+
+// group requests (team submissions — admin decides)
+adminRoutes.get("/group-requests", listGroupRequestsController);
+adminRoutes.get("/group-requests/:id", getGroupRequestController);
+adminRoutes.patch("/group-requests/:id/accept", acceptGroupRequestController);
+adminRoutes.patch("/group-requests/:id/reject", rejectGroupRequestController);
 
 //
 // ─── PROJECTS ─────────────────────────────────────────────────

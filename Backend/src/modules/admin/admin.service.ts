@@ -31,6 +31,7 @@ import {
   AssignStudentDTO,
   CreateDefenseDTO,
   UpdateDefenseDTO,
+  ListGroupRequestsDTO,
 } from "./admin.validation";
 import { Role } from "../../generated/prisma";
 
@@ -1102,4 +1103,178 @@ export const deleteDefenseService = async (id: string) => {
     );
   await prisma.defense.delete({ where: { id } });
   return { message: "Defense deleted" };
+};
+
+//
+// ════════ GROUP REQUESTS (admin decision — the heart of the flow) ════════
+//
+// A student LEADER assembles a team and submits ONE GroupRequest per topic.
+// The ADMIN lists pending requests and accepts (→ forms the ProjectGroup with
+// all members, closes the topic) or rejects them.
+
+export const listGroupRequestsService = async (q: ListGroupRequestsDTO) => {
+  const where =
+    q.status && q.status !== "all" ? { status: q.status as never } : undefined;
+
+  const [items, total] = await Promise.all([
+    prisma.groupRequest.findMany({
+      where,
+      include: {
+        topic: {
+          include: {
+            professor: { include: { user: { select: userSelect } } },
+            specialization: true,
+          },
+        },
+        leader: { include: { user: { select: userSelect } } },
+        members: {
+          include: { student: { include: { user: { select: userSelect } } } },
+        },
+      },
+      orderBy: [{ status: "asc" }, { priority: "asc" }, { createdAt: "desc" }],
+      skip: (q.page - 1) * q.limit,
+      take: q.limit,
+    }),
+    prisma.groupRequest.count({ where }),
+  ]);
+  return { items, total, page: q.page, limit: q.limit };
+};
+
+export const getGroupRequestService = async (id: string) => {
+  const request = await prisma.groupRequest.findUnique({
+    where: { id },
+    include: {
+      topic: {
+        include: {
+          professor: { include: { user: { select: userSelect } } },
+          specialization: true,
+          academicYear: true,
+        },
+      },
+      leader: { include: { user: { select: userSelect } } },
+      members: {
+        include: { student: { include: { user: { select: userSelect } } } },
+      },
+    },
+  });
+  if (!request)
+    throw new NotFoundException(
+      "Group request not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  return request;
+};
+
+// Accept: create the ProjectGroup + ProjectMember for every member, close the
+// topic, mark this request accepted, and auto-reject the topic's other pending
+// requests. Wrapped in a transaction with an in-tx re-check to avoid double
+// acceptance.
+export const acceptGroupRequestService = async (id: string) => {
+  const request = await prisma.groupRequest.findUnique({
+    where: { id },
+    include: {
+      topic: { include: { projectGroup: true } },
+      members: true,
+    },
+  });
+  if (!request)
+    throw new NotFoundException(
+      "Group request not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (request.status === "accepted")
+    throw new BadRequestException(
+      "Request is already accepted",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  const topic = request.topic;
+  if (topic.status !== "approved" && topic.status !== "open")
+    throw new BadRequestException(
+      "هذا الموضوع لم يعد متاحاً (تمّت معالجته بالفعل)",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  if (request.members.length > topic.maxStudents)
+    throw new BadRequestException(
+      `عدد الأعضاء يتجاوز الحد الأقصى للموضوع (${topic.maxStudents})`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  return prisma.$transaction(async (tx) => {
+    // Re-check inside the transaction: the topic must still be open and have no
+    // project group (guards against a concurrent accept of another request).
+    const fresh = await tx.graduationTopic.findUnique({
+      where: { id: topic.id },
+      include: { projectGroup: true },
+    });
+    if (!fresh || (fresh.status !== "approved" && fresh.status !== "open"))
+      throw new BadRequestException(
+        "هذا الموضوع لم يعد متاحاً",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+    if (fresh.projectGroup)
+      throw new BadRequestException(
+        "تمّت الموافقة على مجموعة أخرى لهذا الموضوع بالفعل",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+
+    // 1. Create the project group for this topic.
+    const group = await tx.projectGroup.create({
+      data: { topicId: topic.id },
+    });
+
+    // 2. Add all request members as project members.
+    await tx.projectMember.createMany({
+      data: request.members.map((m) => ({
+        groupId: group.id,
+        studentId: m.studentId,
+      })),
+      skipDuplicates: true,
+    });
+
+    // 3. Mark this request accepted.
+    const updated = await tx.groupRequest.update({
+      where: { id: request.id },
+      data: { status: "accepted" },
+    });
+
+    // 4. Close the topic.
+    await tx.graduationTopic.update({
+      where: { id: topic.id },
+      data: { status: "full" },
+    });
+
+    // 5. Auto-reject the topic's other still-pending requests.
+    await tx.groupRequest.updateMany({
+      where: { topicId: topic.id, status: "pending", id: { not: request.id } },
+      data: { status: "rejected" },
+    });
+
+    return updated;
+  });
+};
+
+export const rejectGroupRequestService = async (
+  id: string,
+  rejectionReason?: string,
+) => {
+  const request = await prisma.groupRequest.findUnique({ where: { id } });
+  if (!request)
+    throw new NotFoundException(
+      "Group request not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (request.status === "rejected")
+    throw new BadRequestException(
+      "Request is already rejected",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  return prisma.groupRequest.update({
+    where: { id },
+    data: {
+      status: "rejected",
+      ...(rejectionReason !== undefined ? { rejectionReason } : {}),
+    },
+  });
 };
