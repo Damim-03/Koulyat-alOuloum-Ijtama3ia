@@ -85,7 +85,10 @@ export function StudentMyProjectPage() {
     }).format(d);
   };
 
-  const milestones = project?.milestones ?? [];
+  const milestones = useMemo(
+    () => project?.milestones ?? [],
+    [project?.milestones],
+  );
   const members = project?.members ?? [];
 
   const prof = project?.topic?.professor?.user;

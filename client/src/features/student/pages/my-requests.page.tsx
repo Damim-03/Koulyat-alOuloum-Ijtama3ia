@@ -16,7 +16,7 @@ import {
   useMyGroupRequests,
   useCancelGroupRequest,
 } from "../hooks/Student-hook";
-import type { GroupRequest } from "../../../types/student.types";
+import type { GroupRequestMember } from "../../../types/student.types";
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -58,9 +58,7 @@ export function StudentMyRequestsPage() {
     }).format(d);
   };
 
-  function memberName(
-    m: GroupRequest["members"] extends (infer U)[] ? U : never,
-  ) {
+  function memberName(m: GroupRequestMember) {
     const u = m.student?.user;
     return (
       [u?.firstName, u?.lastName].filter(Boolean).join(" ") ||
