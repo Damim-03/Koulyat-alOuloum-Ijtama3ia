@@ -6,6 +6,7 @@ import type { CreateGroupRequestInput } from "../validation/student.schema";
 const KEYS = {
   topics: (p?: object) => ["student", "topics", p ?? {}] as const,
   topic: (id: string) => ["student", "topic", id] as const,
+  lookup: (reg: string) => ["student", "lookup", reg] as const,
   requests: ["student", "group-requests"] as const,
   project: ["student", "my-project"] as const,
   specializations: ["common", "specializations"] as const,
@@ -44,6 +45,17 @@ export function useTopic(id: string | null) {
     queryKey: KEYS.topic(id as string),
     queryFn: () => studentApi.getTopic(id as string),
     enabled: !!id,
+  });
+}
+
+// ─── student lookup (live teammate search) ─────────────────────
+export function useStudentLookup(reg: string) {
+  return useQuery({
+    queryKey: KEYS.lookup(reg.trim()),
+    queryFn: () => studentApi.lookupStudent(reg.trim()),
+    enabled: reg.trim().length > 0,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }
 

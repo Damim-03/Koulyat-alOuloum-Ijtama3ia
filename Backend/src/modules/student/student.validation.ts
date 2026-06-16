@@ -22,5 +22,13 @@ export const createGroupRequestSchema = z.object({
     .default([]),
 });
 
+// ─── STUDENT LOOKUP ────────────────────────────────────────────
+// Live search for a teammate by registration number (used by the
+// group-request dialog to validate members before submitting).
+export const lookupStudentSchema = z.object({
+  registration: z.string().trim().min(1, "رقم التسجيل مطلوب"),
+});
+
 export type ListTopicsDTO = z.infer<typeof listTopicsSchema>;
 export type CreateGroupRequestDTO = z.infer<typeof createGroupRequestSchema>;
+export type LookupStudentDTO = z.infer<typeof lookupStudentSchema>;

@@ -10,22 +10,19 @@ import {
   MapPin,
   CircleDot,
   LifeBuoy,
-  Crown,
   FolderKanban,
   CalendarDays,
 } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { useMyProject } from "../hooks/Student-hook";
 import { PATHS } from "../../../routes/paths";
-import type { MMember, MyProjectView } from "../../../types/student.types";
+import type { GroupRequestMember } from "../../../types/student.types";
 
-function nameOf(m: MMember): string {
+function nameOf(m: GroupRequestMember): string {
+  const u = m.student?.user;
   return (
-    m.fullName ||
-    [m.firstName ?? m.user?.firstName, m.lastName ?? m.user?.lastName]
-      .filter(Boolean)
-      .join(" ") ||
-    m.registrationNumber ||
+    [u?.firstName, u?.lastName].filter(Boolean).join(" ") ||
+    m.student?.registrationNumber ||
     "—"
   );
 }
@@ -88,29 +85,22 @@ export function StudentMyProjectPage() {
     }).format(d);
   };
 
-  const v = (project ?? null) as MyProjectView | null;
+  const milestones = project?.milestones ?? [];
+  const members = project?.members ?? [];
 
-  const milestones = v?.milestones ?? [];
-  const members = v?.members ?? [];
+  const prof = project?.topic?.professor?.user;
   const profName =
-    [v?.professor?.user?.firstName, v?.professor?.user?.lastName]
-      .filter(Boolean)
-      .join(" ") || "—";
+    [prof?.firstName, prof?.lastName].filter(Boolean).join(" ") || "—";
 
   const completed = useMemo(
-    () => milestones.filter((m) => (m.status ?? "") === "completed").length,
+    () => milestones.filter((m) => m.status === "completed").length,
     [milestones],
   );
   const total = milestones.length;
-  const percent =
-    v?.progress != null
-      ? Math.round(v.progress)
-      : total
-        ? Math.round((completed / total) * 100)
-        : 0;
+  const percent = total ? Math.round((completed / total) * 100) : 0;
 
-  const defenseDate = fmt(v?.defense?.date ?? v?.defense?.scheduledAt);
-  const defenseRoom = v?.defense?.room ?? v?.defense?.location ?? null;
+  const defenseDate = fmt(project?.defense?.date);
+  const defenseRoom = project?.defense?.room ?? null;
 
   /* ── loading ── */
   if (isLoading) {
@@ -122,7 +112,7 @@ export function StudentMyProjectPage() {
   }
 
   /* ── empty (no accepted project yet) ── */
-  if (!v) {
+  if (!project) {
     return (
       <div className="mx-auto flex max-w-md flex-col items-center gap-4 rounded-2xl bg-cream-card p-10 text-center ring-1 ring-clay/10">
         <div className="grid size-14 place-items-center rounded-full bg-forest/5 text-sage">
@@ -160,15 +150,14 @@ export function StudentMyProjectPage() {
             </div>
           </div>
 
-          {/* title + status */}
+          {/* title + label */}
           <div className="min-w-0 flex-1 lg:px-6">
             <span className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-0.5 text-xs font-semibold text-emerald-800">
               <CalendarDays className="size-3.5" />
-              {v.type ?? t("stu.myProject")}
-              {v.academicYear?.title ? ` • ${v.academicYear.title}` : ""}
+              {t("stu.graduationProject")}
             </span>
             <h1 className="font-serif text-xl font-bold leading-snug text-forest md:text-2xl">
-              {v.title ?? "—"}
+              {project.topic?.title ?? "—"}
             </h1>
           </div>
 
@@ -184,16 +173,10 @@ export function StudentMyProjectPage() {
                   return (
                     <div
                       key={m.id ?? i}
-                      title={nm + (m.isLeader ? ` — ${t("stu.leader")}` : "")}
-                      className={`grid size-9 place-items-center rounded-full border-2 border-cream-card bg-gradient-to-br from-sage to-forest text-xs font-bold text-cream ${
-                        m.isLeader ? "ring-2 ring-gold" : ""
-                      }`}
+                      title={nm}
+                      className="grid size-9 place-items-center rounded-full border-2 border-cream-card bg-gradient-to-br from-sage to-forest text-xs font-bold text-cream"
                     >
-                      {m.isLeader ? (
-                        <Crown className="size-3.5 text-gold-soft" />
-                      ) : (
-                        initials(nm)
-                      )}
+                      {initials(nm)}
                     </div>
                   );
                 })}
@@ -224,7 +207,7 @@ export function StudentMyProjectPage() {
           ) : (
             <ol className="relative">
               {milestones.map((m, i) => {
-                const st = (m.status ?? "pending") as string;
+                const st = m.status ?? "pending";
                 const style = MILESTONE_STYLE[st] ?? MILESTONE_STYLE.pending;
                 const Icon = style.icon;
                 const isLast = i === milestones.length - 1;
@@ -260,10 +243,10 @@ export function StudentMyProjectPage() {
                           {m.description}
                         </p>
                       )}
-                      {fmt(m.dueDate) && (
+                      {fmt(m.deadline) && (
                         <p className="flex items-center gap-1.5 text-[11px] text-sage">
                           <CalendarClock className="size-3.5" />
-                          {t("stu.deadline")}: {fmt(m.dueDate)}
+                          {t("stu.deadline")}: {fmt(m.deadline)}
                         </p>
                       )}
                     </div>
@@ -276,7 +259,7 @@ export function StudentMyProjectPage() {
 
         {/* sidebar */}
         <div className="space-y-6">
-          {/* final results */}
+          {/* final results / defense */}
           <div className="rounded-2xl bg-cream-2 p-5 ring-1 ring-clay/10 shadow-[0_4px_20px_rgba(38,66,61,0.06)]">
             <h3 className="mb-4 font-serif text-base font-semibold text-forest">
               {t("stu.finalResults")}

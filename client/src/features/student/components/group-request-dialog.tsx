@@ -1,15 +1,28 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { X, Plus, Trash2, Crown, Info, Send } from "lucide-react";
+import {
+  X,
+  Trash2,
+  Lock,
+  Info,
+  Send,
+  CheckCircle2,
+  Loader2,
+  UserX,
+  UserPlus,
+  Crown,
+  Users,
+} from "lucide-react";
 import {
   createGroupRequestSchema,
   type CreateGroupRequestInput,
 } from "../validation/student.schema";
 import { useCreateGroupRequest } from "../hooks/Student-hook";
-import type { BrowseTopic } from "../../../types/student.types";
+import { studentApi } from "../api/Student-api";
+import type { BrowseTopic, LookupStudent } from "../../../types/student.types";
 
 interface Props {
   open: boolean;
@@ -17,10 +30,31 @@ interface Props {
   topic: BrowseTopic | null;
 }
 
+type LookupStatus = "idle" | "loading" | "found" | "notfound" | "dupe";
+
+function nameOf(s: LookupStudent): string {
+  return (
+    [s.user?.firstName, s.user?.lastName].filter(Boolean).join(" ") ||
+    s.registrationNumber ||
+    ""
+  );
+}
+function specOf(s: LookupStudent): string {
+  return s.specialization?.name ?? "";
+}
+
+type MemberMeta = { name: string; spec: string };
+
 export function GroupRequestDialog({ open, onClose, topic }: Props) {
   const { t } = useTranslation();
   const createReq = useCreateGroupRequest();
   const [memberInput, setMemberInput] = useState("");
+
+  // ── live lookup state ──
+  const [status, setStatus] = useState<LookupStatus>("idle");
+  const [found, setFound] = useState<LookupStudent | null>(null);
+  const [meta, setMeta] = useState<Record<string, MemberMeta>>({});
+  const reqId = useRef(0);
 
   const {
     register,
@@ -44,22 +78,69 @@ export function GroupRequestDialog({ open, onClose, topic }: Props) {
     name: "memberRegistrationNumbers" as never,
   });
 
+  const members = (watch("memberRegistrationNumbers") as string[]) ?? [];
+  const membersRef = useRef(members);
+  membersRef.current = members;
+
   // keep topicId synced when the topic changes
   if (topic && watch("topicId") !== topic.id) {
     setValue("topicId", topic.id);
   }
 
+  // capacity: leader + teammates ≤ maxStudents
+  const teammateCount = fields.length;
+  const totalCount = teammateCount + 1; // +1 leader
+  const overCapacity = !!topic && totalCount > topic.maxStudents;
+  const atCapacity = !!topic && totalCount >= topic.maxStudents;
+
+  // ── live search with debounce ──
+  useEffect(() => {
+    const reg = memberInput.trim();
+    setFound(null);
+    if (!reg) return setStatus("idle");
+    if (membersRef.current.includes(reg)) return setStatus("dupe");
+    setStatus("loading");
+    const myId = ++reqId.current;
+    const handle = setTimeout(async () => {
+      try {
+        const s = await studentApi.lookupStudent(reg);
+        if (myId !== reqId.current) return; // stale
+        if (s) {
+          setFound(s);
+          setStatus("found");
+        } else setStatus("notfound");
+      } catch {
+        if (myId === reqId.current) setStatus("notfound");
+      }
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [memberInput]);
+
+  const canAdd =
+    !!memberInput.trim() &&
+    status === "found" &&
+    !atCapacity &&
+    !createReq.isPending;
+
   function addMember() {
-    const v = memberInput.trim();
-    if (!v) return;
-    append(v as never);
+    const reg = memberInput.trim();
+    if (!reg || !canAdd) return;
+    if (found)
+      setMeta((m) => ({
+        ...m,
+        [reg]: { name: nameOf(found), spec: specOf(found) },
+      }));
+    append(reg as never);
     setMemberInput("");
+    setStatus("idle");
+    setFound(null);
   }
 
   function submit(data: CreateGroupRequestInput) {
     createReq.mutate(data, {
       onSuccess: () => {
         reset();
+        setMeta({});
         onClose();
       },
     });
@@ -67,170 +148,261 @@ export function GroupRequestDialog({ open, onClose, topic }: Props) {
 
   if (!open || !topic) return null;
 
-  // capacity: leader + teammates ≤ maxStudents
-  const teammateCount = fields.length;
-  const totalCount = teammateCount + 1; // +1 leader
-  const overCapacity = totalCount > topic.maxStudents;
+  const borderByStatus =
+    status === "found"
+      ? "border-emerald-400 focus:border-emerald-400 focus:ring-emerald-200/50"
+      : status === "notfound" || status === "dupe"
+        ? "border-red-400 focus:border-red-400 focus:ring-red-200/50"
+        : "border-forest/15 focus:border-gold focus:ring-gold/25";
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* backdrop */}
       <div
-        className="absolute inset-0 bg-forest-deep/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-forest-deep/60 backdrop-blur-md"
         onClick={onClose}
       />
 
       {/* shell */}
-      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl bg-cream-card shadow-2xl">
+      <div className="relative z-10 flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-cream-card shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
         {/* header */}
-        <div className="relative bg-forest px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-full bg-gold/20 text-gold">
-              <Send size={18} />
+        <div className="relative bg-forest px-8 py-7">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute left-6 top-6 text-cream/50 transition hover:text-cream"
+          >
+            <X size={22} />
+          </button>
+          <div className="flex items-center gap-4 pl-10">
+            <div className="grid size-14 shrink-0 place-items-center rounded-full bg-soft-sage/30 text-cream shadow-lg shadow-black/20">
+              <Send size={26} />
             </div>
             <div className="min-w-0">
-              <h2 className="font-serif text-lg font-bold text-cream">
+              <h2 className="font-serif text-2xl font-bold leading-tight text-cream">
                 {t("stu.requestModalTitle")}
               </h2>
-              <p className="truncate text-xs text-cream/70">{topic.title}</p>
+              <p className="mt-0.5 truncate text-sm text-soft-sage">
+                {topic.title}
+              </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="absolute left-4 top-4 grid size-8 place-items-center rounded-lg text-cream/70 transition hover:bg-cream/10 hover:text-cream"
-          >
-            <X size={18} />
-          </button>
+          {/* golden gradient line */}
+          <div className="absolute inset-x-0 bottom-0 h-[3px] bg-gradient-to-l from-gold/20 via-gold to-transparent" />
         </div>
-        {/* gold line */}
-        <div className="h-0.5 bg-gradient-to-l from-gold to-gold-soft" />
 
         {/* body */}
         <form
           onSubmit={handleSubmit(submit)}
-          className="max-h-[70vh] overflow-y-auto p-6"
+          className="flex-1 space-y-6 overflow-y-auto p-8"
         >
-          {/* leader chip */}
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3">
-            <Crown size={16} className="text-gold" />
+          {/* leader card */}
+          <div className="flex items-center justify-between rounded-2xl border border-soft-sage/40 bg-cream-2 p-5 shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="grid size-11 shrink-0 place-items-center rounded-full bg-soft-sage/30 text-forest">
+                <Crown size={22} />
+              </div>
+              <div>
+                <p className="font-semibold text-forest">
+                  {t("stu.youAreLeader")}
+                </p>
+                <p className="text-xs text-clay">{t("stu.leaderAutoAdded")}</p>
+              </div>
+            </div>
+            <Lock size={20} className="shrink-0 text-clay/60" />
+          </div>
+
+          {/* teammates */}
+          <div className="space-y-3">
             <div>
-              <p className="text-xs font-bold text-forest">
-                {t("stu.youAreLeader")}
-              </p>
-              <p className="text-[11px] text-clay">
-                {t("stu.leaderAutoAdded")}
-              </p>
+              <label className="block font-serif text-lg font-semibold text-forest">
+                {t("stu.teammates")}
+              </label>
+              <p className="text-xs text-clay">{t("stu.teammatesHint")}</p>
             </div>
-          </div>
 
-          {/* teammates list builder */}
-          <label className="mb-1.5 block text-sm font-semibold text-forest">
-            {t("stu.teammates")}
-          </label>
-          <p className="mb-2 text-[11px] text-clay">{t("stu.teammatesHint")}</p>
+            {/* search row */}
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <input
+                  value={memberInput}
+                  onChange={(e) => setMemberInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addMember();
+                    }
+                  }}
+                  placeholder={t("stu.regNumberPlaceholder")}
+                  dir="ltr"
+                  disabled={atCapacity}
+                  className={`w-full rounded-xl border-2 bg-cream px-4 py-3.5 text-sm text-forest outline-none transition focus:ring-4 disabled:opacity-50 ${borderByStatus}`}
+                />
+                <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
+                  {status === "loading" && (
+                    <Loader2 size={18} className="animate-spin text-clay" />
+                  )}
+                  {status === "found" && (
+                    <CheckCircle2 size={18} className="text-emerald-500" />
+                  )}
+                  {status === "notfound" && (
+                    <UserX size={18} className="text-red-500" />
+                  )}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={addMember}
+                disabled={!canAdd}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-forest px-6 py-3.5 text-sm font-semibold text-cream shadow-lg shadow-forest/10 transition hover:bg-forest-deep active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <UserPlus size={18} />
+                {t("stu.addMember")}
+              </button>
+            </div>
 
-          <div className="mb-2 flex gap-2">
-            <input
-              value={memberInput}
-              onChange={(e) => setMemberInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addMember();
-                }
-              }}
-              placeholder={t("stu.regNumberPlaceholder")}
-              dir="ltr"
-              className="flex-1 rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-            />
-            <button
-              type="button"
-              onClick={addMember}
-              className="inline-flex items-center gap-1 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
-            >
-              <Plus size={16} />
-              {t("stu.addMember")}
-            </button>
-          </div>
-
-          {/* member chips */}
-          {fields.length > 0 && (
-            <div className="mb-3 space-y-1.5">
-              {fields.map((f, i) => (
-                <div
-                  key={f.id}
-                  className="flex items-center justify-between rounded-lg border border-forest/10 bg-cream-2 px-3 py-2"
-                >
-                  <span className="text-sm text-forest" dir="ltr">
-                    {watch(`memberRegistrationNumbers.${i}`)}
+            {/* lookup status line */}
+            <div className="min-h-[1.1rem] px-1 text-xs">
+              {status === "loading" && (
+                <span className="text-clay">{t("stu.lookingUp")}</span>
+              )}
+              {status === "found" && found && (
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-medium text-emerald-700">
+                  <span className="flex items-center gap-2">
+                    <span className="size-1.5 animate-pulse rounded-full bg-emerald-600" />
+                    {t("stu.foundStudent")}:{" "}
+                    <strong className="font-semibold">{nameOf(found)}</strong>
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => remove(i)}
-                    className="grid size-7 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))}
+                  {specOf(found) && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700">
+                      {specOf(found)}
+                    </span>
+                  )}
+                </span>
+              )}
+              {status === "notfound" && (
+                <span className="text-red-600">{t("stu.studentNotFound")}</span>
+              )}
+              {status === "dupe" && (
+                <span className="text-red-600">{t("stu.duplicateMember")}</span>
+              )}
             </div>
-          )}
 
-          {/* capacity hint */}
-          <p
-            className={`mb-4 text-[11px] ${overCapacity ? "font-bold text-red-500" : "text-clay"}`}
-          >
-            {t("stu.capacityHint", {
-              total: totalCount,
-              max: topic.maxStudents,
-            })}
-          </p>
+            {/* members list */}
+            {fields.length > 0 && (
+              <div className="space-y-3 pt-1">
+                {fields.map((f, i) => {
+                  const reg = watch(`memberRegistrationNumbers.${i}`) as string;
+                  return (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between rounded-2xl border border-clay/15 bg-cream-2 p-4 transition hover:border-soft-sage/50 hover:bg-cream-card hover:shadow-sm"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="grid size-10 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+                          <CheckCircle2 size={20} />
+                        </div>
+                        <div className="flex flex-col leading-tight">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-forest">
+                              {meta[reg]?.name || reg}
+                            </span>
+                            {meta[reg]?.spec && (
+                              <span className="rounded-full bg-soft-sage/25 px-2 py-0.5 text-[10px] text-sage">
+                                {meta[reg].spec}
+                              </span>
+                            )}
+                          </span>
+                          <span
+                            className="text-xs tracking-wide text-clay"
+                            dir="ltr"
+                          >
+                            {reg}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => remove(i)}
+                        className="grid size-10 place-items-center rounded-xl text-clay transition hover:bg-red-50 hover:text-red-500"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
-          {/* priority */}
-          <label className="mb-1.5 block text-sm font-semibold text-forest">
-            {t("stu.priority")}
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={10}
-            {...register("priority")}
-            className="mb-1 w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-          />
-          <p className="mb-4 text-[11px] text-clay">{t("stu.priorityHint")}</p>
+          {/* members count + priority */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div
+              className={`flex items-center gap-2 ${overCapacity ? "font-bold text-red-500" : "text-clay"}`}
+            >
+              <Users size={18} />
+              <span className="text-sm">
+                {t("stu.capacityHint", {
+                  total: totalCount,
+                  max: topic.maxStudents,
+                })}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-xl border border-clay/15 bg-cream-2 px-4 py-2">
+              <label className="text-sm font-semibold text-forest">
+                {t("stu.priority")}
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                {...register("priority")}
+                className="w-14 rounded-lg border border-forest/15 bg-cream-card px-2 py-1.5 text-center text-sm font-bold text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/25"
+              />
+              <span className="max-w-[90px] text-[10px] leading-tight text-clay">
+                {t("stu.priorityHint")}
+              </span>
+            </div>
+          </div>
           {errors.priority && (
-            <p className="mb-3 text-[11px] text-red-500">
+            <p className="-mt-3 text-right text-[11px] text-red-500">
               {errors.priority.message}
             </p>
           )}
 
           {/* info box */}
-          <div className="mb-5 flex items-start gap-2 rounded-xl border border-gold/20 bg-gold/5 p-3">
-            <Info size={16} className="mt-0.5 shrink-0 text-gold" />
-            <p className="text-[11px] leading-relaxed text-clay">
+          <div className="flex gap-3 rounded-2xl border border-soft-sage/40 bg-soft-sage/10 p-5">
+            <Info size={20} className="mt-0.5 shrink-0 text-sage" />
+            <p className="text-xs leading-relaxed text-clay">
               {t("stu.requestInfoNote")}
             </p>
           </div>
-
-          {/* footer */}
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl border border-forest/20 px-4 py-2.5 text-sm font-semibold text-forest transition hover:bg-forest/5"
-            >
-              {t("stu.cancel")}
-            </button>
-            <button
-              type="submit"
-              disabled={createReq.isPending || overCapacity}
-              className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-bold text-forest-deep transition hover:bg-gold-soft disabled:opacity-50"
-            >
-              <Send size={16} />
-              {t("stu.submitToAdmin")}
-            </button>
-          </div>
         </form>
+
+        {/* footer */}
+        <div className="flex items-center justify-start gap-3 border-t border-clay/10 bg-cream-2/40 px-8 py-5">
+          <button
+            type="button"
+            onClick={() => handleSubmit(submit)()}
+            disabled={createReq.isPending || overCapacity}
+            className="inline-flex items-center gap-2 rounded-xl bg-gold px-7 py-3 font-bold text-forest-deep shadow-lg shadow-gold/20 transition hover:bg-gold-soft active:scale-95 disabled:opacity-50"
+          >
+            {createReq.isPending ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Send size={18} />
+            )}
+            {t("stu.submitToAdmin")}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border-2 border-forest/20 px-6 py-3 font-semibold text-forest transition hover:border-forest hover:bg-forest/5"
+          >
+            {t("stu.cancel")}
+          </button>
+        </div>
       </div>
     </div>,
     document.body,

@@ -48,7 +48,9 @@ export const browseTopicsService = async (
         ? {
             OR: [
               { title: { contains: filters.search, mode: "insensitive" } },
-              { description: { contains: filters.search, mode: "insensitive" } },
+              {
+                description: { contains: filters.search, mode: "insensitive" },
+              },
             ],
           }
         : {}),
@@ -89,6 +91,39 @@ export const getTopicByIdService = async (userId: string, topicId: string) => {
     );
   }
   return topic;
+};
+
+//
+// ═══════════════════════════════════════════════════════════════
+//  STUDENT LOOKUP  (live teammate search by registration number)
+// ═══════════════════════════════════════════════════════════════
+//
+
+// Returns the student (id + name) matching a registration number, or
+// null if none. Used by the group-request dialog for live validation.
+export const lookupStudentByRegistrationService = async (
+  userId: string,
+  registration: string,
+) => {
+  await getStudent(userId); // only an authenticated student may search
+
+  const reg = registration.trim();
+  if (!reg) {
+    throw new BadRequestException(
+      "رقم التسجيل مطلوب",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  }
+
+  return prisma.student.findUnique({
+    where: { registrationNumber: reg },
+    select: {
+      id: true,
+      registrationNumber: true,
+      user: { select: { firstName: true, lastName: true } },
+      specialization: { select: { name: true } },
+    },
+  });
 };
 
 //

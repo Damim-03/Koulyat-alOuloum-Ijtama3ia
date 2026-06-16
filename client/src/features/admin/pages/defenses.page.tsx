@@ -12,13 +12,15 @@ import {
   Clock,
   DoorOpen,
 } from "lucide-react";
-import {
-  useAdminDefenses,
-  useDeleteDefense,
-} from "../hooks/admin-hook";
+import { useAdminDefenses, useDeleteDefense } from "../hooks/admin-hook";
+import { DefenseFormDialog } from "../components/defense.form-dialog";
 import type { AdminDefense } from "../../../types/admin";
 
-function initials(first?: string | null, last?: string | null, fallback = "\u061f") {
+function initials(
+  first?: string | null,
+  last?: string | null,
+  fallback = "\u061f",
+) {
   const a = (first?.[0] ?? "") + (last?.[0] ?? "");
   return a || fallback;
 }
@@ -32,8 +34,14 @@ export function AdminDefensesPage() {
   const [page, setPage] = useState(1);
   const [applied, setApplied] = useState<{ search?: string }>({});
 
-  const { data, isLoading } = useAdminDefenses({ page, limit: PAGE_SIZE, ...applied });
+  const { data, isLoading } = useAdminDefenses({
+    page,
+    limit: PAGE_SIZE,
+    ...applied,
+  });
   const deleteDefense = useDeleteDefense();
+
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const defenses = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -41,7 +49,9 @@ export function AdminDefensesPage() {
 
   // Stats from the current page.
   const now = Date.now();
-  const upcoming = defenses.filter((d) => new Date(d.date).getTime() >= now).length;
+  const upcoming = defenses.filter(
+    (d) => new Date(d.date).getTime() >= now,
+  ).length;
   const graded = defenses.filter((d) => d.grade != null).length;
 
   function applyFilters() {
@@ -59,7 +69,10 @@ export function AdminDefensesPage() {
       day: new Intl.DateTimeFormat(locale, { day: "2-digit" }).format(date),
       month: new Intl.DateTimeFormat(locale, { month: "short" }).format(date),
       year: new Intl.DateTimeFormat(locale, { year: "numeric" }).format(date),
-      time: new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date),
+      time: new Intl.DateTimeFormat(locale, {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(date),
     };
   }
 
@@ -68,10 +81,17 @@ export function AdminDefensesPage() {
       {/* Header */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-serif text-2xl font-bold text-forest">{t("admin.defensesTitle")}</h1>
-          <p className="mt-1 text-sm text-clay">{t("admin.defensesSubtitle")}</p>
+          <h1 className="font-serif text-2xl font-bold text-forest">
+            {t("admin.defensesTitle")}
+          </h1>
+          <p className="mt-1 text-sm text-clay">
+            {t("admin.defensesSubtitle")}
+          </p>
         </div>
-        <button className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep">
+        <button
+          onClick={() => setDialogOpen(true)}
+          className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
+        >
           <Plus size={18} />
           {t("admin.scheduleDefense")}
         </button>
@@ -79,17 +99,40 @@ export function AdminDefensesPage() {
 
       {/* Stat strip */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile icon={CalendarClock} value={total} label={t("admin.totalDefenses")} tint="bg-soft-sage/30 text-forest" />
-        <StatTile icon={Clock} value={upcoming} label={t("admin.upcomingDefenses")} tint="bg-amber-100 text-amber-600" />
-        <StatTile icon={CheckCircle2} value={graded} label={t("admin.gradedDefenses")} tint="bg-emerald-100 text-emerald-600" />
-        <StatTile icon={DoorOpen} value="\u2014" label={t("admin.bookedRooms")} tint="bg-gold/15 text-gold" />
+        <StatTile
+          icon={CalendarClock}
+          value={total}
+          label={t("admin.totalDefenses")}
+          tint="bg-soft-sage/30 text-forest"
+        />
+        <StatTile
+          icon={Clock}
+          value={upcoming}
+          label={t("admin.upcomingDefenses")}
+          tint="bg-amber-100 text-amber-600"
+        />
+        <StatTile
+          icon={CheckCircle2}
+          value={graded}
+          label={t("admin.gradedDefenses")}
+          tint="bg-emerald-100 text-emerald-600"
+        />
+        <StatTile
+          icon={DoorOpen}
+          value="\u2014"
+          label={t("admin.bookedRooms")}
+          tint="bg-gold/15 text-gold"
+        />
       </div>
 
       {/* Search */}
       <div className="mb-6 rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
         <div className="flex gap-3">
           <div className="relative flex-1">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-clay" size={18} />
+            <Search
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-clay"
+              size={18}
+            />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -131,10 +174,14 @@ export function AdminDefensesPage() {
               className="flex overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]"
             >
               {/* Date side */}
-              <div className={`flex w-24 flex-col items-center justify-center px-3 py-5 text-center ${
-                isUpcoming ? "bg-forest text-cream" : "bg-forest/5 text-clay"
-              }`}>
-                <span className="font-serif text-2xl font-bold leading-none">{dt.day}</span>
+              <div
+                className={`flex w-24 flex-col items-center justify-center px-3 py-5 text-center ${
+                  isUpcoming ? "bg-forest text-cream" : "bg-forest/5 text-clay"
+                }`}
+              >
+                <span className="font-serif text-2xl font-bold leading-none">
+                  {dt.day}
+                </span>
                 <span className="text-xs">{dt.month}</span>
                 <span className="text-[10px] opacity-70">{dt.year}</span>
                 <span className="mt-1 text-[10px] opacity-80">{dt.time}</span>
@@ -143,7 +190,9 @@ export function AdminDefensesPage() {
               {/* Body */}
               <div className="flex flex-1 flex-col justify-between gap-3 p-4 md:flex-row md:items-center">
                 <div className="min-w-0">
-                  <h3 className="mb-1.5 font-serif text-base font-bold text-forest">{topicTitle}</h3>
+                  <h3 className="mb-1.5 font-serif text-base font-bold text-forest">
+                    {topicTitle}
+                  </h3>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-clay">
                     <span className="flex items-center gap-1">
                       <MapPin size={13} />
@@ -169,7 +218,10 @@ export function AdminDefensesPage() {
                         key={m.id}
                         className="grid size-7 place-items-center rounded-full border-2 border-cream-card bg-gradient-to-br from-forest to-forest-deep text-[10px] font-bold text-cream"
                       >
-                        {initials(m.student?.user?.firstName, m.student?.user?.lastName)}
+                        {initials(
+                          m.student?.user?.firstName,
+                          m.student?.user?.lastName,
+                        )}
                       </div>
                     ))}
                   </div>
@@ -199,7 +251,9 @@ export function AdminDefensesPage() {
           >
             {"\u2039"}
           </button>
-          <span className="px-3 text-sm text-forest">{page} / {totalPages}</span>
+          <span className="px-3 text-sm text-forest">
+            {page} / {totalPages}
+          </span>
           <button
             disabled={page >= totalPages}
             onClick={() => setPage((p) => p + 1)}
@@ -209,6 +263,11 @@ export function AdminDefensesPage() {
           </button>
         </div>
       )}
+
+      <DefenseFormDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+      />
     </div>
   );
 }

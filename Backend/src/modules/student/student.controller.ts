@@ -5,10 +5,12 @@ import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import {
   listTopicsSchema,
   createGroupRequestSchema,
+  lookupStudentSchema,
 } from "./student.validation";
 import {
   browseTopicsService,
   getTopicByIdService,
+  lookupStudentByRegistrationService,
   createGroupRequestService,
   getMyGroupRequestsService,
   cancelGroupRequestService,
@@ -24,7 +26,10 @@ export const browseTopicsController = async (
   const parsed = listTopicsSchema.safeParse(req.query);
   if (!parsed.success) {
     return next(
-      new BadRequestException("Validation error", ErrorCodeEnum.VALIDATION_ERROR),
+      new BadRequestException(
+        "Validation error",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      ),
     );
   }
   try {
@@ -51,6 +56,32 @@ export const getTopicByIdController = async (
   }
 };
 
+// ─── STUDENT LOOKUP ────────────────────────────────────────────
+export const lookupStudentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const parsed = lookupStudentSchema.safeParse(req.query);
+  if (!parsed.success) {
+    return next(
+      new BadRequestException(
+        "Validation error",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      ),
+    );
+  }
+  try {
+    const student = await lookupStudentByRegistrationService(
+      req.user!.userId,
+      parsed.data.registration,
+    );
+    return res.status(HTTPSTATUS.OK).json({ student: student ?? null });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ─── GROUP REQUESTS ────────────────────────────────────────────
 export const createGroupRequestController = async (
   req: Request,
@@ -60,7 +91,10 @@ export const createGroupRequestController = async (
   const parsed = createGroupRequestSchema.safeParse(req.body);
   if (!parsed.success) {
     return next(
-      new BadRequestException("Validation error", ErrorCodeEnum.VALIDATION_ERROR),
+      new BadRequestException(
+        "Validation error",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      ),
     );
   }
   try {

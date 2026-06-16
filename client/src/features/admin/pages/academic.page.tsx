@@ -17,6 +17,8 @@ import {
   useDeleteSpecialization,
   useDeleteAcademicYear,
 } from "../hooks/admin-hook";
+import { SpecializationFormDialog } from "../components/specialization.form-dialog";
+import { AcademicYearFormDialog } from "../components/academic.form-dialog";
 import type { Specialization, AcademicYear } from "../../../types/admin";
 
 const LEVELS = ["all", "licence", "master", "doctorate"] as const;
@@ -42,6 +44,29 @@ export function AdminAcademicStructurePage() {
   const [search, setSearch] = useState("");
   const [level, setLevel] = useState<LevelFilter>("all");
   const [page, setPage] = useState(1);
+
+  // dialog state
+  const [specOpen, setSpecOpen] = useState(false);
+  const [editingSpec, setEditingSpec] = useState<Specialization | null>(null);
+  const [yearOpen, setYearOpen] = useState(false);
+  const [editingYear, setEditingYear] = useState<AcademicYear | null>(null);
+
+  function openCreateSpec() {
+    setEditingSpec(null);
+    setSpecOpen(true);
+  }
+  function openEditSpec(s: Specialization) {
+    setEditingSpec(s);
+    setSpecOpen(true);
+  }
+  function openCreateYear() {
+    setEditingYear(null);
+    setYearOpen(true);
+  }
+  function openEditYear(y: AcademicYear) {
+    setEditingYear(y);
+    setYearOpen(true);
+  }
 
   // Client-side filter (specializations come unpaginated from backend).
   const filtered = useMemo(() => {
@@ -89,7 +114,10 @@ export function AdminAcademicStructurePage() {
             {t("admin.academicStructureSubtitle")}
           </p>
         </div>
-        <button className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep">
+        <button
+          onClick={openCreateSpec}
+          className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
+        >
           <Plus size={18} />
           {t("admin.addSpecialization")}
         </button>
@@ -159,7 +187,10 @@ export function AdminAcademicStructurePage() {
                       >
                         <Trash2 size={14} />
                       </button>
-                      <button className="grid size-7 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest">
+                      <button
+                        onClick={() => openEditSpec(s)}
+                        className="grid size-7 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+                      >
                         <Pencil size={14} />
                       </button>
                     </div>
@@ -223,7 +254,10 @@ export function AdminAcademicStructurePage() {
               <CalendarCheck size={18} />
               {t("admin.academicYears")}
             </h2>
-            <button className="inline-flex items-center gap-1 rounded-lg bg-forest/10 px-2.5 py-1.5 text-xs font-semibold text-forest transition hover:bg-forest/15">
+            <button
+              onClick={openCreateYear}
+              className="inline-flex items-center gap-1 rounded-lg bg-forest/10 px-2.5 py-1.5 text-xs font-semibold text-forest transition hover:bg-forest/15"
+            >
               <Plus size={14} />
               {t("admin.addYear")}
             </button>
@@ -276,6 +310,12 @@ export function AdminAcademicStructurePage() {
                     </button>
                   )}
                   <button
+                    onClick={() => openEditYear(y)}
+                    className="grid size-7 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
                     onClick={() => handleDeleteYear(y)}
                     className="grid size-7 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
                   >
@@ -308,6 +348,17 @@ export function AdminAcademicStructurePage() {
           </div>
         </div>
       </div>
+
+      <SpecializationFormDialog
+        open={specOpen}
+        onClose={() => setSpecOpen(false)}
+        specialization={editingSpec}
+      />
+      <AcademicYearFormDialog
+        open={yearOpen}
+        onClose={() => setYearOpen(false)}
+        year={editingYear}
+      />
     </div>
   );
 }

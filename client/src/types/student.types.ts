@@ -10,6 +10,14 @@ export interface UserRef {
   email?: string | null;
 }
 
+// ─── student lookup (live teammate search) ─────────────────────
+export interface LookupStudent {
+  id: string;
+  registrationNumber: string;
+  user?: UserRef;
+  specialization?: { name?: string | null } | null; // اختياري
+}
+
 export interface ProfessorRef {
   id: string;
   user?: UserRef;

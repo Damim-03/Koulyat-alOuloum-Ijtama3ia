@@ -17,16 +17,25 @@ import {
   useAcademicYears,
   useDeleteStudent,
 } from "../hooks/admin-hook";
+import { UserFormDialog } from "../components/user-form-dialog";
 import type { Student } from "../../../types/admin";
 
-function initials(first?: string | null, last?: string | null, fallback = "\u061f") {
+function initials(
+  first?: string | null,
+  last?: string | null,
+  fallback = "\u061f",
+) {
   const a = (first?.[0] ?? "") + (last?.[0] ?? "");
   return a || fallback;
 }
 
 function fullName(s: Student) {
   const u = s.user;
-  return [u?.firstName, u?.lastName].filter(Boolean).join(" ") || s.registrationNumber || "\u2014";
+  return (
+    [u?.firstName, u?.lastName].filter(Boolean).join(" ") ||
+    s.registrationNumber ||
+    "\u2014"
+  );
 }
 
 const PAGE_SIZE = 10;
@@ -56,6 +65,8 @@ export function AdminStudentsPage() {
   const { data: years } = useAcademicYears();
   const deleteStudent = useDeleteStudent();
 
+  const [dialogOpen, setDialogOpen] = useState(false);
+
   const students = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -83,9 +94,14 @@ export function AdminStudentsPage() {
           <h1 className="font-serif text-2xl font-bold text-forest">
             {t("admin.studentsTitle")}
           </h1>
-          <p className="mt-1 text-sm text-clay">{t("admin.studentsSubtitle")}</p>
+          <p className="mt-1 text-sm text-clay">
+            {t("admin.studentsSubtitle")}
+          </p>
         </div>
-        <button className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep">
+        <button
+          onClick={() => setDialogOpen(true)}
+          className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
+        >
           <Plus size={18} />
           {t("admin.addStudent")}
         </button>
@@ -93,17 +109,40 @@ export function AdminStudentsPage() {
 
       {/* Stat strip */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile icon={GraduationCap} value={total} label={t("admin.totalStudents")} tint="bg-soft-sage/30 text-forest" />
-        <StatTile icon={FolderCheck} value="\u2014" label={t("admin.registeredProjects")} tint="bg-emerald-100 text-emerald-600" />
-        <StatTile icon={Clock} value="\u2014" label={t("admin.awaitingProject")} tint="bg-amber-100 text-amber-600" />
-        <StatTile icon={Layers} value={specs?.length ?? "\u2014"} label={t("admin.specializations")} tint="bg-gold/15 text-gold" />
+        <StatTile
+          icon={GraduationCap}
+          value={total}
+          label={t("admin.totalStudents")}
+          tint="bg-soft-sage/30 text-forest"
+        />
+        <StatTile
+          icon={FolderCheck}
+          value="\u2014"
+          label={t("admin.registeredProjects")}
+          tint="bg-emerald-100 text-emerald-600"
+        />
+        <StatTile
+          icon={Clock}
+          value="\u2014"
+          label={t("admin.awaitingProject")}
+          tint="bg-amber-100 text-amber-600"
+        />
+        <StatTile
+          icon={Layers}
+          value={specs?.length ?? "\u2014"}
+          label={t("admin.specializations")}
+          tint="bg-gold/15 text-gold"
+        />
       </div>
 
       {/* Filters */}
       <div className="mb-6 rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <div className="relative">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-clay" size={18} />
+            <Search
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-clay"
+              size={18}
+            />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -120,7 +159,9 @@ export function AdminStudentsPage() {
           >
             <option value="">{t("admin.allSpecializations")}</option>
             {specs?.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
             ))}
           </select>
 
@@ -131,7 +172,9 @@ export function AdminStudentsPage() {
           >
             <option value="">{t("admin.allYears")}</option>
             {years?.map((y) => (
-              <option key={y.id} value={y.id}>{y.title}</option>
+              <option key={y.id} value={y.id}>
+                {y.title}
+              </option>
             ))}
           </select>
 
@@ -150,41 +193,82 @@ export function AdminStudentsPage() {
           <table className="w-full text-right">
             <thead>
               <tr className="bg-forest text-cream">
-                <th className="px-5 py-3 text-xs font-medium">{t("admin.name")}</th>
-                <th className="px-5 py-3 text-xs font-medium">{t("admin.regNumber")}</th>
-                <th className="px-5 py-3 text-xs font-medium">{t("admin.specialization")}</th>
-                <th className="px-5 py-3 text-xs font-medium">{t("admin.academicYear")}</th>
-                <th className="px-5 py-3 text-xs font-medium">{t("admin.actions")}</th>
+                <th className="px-5 py-3 text-xs font-medium">
+                  {t("admin.name")}
+                </th>
+                <th className="px-5 py-3 text-xs font-medium">
+                  {t("admin.regNumber")}
+                </th>
+                <th className="px-5 py-3 text-xs font-medium">
+                  {t("admin.specialization")}
+                </th>
+                <th className="px-5 py-3 text-xs font-medium">
+                  {t("admin.academicYear")}
+                </th>
+                <th className="px-5 py-3 text-xs font-medium">
+                  {t("admin.actions")}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-forest/10">
               {isLoading && (
-                <tr><td colSpan={5} className="px-5 py-10 text-center text-sm text-clay">{"\u2026"}</td></tr>
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-5 py-10 text-center text-sm text-clay"
+                  >
+                    {"\u2026"}
+                  </td>
+                </tr>
               )}
 
               {!isLoading && students.length === 0 && (
-                <tr><td colSpan={5} className="px-5 py-12 text-center text-sm text-clay">{t("admin.noStudents")}</td></tr>
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-5 py-12 text-center text-sm text-clay"
+                  >
+                    {t("admin.noStudents")}
+                  </td>
+                </tr>
               )}
 
               {students.map((s) => (
-                <tr key={s.id} className="transition-colors hover:bg-forest/[0.03]">
+                <tr
+                  key={s.id}
+                  className="transition-colors hover:bg-forest/[0.03]"
+                >
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <div className="grid size-9 place-items-center rounded-full bg-gradient-to-br from-forest to-forest-deep text-xs font-bold text-cream">
                         {initials(s.user?.firstName, s.user?.lastName)}
                       </div>
-                      <span className="text-sm font-medium text-forest">{fullName(s)}</span>
+                      <span className="text-sm font-medium text-forest">
+                        {fullName(s)}
+                      </span>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5 text-sm text-clay">{s.registrationNumber}</td>
-                  <td className="px-5 py-3.5 text-sm text-clay">{s.specialization?.name ?? "\u2014"}</td>
-                  <td className="px-5 py-3.5 text-sm text-clay">{s.academicYear?.title ?? "\u2014"}</td>
+                  <td className="px-5 py-3.5 text-sm text-clay">
+                    {s.registrationNumber}
+                  </td>
+                  <td className="px-5 py-3.5 text-sm text-clay">
+                    {s.specialization?.name ?? "\u2014"}
+                  </td>
+                  <td className="px-5 py-3.5 text-sm text-clay">
+                    {s.academicYear?.title ?? "\u2014"}
+                  </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1">
-                      <button className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest" title={t("admin.view")}>
+                      <button
+                        className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+                        title={t("admin.view")}
+                      >
                         <Eye size={16} />
                       </button>
-                      <button className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest" title={t("admin.edit")}>
+                      <button
+                        className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+                        title={t("admin.edit")}
+                      >
                         <Pencil size={16} />
                       </button>
                       <button
@@ -219,7 +303,9 @@ export function AdminStudentsPage() {
             >
               {"\u2039"}
             </button>
-            <span className="px-3 text-sm text-forest">{page} / {totalPages}</span>
+            <span className="px-3 text-sm text-forest">
+              {page} / {totalPages}
+            </span>
             <button
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
@@ -230,6 +316,12 @@ export function AdminStudentsPage() {
           </div>
         </div>
       </div>
+
+      <UserFormDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        lockedRole="student"
+      />
     </div>
   );
 }

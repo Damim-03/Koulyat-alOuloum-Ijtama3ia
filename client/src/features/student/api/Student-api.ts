@@ -5,6 +5,7 @@ import type {
   MyProject,
   SpecializationLite,
   AcademicYearLite,
+  LookupStudent,
 } from "../../../types/student.types";
 import type { CreateGroupRequestInput } from "../validation/student.schema";
 
@@ -25,6 +26,14 @@ export const studentApi = {
     client
       .get<{ topic: BrowseTopic }>(`${BASE}/topics/${id}`)
       .then((r) => r.data.topic ?? null),
+
+  // ── Lookup a student by registration number (live search in the dialog) ──
+  lookupStudent: (registration: string) =>
+    client
+      .get<{ student: LookupStudent | null }>(`${BASE}/students/lookup`, {
+        params: { registration },
+      })
+      .then((r) => r.data.student ?? null),
 
   // ── Group requests (assemble team + submit to admin) ──
   createGroupRequest: (data: CreateGroupRequestInput) =>

@@ -5,6 +5,7 @@ import { Permissions } from "../../core/enums/role.enum";
 import {
   browseTopicsController,
   getTopicByIdController,
+  lookupStudentController,
   createGroupRequestController,
   getMyGroupRequestsController,
   cancelGroupRequestController,
@@ -28,6 +29,15 @@ studentRoutes.get(
   "/topics/:id",
   roleGuard([Permissions.VIEW_TOPICS]),
   getTopicByIdController,
+);
+
+//
+// Student lookup (live teammate search by registration number)
+//
+studentRoutes.get(
+  "/students/lookup",
+  roleGuard([Permissions.APPLY_TO_TOPIC]),
+  lookupStudentController,
 );
 
 //
