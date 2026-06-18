@@ -46,6 +46,8 @@ import { StudentMyProjectPage } from "../features/student/pages/my-project.page"
 import { StudentTopicDetailPage } from "../features/student/pages/topic-detail.page";
 import { AdminTopicDetailPage } from "../features/admin/pages/topic-detail.page";
 import { AdminGroupRequestsPage } from "../features/admin/pages/group-requests.page";
+import { PublicTopicDetailPage } from "../features/public/pages/public-topic-detail.page";
+import { PublicTopicsPage } from "../features/public/pages/public-topics.page";
 
 export function AppRouter() {
   return (
@@ -56,7 +58,9 @@ export function AppRouter() {
         <Route element={<PublicLayout />}>
           {/* الصفحة الرئيسية */}
           <Route index element={<HomePage />} />
-
+          <Route path="topics" element={<PublicTopicsPage />} /> {/* ← */}
+          <Route path="topics/:id" element={<PublicTopicDetailPage />} />{" "}
+          {/* ← */}
           {/* غير مصرح */}
           <Route path="403" element={<UnauthorizedPage />} />
         </Route>

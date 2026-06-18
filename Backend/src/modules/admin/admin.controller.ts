@@ -687,6 +687,36 @@ export const archiveTopicController = async (
   }
 };
 
+export const publishTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const topic = await svc.publishTopicService(req.params.id as string);
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Topic published", topic });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const unpublishTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const topic = await svc.unpublishTopicService(req.params.id as string);
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Topic unpublished", topic });
+  } catch (e) {
+    next(e);
+  }
+};
+
 //
 // ─── APPLICATIONS ─────────────────────────────────────────────
 //

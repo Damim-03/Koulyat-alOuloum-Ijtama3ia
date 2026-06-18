@@ -639,7 +639,9 @@
     "searchGroupRequest": "ابحث عن طلب…",
     "noGroupRequests": "لا توجد طلبات مجموعات",
     "priorityN": "أولوية {{n}}",
-    "membersCount": "{{count}} أعضاء"
+    "membersCount": "{{count}} أعضاء",
+    "publish": "نشر",
+    "unpublish": "إلغاء النشر"
   },
   "prof": {
     "newTopic": "اقتراح موضوع جديد",
@@ -668,5 +670,31 @@
     "addReference": "إضافة مرجع",
     "noReferencesYet": "لا توجد مراجع بعد",
     "referencesError": "تحقّق من عناوين وروابط المراجع"
+  },
+  "public": {
+    "topicsTitle": "المواضيع المقترحة",
+    "topicsSubtitle": "استعرض مواضيع التخرج المتاحة هذا الموسم، مقدّمة من أساتذة جامعة الشهيد حمه لخضر.",
+    "searchPlaceholder": "بحث عن موضوع…",
+    "allDepartments": "القسم (الكل)",
+    "allSpecializations": "التخصص (الكل)",
+    "allStatuses": "الحالة (الكل)",
+    "available": "متاح",
+    "reserved": "محجوز",
+    "applyFilter": "تصفية",
+    "resultsCount": "عرض {{count}} نتيجة",
+    "noTopics": "لا توجد مواضيع مطابقة",
+    "viewDetails": "عرض التفاصيل",
+    "applyRequest": "تقديم طلب",
+    "notAvailable": "غير متاح للتقديم",
+    "backToTopics": "العودة إلى المواضيع",
+    "supervisor": "الأستاذ المشرف",
+    "maxStudentsN": "{{n}} طلاب",
+    "loginToApply": "سجّل الدخول للتقديم",
+    "share": "مشاركة",
+    "applyHint": "يجب تسجيل الدخول كطالب لإرسال طلب الانضمام بك وبمجموعتك إلى الإدارة.",
+    "descriptionLabel": "وصف الموضوع",
+    "objectivesLabel": "الأهداف",
+    "requirementsLabel": "المتطلّبات والمهارات المطلوبة",
+    "topicNotFound": "الموضوع غير موجود أو غير منشور"
   }
 }

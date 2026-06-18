@@ -24,12 +24,6 @@ import { PATHS } from "../../../../routes/paths";
 import universityLogo from "../../../../assets/university-logo.png"; // لوغو الجامعة
 // import facultyLogo from "../../../../assets/faculty-logo.png";       // لوغو الكلية
 
-const NAV = [
-  { key: "common.home", href: "#home" },
-  { key: "common.topics", href: "#features" },
-  { key: "common.about", href: "#stats" },
-];
-
 const NOISE =
   "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E\")";
 
@@ -191,9 +185,8 @@ export function Navbar() {
   const { t } = useTranslation();
   const { dir, isRTL } = useLanguage();
   const { isAuthenticated, user, role, logout } = useAuth();
-
+  const [active, setActive] = useState("home");
   const [scrolled, setScrolled] = useState(false);
-  const [active, setActive] = useState("#home");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [spotlight, setSpotlight] = useState(false);
@@ -308,28 +301,63 @@ export function Navbar() {
 
         <div className="relative mx-auto flex h-12 max-w-7xl items-center justify-between px-5 lg:px-8">
           <nav className="hidden items-center gap-1 md:flex">
-            {NAV.map((l) => {
-              const isActive = active === l.href;
-              return (
-                <a
-                  key={l.href}
-                  href={l.href}
-                  onClick={() => setActive(l.href)}
-                  className={`relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
-                    isActive
-                      ? "bg-white/12 text-cream"
-                      : "text-cream/60 hover:bg-white/[0.06] hover:text-cream/90"
-                  }`}
-                >
-                  {t(l.key)}
-                  <span
-                    className={`absolute bottom-0 left-1/2 h-0.5 -translate-x-1/2 rounded-full bg-gold transition-all duration-300 ${
-                      isActive ? "w-7 opacity-100" : "w-0 opacity-0"
-                    }`}
-                  />
-                </a>
-              );
-            })}
+            <LocaleLink
+              to={PATHS.home}
+              onClick={() => setActive("home")}
+              className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
+                active === "home"
+                  ? "text-cream"
+                  : "text-cream/60 hover:bg-white/[0.06] hover:text-cream/90"
+              }`}
+            >
+              {t("common.home")}
+
+              <span
+                className={`absolute bottom-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-gold transition-all duration-300 ${
+                  active === "home"
+                    ? "scale-x-100 opacity-100"
+                    : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-100"
+                }`}
+              />
+            </LocaleLink>
+            <LocaleLink
+              to={PATHS.topics}
+              onClick={() => setActive("topics")}
+              className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
+                active === "topics"
+                  ? "text-cream"
+                  : "text-cream/60 hover:bg-white/[0.06] hover:text-cream/90"
+              }`}
+            >
+              {t("common.topics")}
+
+              <span
+                className={`absolute bottom-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-gold transition-all duration-300 ${
+                  active === "topics"
+                    ? "scale-x-100 opacity-100"
+                    : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-100"
+                }`}
+              />
+            </LocaleLink>
+            <LocaleLink
+              to={PATHS.about}
+              onClick={() => setActive("about")}
+              className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
+                active === "about"
+                  ? "text-cream"
+                  : "text-cream/60 hover:bg-white/[0.06] hover:text-cream/90"
+              }`}
+            >
+              {t("common.about")}
+
+              <span
+                className={`absolute bottom-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-gold transition-all duration-300 ${
+                  active === "about"
+                    ? "scale-x-100 opacity-100"
+                    : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-100"
+                }`}
+              />
+            </LocaleLink>
           </nav>
 
           <div className="hidden items-center gap-3 md:flex">
@@ -451,19 +479,51 @@ export function Navbar() {
           className={`overflow-hidden transition-all duration-300 md:hidden ${mobileOpen ? "max-h-96" : "max-h-0"}`}
         >
           <nav className="space-y-1 px-5 py-3">
-            {NAV.map((l) => (
-              <a
-                key={l.href}
-                href={l.href}
-                onClick={() => {
-                  setActive(l.href);
-                  setMobileOpen(false);
-                }}
-                className="block rounded-lg px-3 py-2.5 text-sm text-cream/70 transition hover:bg-white/5 hover:text-cream"
-              >
-                {t(l.key)}
-              </a>
-            ))}
+            <LocaleLink
+              to={PATHS.home}
+              onClick={() => {
+                setActive("home");
+                setMobileOpen(false);
+              }}
+              className={`block rounded-lg border-l-2 px-3 py-2.5 text-sm transition ${
+                active === "home"
+                  ? "border-gold bg-white/5 text-gold"
+                  : "border-transparent text-cream/70 hover:bg-white/5 hover:text-cream"
+              }`}
+            >
+              {t("common.home")}
+            </LocaleLink>
+
+            <LocaleLink
+              to={PATHS.topics}
+              onClick={() => {
+                setActive("topics");
+                setMobileOpen(false);
+              }}
+              className={`block rounded-lg border-l-2 px-3 py-2.5 text-sm transition ${
+                active === "topics"
+                  ? "border-gold bg-white/5 text-gold"
+                  : "border-transparent text-cream/70 hover:bg-white/5 hover:text-cream"
+              }`}
+            >
+              {t("common.topics")}
+            </LocaleLink>
+
+            <LocaleLink
+              to={PATHS.about}
+              onClick={() => {
+                setActive("about");
+                setMobileOpen(false);
+              }}
+              className={`block rounded-lg border-l-2 px-3 py-2.5 text-sm transition ${
+                active === "about"
+                  ? "border-gold bg-white/5 text-gold"
+                  : "border-transparent text-cream/70 hover:bg-white/5 hover:text-cream"
+              }`}
+            >
+              {t("common.about")}
+            </LocaleLink>
+
             <div className="px-3 py-2">
               <LanguageSwitcher variant="menu" />
             </div>

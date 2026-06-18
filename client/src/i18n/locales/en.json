@@ -639,7 +639,9 @@
     "searchGroupRequest": "Search a request…",
     "noGroupRequests": "No group requests",
     "priorityN": "Priority {{n}}",
-    "membersCount": "{{count}} members"
+    "membersCount": "{{count}} members",
+    "publish": "Publish",
+    "unpublish": "Unpublish"
   },
   "prof": {
     "newTopic": "Propose a new topic",
@@ -668,5 +670,31 @@
     "addReference": "Add reference",
     "noReferencesYet": "No references yet",
     "referencesError": "Check the reference titles and links"
+  },
+  "public": {
+    "topicsTitle": "Proposed topics",
+    "topicsSubtitle": "Browse this season’s available graduation topics, offered by our professors.",
+    "searchPlaceholder": "Search a topic…",
+    "allDepartments": "Department (all)",
+    "allSpecializations": "Specialization (all)",
+    "allStatuses": "Status (all)",
+    "available": "Available",
+    "reserved": "Reserved",
+    "applyFilter": "Filter",
+    "resultsCount": "{{count}} results",
+    "noTopics": "No matching topics",
+    "viewDetails": "View details",
+    "applyRequest": "Apply",
+    "notAvailable": "Not open",
+    "backToTopics": "Back to topics",
+    "supervisor": "Supervisor",
+    "maxStudentsN": "{{n}} students",
+    "loginToApply": "Log in to apply",
+    "share": "Share",
+    "applyHint": "You must log in as a student to submit a join request for you and your group.",
+    "descriptionLabel": "Description",
+    "objectivesLabel": "Objectives",
+    "requirementsLabel": "Requirements & skills",
+    "topicNotFound": "Topic not found or not published"
   }
 }

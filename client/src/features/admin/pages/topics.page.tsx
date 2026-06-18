@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Search, Check, X, Archive, Eye } from "lucide-react";
+import { Search, Check, X, Archive, Eye, Send, EyeOff } from "lucide-react";
 import {
   useAdminTopics,
   useApproveTopic,
   useRejectTopic,
   useArchiveTopic,
+  usePublishTopic,
+  useUnpublishTopic,
   useProfessors,
 } from "../hooks/admin-hook";
 import type { AdminTopic } from "../../../types/admin";
@@ -29,7 +31,14 @@ const STATUS_STYLES: Record<string, string> = {
   archived: "bg-gray-200 text-gray-600",
 };
 
-const STATUS_FILTERS = ["", "approved", "pending", "rejected"] as const;
+const STATUS_FILTERS = [
+  "",
+  "pending",
+  "approved",
+  "open",
+  "full",
+  "rejected",
+] as const;
 
 const PAGE_SIZE = 10;
 
@@ -59,6 +68,8 @@ export function AdminTopicsPage() {
   const approve = useApproveTopic();
   const reject = useRejectTopic();
   const archive = useArchiveTopic();
+  const publish = usePublishTopic();
+  const unpublish = useUnpublishTopic();
 
   const topics = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -127,21 +138,17 @@ export function AdminTopicsPage() {
             ))}
           </select>
 
-          <div className="flex rounded-xl border border-forest/15 bg-cream-2 p-1 md:col-span-1">
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30 md:col-span-1"
+          >
             {STATUS_FILTERS.map((st) => (
-              <button
-                key={st || "all"}
-                onClick={() => setStatus(st)}
-                className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition ${
-                  status === st
-                    ? "bg-forest text-cream"
-                    : "text-clay hover:text-forest"
-                }`}
-              >
-                {t(st ? `status.${st}` : "admin.statusAll")}
-              </button>
+              <option key={st || "all"} value={st}>
+                {st ? t(`status.${st}`) : t("admin.statusAll")}
+              </option>
             ))}
-          </div>
+          </select>
 
           <button
             onClick={applyFilters}
@@ -254,22 +261,55 @@ export function AdminTopicsPage() {
                       >
                         <Eye size={16} />
                       </button>
-                      <button
-                        onClick={() => approve.mutate(tp.id)}
-                        disabled={tp.status === "approved"}
-                        className="grid size-8 place-items-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-30"
-                        title={t("admin.approve")}
-                      >
-                        <Check size={16} />
-                      </button>
-                      <button
-                        onClick={() => reject.mutate({ id: tp.id })}
-                        disabled={tp.status === "rejected"}
-                        className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50 disabled:opacity-30"
-                        title={t("admin.reject")}
-                      >
-                        <X size={16} />
-                      </button>
+
+                      {/* قبول أوّلي — يظهر فقط للموضوع قيد الانتظار */}
+                      {tp.status === "pending" && (
+                        <button
+                          onClick={() => approve.mutate(tp.id)}
+                          disabled={approve.isPending}
+                          className="grid size-8 place-items-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-30"
+                          title={t("admin.approve")}
+                        >
+                          <Check size={16} />
+                        </button>
+                      )}
+
+                      {/* نشر — يظهر للموضوع المقبول أوّليًا */}
+                      {tp.status === "approved" && (
+                        <button
+                          onClick={() => publish.mutate(tp.id)}
+                          disabled={publish.isPending}
+                          className="grid size-8 place-items-center rounded-lg text-sky-600 transition hover:bg-sky-50 disabled:opacity-30"
+                          title={t("admin.publish")}
+                        >
+                          <Send size={16} />
+                        </button>
+                      )}
+
+                      {/* إلغاء النشر — يظهر للموضوع المنشور (لم تتشكّل مجموعة) */}
+                      {tp.status === "open" && (
+                        <button
+                          onClick={() => unpublish.mutate(tp.id)}
+                          disabled={unpublish.isPending}
+                          className="grid size-8 place-items-center rounded-lg text-amber-600 transition hover:bg-amber-50 disabled:opacity-30"
+                          title={t("admin.unpublish")}
+                        >
+                          <EyeOff size={16} />
+                        </button>
+                      )}
+
+                      {/* رفض — يظهر طالما الموضوع غير مرفوض وغير مؤرشف */}
+                      {tp.status !== "rejected" && tp.status !== "archived" && (
+                        <button
+                          onClick={() => reject.mutate({ id: tp.id })}
+                          disabled={reject.isPending}
+                          className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50 disabled:opacity-30"
+                          title={t("admin.reject")}
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+
                       <button
                         onClick={() => archive.mutate(tp.id)}
                         disabled={tp.status === "archived"}
