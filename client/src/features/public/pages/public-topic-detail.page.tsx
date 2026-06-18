@@ -82,7 +82,7 @@ export function PublicTopicDetailPage() {
         <aside className="space-y-4 lg:order-2">
           <div className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
             <div className="mb-4 flex items-center gap-3">
-              <div className="grid size-14 place-items-center rounded-xl bg-gradient-to-br from-forest to-forest-deep text-cream">
+              <div className="grid size-14 place-items-center rounded-xl bg-linear-to-br from-forest to-forest-deep text-cream">
                 <User size={24} />
               </div>
               <div>

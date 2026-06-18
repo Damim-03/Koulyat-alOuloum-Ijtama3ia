@@ -245,7 +245,7 @@ function MilestonesManager({
           </div>
         ) : (
           <div className="relative px-5 py-6">
-            <div className="absolute bottom-6 right-[2.35rem] top-6 w-0.5 bg-gradient-to-b from-gold via-gold-soft to-forest/10" />
+            <div className="absolute bottom-6 right-[2.35rem] top-6 w-0.5 bg-linear-to-b from-gold via-gold-soft to-forest/10" />
             <div className="space-y-5">
               {milestones.map((m) => {
                 const subs = m.submissions ?? [];

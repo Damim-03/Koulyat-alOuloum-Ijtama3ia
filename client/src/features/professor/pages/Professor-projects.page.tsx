@@ -73,7 +73,7 @@ export function ProfessorProjectsPage() {
                     </span>
                     <div className="flex -space-x-2 flex-row-reverse">
                       {members.slice(0, 3).map((m) => (
-                        <div key={m.id} className="grid size-6 place-items-center rounded-full border-2 border-cream-card bg-gradient-to-br from-sage to-forest text-[9px] font-bold text-cream">
+                        <div key={m.id} className="grid size-6 place-items-center rounded-full border-2 border-cream-card bg-linear-to-br from-sage to-forest text-[9px] font-bold text-cream">
                           {initials(m.student?.user?.firstName, m.student?.user?.lastName)}
                         </div>
                       ))}
