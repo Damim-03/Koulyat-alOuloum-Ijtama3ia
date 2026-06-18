@@ -128,7 +128,7 @@ export function ProfessorDashboardPage() {
 
       {/* Pending highlight */}
       {stats.pendingApps > 0 && (
-        <div className="mb-6 flex flex-col items-center justify-between gap-4 rounded-2xl bg-gradient-to-l from-gold to-gold-soft p-5 text-forest-deep shadow-lg md:flex-row">
+        <div className="mb-6 flex flex-col items-center justify-between gap-4 rounded-2xl bg-linear-to-l from-gold to-gold-soft p-5 text-forest-deep shadow-lg md:flex-row">
           <div className="flex items-center gap-4">
             <div className="grid size-12 place-items-center rounded-full bg-forest-deep/10">
               <ClipboardList size={24} />
@@ -199,7 +199,7 @@ export function ProfessorDashboardPage() {
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
-                        <div className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-forest to-forest-deep text-[11px] font-bold text-cream">
+                        <div className="grid size-8 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-[11px] font-bold text-cream">
                           {initials(
                             a.student?.user?.firstName,
                             a.student?.user?.lastName,

@@ -57,10 +57,10 @@ function DashboardSpotlight({ onDismiss }: { onDismiss: () => void }) {
           className={`absolute -top-2 size-4 rotate-45 border-l border-t border-gold/40 bg-cream-card ${isRTL ? "left-6" : "right-6"}`}
         />
         <div className="relative overflow-hidden rounded-2xl border border-gold/30 bg-cream-card shadow-2xl">
-          <div className="h-1 bg-gradient-to-r from-forest via-gold to-forest" />
+          <div className="h-1 bg-linear-to-r from-forest via-gold to-forest" />
           <div className="p-5">
             <div className="mb-3 flex items-start gap-3">
-              <div className="relative grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-forest to-forest-deep text-cream">
+              <div className="relative grid size-10 shrink-0 place-items-center rounded-xl bg-linear-to-br from-forest to-forest-deep text-cream">
                 <LayoutDashboard size={18} />
                 <div className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full border-2 border-cream-card bg-gold">
                   <Sparkles size={8} className="text-forest-deep" />
@@ -90,7 +90,7 @@ function DashboardSpotlight({ onDismiss }: { onDismiss: () => void }) {
                 onClick={close}
                 className="flex-1"
               >
-                <span className="flex h-full w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-br from-forest to-forest-deep py-2 text-xs font-semibold text-cream">
+                <span className="flex h-full w-full items-center justify-center gap-1.5 rounded-lg bg-linear-to-br from-forest to-forest-deep py-2 text-xs font-semibold text-cream">
                   <LayoutDashboard size={13} /> {t("spotlight.go")}
                 </span>
               </LocaleLink>
@@ -161,7 +161,7 @@ function Avatar({
       ) : (
         <div
           style={{ width: size, height: size }}
-          className={`grid place-items-center ${rounded} bg-gradient-to-br from-forest to-forest-deep text-cream`}
+          className={`grid place-items-center ${rounded} bg-linear-to-br from-forest to-forest-deep text-cream`}
         >
           {initials ? (
             <span className="text-[10px] font-bold">
@@ -239,9 +239,9 @@ export function Navbar() {
     >
       {/* ═══ TOP BAR ═══ */}
       <div className="relative overflow-hidden bg-cream-2">
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-linear-to-r from-transparent via-gold/40 to-transparent" />
         <div
-          className={`relative mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 transition-all duration-500 lg:px-8 ${scrolled ? "h-16" : "h-[84px]"}`}
+          className={`relative mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 transition-all duration-500 lg:px-8 ${scrolled ? "h-16" : "h-21"}`}
         >
           <LocaleLink to={PATHS.home}>
             <Emblem
@@ -260,11 +260,11 @@ export function Navbar() {
             </h1>
 
             <div className="mt-1 flex items-center gap-3">
-              <span className="h-px w-8 bg-gradient-to-r from-transparent to-gold/50" />
+              <span className="h-px w-8 bg-linear-to-r from-transparent to-gold/50" />
               <p className="text-[11px] font-medium text-clay lg:text-[13px]">
                 {t("brand.system")}
               </p>
-              <span className="h-px w-8 bg-gradient-to-l from-transparent to-gold/50" />
+              <span className="h-px w-8 bg-linear-to-l from-transparent to-gold/50" />
             </div>
 
             <p
@@ -295,8 +295,8 @@ export function Navbar() {
             className="absolute inset-0 opacity-[0.04] mix-blend-soft-light"
             style={{ backgroundImage: NOISE }}
           />
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-gold/0 via-gold/30 to-gold/0" />
+          <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-white/10 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-px bg-linear-to-r from-gold/0 via-gold/30 to-gold/0" />
         </div>
 
         <div className="relative mx-auto flex h-12 max-w-7xl items-center justify-between px-5 lg:px-8">
@@ -307,7 +307,7 @@ export function Navbar() {
               className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
                 active === "home"
                   ? "text-cream"
-                  : "text-cream/60 hover:bg-white/[0.06] hover:text-cream/90"
+                  : "text-cream/60 hover:bg-white/6 hover:text-cream/90"
               }`}
             >
               {t("common.home")}
@@ -326,7 +326,7 @@ export function Navbar() {
               className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
                 active === "topics"
                   ? "text-cream"
-                  : "text-cream/60 hover:bg-white/[0.06] hover:text-cream/90"
+                  : "text-cream/60 hover:bg-white/6 hover:text-cream/90"
               }`}
             >
               {t("common.topics")}
@@ -345,7 +345,7 @@ export function Navbar() {
               className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
                 active === "about"
                   ? "text-cream"
-                  : "text-cream/60 hover:bg-white/[0.06] hover:text-cream/90"
+                  : "text-cream/60 hover:bg-white/6 hover:text-cream/90"
               }`}
             >
               {t("common.about")}
@@ -451,7 +451,7 @@ export function Navbar() {
             ) : (
               <LocaleLink
                 to={PATHS.login}
-                className="flex items-center gap-2 rounded-md bg-gradient-to-br from-gold to-gold-soft px-4 py-1.5 text-[13px] font-bold text-forest-deep transition hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(193,150,90,0.35)]"
+                className="flex items-center gap-2 rounded-md bg-linear-to-br from-gold to-gold-soft px-4 py-1.5 text-[13px] font-bold text-forest-deep transition hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(193,150,90,0.35)]"
               >
                 <LogIn size={14} />
                 {t("common.login")}
@@ -532,7 +532,7 @@ export function Navbar() {
                 <LocaleLink
                   to={PATHS.dashboard}
                   onClick={() => setMobileOpen(false)}
-                  className="flex items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-gold to-gold-soft px-4 py-2.5 text-sm font-bold text-forest-deep"
+                  className="flex items-center justify-center gap-2 rounded-lg bg-linear-to-br from-gold to-gold-soft px-4 py-2.5 text-sm font-bold text-forest-deep"
                 >
                   <LayoutDashboard size={15} /> {t("common.dashboard")}
                 </LocaleLink>
@@ -550,7 +550,7 @@ export function Navbar() {
               <LocaleLink
                 to={PATHS.login}
                 onClick={() => setMobileOpen(false)}
-                className="flex items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-gold to-gold-soft px-4 py-2.5 text-sm font-bold text-forest-deep"
+                className="flex items-center justify-center gap-2 rounded-lg bg-linear-to-br from-gold to-gold-soft px-4 py-2.5 text-sm font-bold text-forest-deep"
               >
                 <LogIn size={15} /> {t("common.login")}
               </LocaleLink>

@@ -37,9 +37,9 @@ export function SessionExpiredModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-forest-deep/60 p-6 backdrop-blur-sm">
-      <div className="w-full max-w-[400px] overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-2xl">
-        <div className="h-1 bg-gradient-to-r from-forest via-gold to-forest" />
+    <div className="fixed inset-0 z-100 grid place-items-center bg-forest-deep/60 p-6 backdrop-blur-sm">
+      <div className="w-full max-w-100 overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-2xl">
+        <div className="h-1 bg-linear-to-r from-forest via-gold to-forest" />
         <div className="p-6 text-center">
           <div className="mx-auto mb-4 grid size-14 place-items-center rounded-full bg-amber-100">
             <ShieldAlert size={28} className="text-amber-600" />
@@ -52,7 +52,7 @@ export function SessionExpiredModal({
           </p>
           <button
             onClick={onLogin}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-forest to-forest-deep py-3 text-sm font-bold text-cream transition hover:-translate-y-px"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-br from-forest to-forest-deep py-3 text-sm font-bold text-cream transition hover:-translate-y-px"
           >
             <LogIn size={16} />
             {t("session.loginAgain")}

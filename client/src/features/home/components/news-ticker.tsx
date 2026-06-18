@@ -39,7 +39,7 @@ export function NewsTicker() {
       {/* marquee */}
       <div className="group relative flex flex-1 items-center overflow-hidden">
         <div
-          className="flex shrink-0 items-center gap-10 whitespace-nowrap px-6 [animation:ticker_30s_linear_infinite] group-hover:[animation-play-state:paused]"
+          className="flex shrink-0 items-center gap-10 whitespace-nowrap px-6 animate-[ticker_30s_linear_infinite] group-hover:paused"
           style={{ animationDirection: isRTL ? "normal" : "reverse" }}
         >
           {loop.map((item, i) => (
@@ -50,8 +50,8 @@ export function NewsTicker() {
             </span>
           ))}
         </div>
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-forest-deep/80 to-transparent" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-forest-deep/80 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-12 bg-linear-to-r from-forest-deep/80 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-linear-to-l from-forest-deep/80 to-transparent" />
       </div>
 
       {/* view all */}

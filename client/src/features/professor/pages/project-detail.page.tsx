@@ -111,7 +111,7 @@ export function ProfessorProjectDetailPage() {
             {members.slice(0, 4).map((m) => (
               <div
                 key={m.id}
-                className="grid size-8 place-items-center rounded-full border-2 border-cream bg-gradient-to-br from-forest to-forest-deep text-[10px] font-bold text-cream"
+                className="grid size-8 place-items-center rounded-full border-2 border-cream bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream"
               >
                 {initials(
                   m.student?.user?.firstName,
@@ -176,7 +176,7 @@ export function ProfessorProjectDetailPage() {
             </div>
             <div className="mb-4 h-2 overflow-hidden rounded-full bg-cream-2">
               <div
-                className="h-full rounded-full bg-gradient-to-l from-gold to-gold-soft transition-all"
+                className="h-full rounded-full bg-linear-to-l from-gold to-gold-soft transition-all"
                 style={{ width: `${progress}%` }}
               />
             </div>

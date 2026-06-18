@@ -31,7 +31,7 @@ export function FormDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      className="fixed inset-0 z-100 flex items-center justify-center p-4"
       onMouseDown={onClose}
     >
       {/* Backdrop */}
@@ -65,7 +65,7 @@ export function FormDialog({
             </button>
           </div>
           {/* Gold accent line */}
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-l from-gold to-gold-soft" />
+          <div className="absolute inset-x-0 bottom-0 h-1 bg-linear-to-l from-gold to-gold-soft" />
         </div>
 
         {/* Body */}

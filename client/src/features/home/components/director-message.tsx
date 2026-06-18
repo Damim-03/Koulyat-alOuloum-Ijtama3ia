@@ -90,9 +90,9 @@ export function DirectorMessage() {
                 <img
                   src={PHOTO}
                   alt={t("director.fullName")}
-                  className="aspect-[4/5] w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+                  className="aspect-4/5 w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-forest-deep/70 via-transparent to-transparent opacity-80" />
+                <div className="absolute inset-0 bg-linear-to-t from-forest-deep/70 via-transparent to-transparent opacity-80" />
                 <div className="absolute right-4 top-4 grid size-10 translate-y-2 place-items-center rounded-xl border border-white/20 bg-white/15 opacity-0 backdrop-blur-md transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
                   <GraduationCap className="size-5 text-white" />
                 </div>
