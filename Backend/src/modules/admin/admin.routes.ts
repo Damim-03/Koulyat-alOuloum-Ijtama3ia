@@ -51,6 +51,8 @@ import {
   approveTopicController,
   rejectTopicController,
   archiveTopicController,
+  publishTopicController,
+  unpublishTopicController,
   // applications
   listApplicationsController,
   acceptApplicationController,
@@ -156,6 +158,8 @@ adminRoutes.get("/topics/:id", getTopicController);
 adminRoutes.patch("/topics/:id/approve", approveTopicController);
 adminRoutes.patch("/topics/:id/reject", rejectTopicController);
 adminRoutes.patch("/topics/:id/archive", archiveTopicController);
+adminRoutes.patch("/topics/:id/publish", publishTopicController);
+adminRoutes.patch("/topics/:id/unpublish", unpublishTopicController);
 
 //
 // ─── APPLICATIONS ─────────────────────────────────────────────

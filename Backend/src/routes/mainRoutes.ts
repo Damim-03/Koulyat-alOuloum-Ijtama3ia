@@ -4,6 +4,7 @@ import professorRoutes from "../modules/professor/professor.routes";
 import adminRoutes from "../modules/admin/admin.routes";
 import commonRoutes from "../modules/common/common.routes";
 import studentRoutes from "../modules/student/student.routes";
+import publicRoutes from "../modules/public/public.routes";
 
 const mainRoute: Router = Router();
 
@@ -17,6 +18,6 @@ mainRoute.use("/student", studentRoutes);
 
 mainRoute.use("/common", commonRoutes);
 
-
+mainRoute.use("/public", publicRoutes);
 
 export default mainRoute;

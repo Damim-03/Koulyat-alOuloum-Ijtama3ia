@@ -8,18 +8,15 @@ export const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
   search: z.string().trim().optional(),
+  // Generic status filter used by lists that support it (applications,
+  // group-requests). Lists that don't use it simply ignore the field.
+  status: z.string().trim().optional(),
 });
 export type ListQueryDTO = z.infer<typeof listQuerySchema>;
 
 const RoleEnum = z.enum(["owner", "admin", "professor", "student"]);
 const StatusEnum = z.enum(["active", "suspended"]);
 const LevelEnum = z.enum(["licence", "master", "doctorate"]);
-
-export const listGroupRequestsSchema = listQuerySchema.extend({
-  status: z.enum(["pending", "accepted", "rejected", "all"]).optional(),
-});
-
-export type ListGroupRequestsDTO = z.infer<typeof listGroupRequestsSchema>;
 
 //
 // ─── USERS ────────────────────────────────────────────────────

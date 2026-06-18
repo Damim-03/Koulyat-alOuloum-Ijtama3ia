@@ -392,6 +392,30 @@ export function useArchiveTopic() {
     onError: () => toast.error("تعذّر الأرشفة"),
   });
 }
+export function usePublishTopic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.publishTopic(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "topic"] });
+      toast.success("تم نشر الموضوع — أصبح ظاهراً للطلاب");
+    },
+    onError: () => toast.error("تعذّر النشر"),
+  });
+}
+export function useUnpublishTopic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.unpublishTopic(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "topic"] });
+      toast.success("تم إلغاء نشر الموضوع");
+    },
+    onError: () => toast.error("تعذّر إلغاء النشر"),
+  });
+}
 
 // ─── APPLICATIONS ───
 export function useAdminApplications(params?: ListParams) {

@@ -639,7 +639,9 @@
     "searchGroupRequest": "Rechercher une demande…",
     "noGroupRequests": "Aucune demande de groupe",
     "priorityN": "Priorité {{n}}",
-    "membersCount": "{{count}} membres"
+    "membersCount": "{{count}} membres",
+    "publish": "Publier",
+    "unpublish": "Dépublier"
   },
   "prof": {
     "newTopic": "Proposer un nouveau sujet",
@@ -668,5 +670,31 @@
     "addReference": "Ajouter une référence",
     "noReferencesYet": "Aucune référence pour l’instant",
     "referencesError": "Vérifiez les titres et liens des références"
+  },
+  "public": {
+    "topicsTitle": "Sujets proposés",
+    "topicsSubtitle": "Parcourez les sujets de fin d’études disponibles cette saison.",
+    "searchPlaceholder": "Rechercher un sujet…",
+    "allDepartments": "Département (tous)",
+    "allSpecializations": "Spécialité (toutes)",
+    "allStatuses": "Statut (tous)",
+    "available": "Disponible",
+    "reserved": "Réservé",
+    "applyFilter": "Filtrer",
+    "resultsCount": "{{count}} résultats",
+    "noTopics": "Aucun sujet correspondant",
+    "viewDetails": "Voir les détails",
+    "applyRequest": "Postuler",
+    "notAvailable": "Indisponible",
+    "backToTopics": "Retour aux sujets",
+    "supervisor": "Encadrant",
+    "maxStudentsN": "{{n}} étudiants",
+    "loginToApply": "Connectez-vous pour postuler",
+    "share": "Partager",
+    "applyHint": "Vous devez vous connecter en tant qu’étudiant pour soumettre une demande.",
+    "descriptionLabel": "Description",
+    "objectivesLabel": "Objectifs",
+    "requirementsLabel": "Prérequis et compétences",
+    "topicNotFound": "Sujet introuvable ou non publié"
   }
 }

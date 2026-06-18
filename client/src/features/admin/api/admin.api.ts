@@ -187,6 +187,10 @@ export const adminApi = {
     client.patch(`${BASE}/topics/${id}/reject`, { reason }).then((r) => r.data),
   archiveTopic: (id: string) =>
     client.patch(`${BASE}/topics/${id}/archive`).then((r) => r.data),
+  publishTopic: (id: string) =>
+    client.patch(`${BASE}/topics/${id}/publish`).then((r) => r.data),
+  unpublishTopic: (id: string) =>
+    client.patch(`${BASE}/topics/${id}/unpublish`).then((r) => r.data),
 
   // ── Applications ──
   listApplications: (params?: ListParams) =>

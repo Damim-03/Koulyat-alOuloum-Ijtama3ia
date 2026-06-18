@@ -4,6 +4,9 @@ export const PATHS = {
   login: "/login",
   unauthorized: "/403",
 
+  topics: "/topics",
+  about: "/about",
+
   professor: {
     root: "/professor",
   },
