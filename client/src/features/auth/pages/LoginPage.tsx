@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useLanguage } from "../../../hooks/use-language";
-import { HelpCircle, GraduationCap } from "lucide-react";
+import { HelpCircle, GraduationCap, ArrowRight } from "lucide-react";
 import type { LoginRole } from "../../../types/enums";
 import { PATHS } from "../../../routes/paths";
 import { ROLES } from "../../../config/roles.config";
@@ -27,10 +27,9 @@ export function LoginPage() {
   const cfg = ROLES[role];
   const ActiveForm = FORMS[role];
 
-  // Where to go after a successful login. If the user was redirected here
-  // from a protected/public page (e.g. a topic detail where they clicked
-  // "apply"), `location.state.from` holds that path → return them there.
-  // Otherwise fall back to the role-based dashboard as before.
+  // After login, return the user to the page they came from (e.g. the topics
+  // page they were redirected away from). If there is no such page, fall back
+  // to the role-based dashboard.
   const from = (location.state as { from?: string } | null)?.from;
   function handleLoginSuccess() {
     navigate(from ?? localePath(PATHS.dashboard), { replace: true });
@@ -39,8 +38,17 @@ export function LoginPage() {
   return (
     <div
       dir="rtl"
-      className="auth-bg grid min-h-svh w-full font-sans text-fg lg:grid-cols-2"
+      className="auth-bg relative grid min-h-svh w-full text-forest lg:grid-cols-2"
     >
+      {/* back to homepage — pinned top-left */}
+      <button
+        type="button"
+        onClick={() => navigate(localePath(PATHS.home))}
+        className="absolute left-5 top-5 z-20 inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-forest/10 bg-cream-card/70 px-3 py-1.5 text-[12.5px] font-semibold text-clay shadow-sm backdrop-blur-sm transition hover:border-forest/20 hover:text-forest"
+      >
+        <ArrowRight size={15} />
+        العودة للرئيسية
+      </button>
       {/* LEFT: hero panel (desktop) */}
       <AuthHero />
 
@@ -49,12 +57,14 @@ export function LoginPage() {
         <div className="w-full max-w-110 animate-[fadeUp_0.6s_0.12s_both]">
           {/* mobile mini-brand (hero is hidden on small) */}
           <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <div className="grid size-10 place-items-center rounded-xl bg-linear-to-br from-mint to-teal text-[#06302a]">
+            <div className="grid size-10 place-items-center rounded-xl bg-linear-to-br from-gold-soft to-gold text-forest-deep">
               <GraduationCap size={20} strokeWidth={2.2} />
             </div>
             <div>
-              <div className="text-[13px] font-bold">جامعة الشهيد حمه لخضر</div>
-              <div className="text-[11px] text-muted">
+              <div className="text-[13px] font-bold text-forest">
+                جامعة الشهيد حمه لخضر
+              </div>
+              <div className="text-[11px] text-clay">
                 نظام إدارة مشاريع التخرج
               </div>
             </div>
@@ -62,27 +72,27 @@ export function LoginPage() {
 
           <RoleSwitcher value={role} onChange={setRole} />
 
-          <div className="mt-6 rounded-[22px] border border-white/[0.07] bg-panel p-7 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+          <div className="mt-6 rounded-[22px] border border-forest/10 bg-cream-card p-7 shadow-[0_24px_60px_rgba(26,49,45,0.12)]">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="m-0 font-display text-[22px] font-bold">
+                <h2 className="m-0 font-display text-[24px] font-bold text-forest">
                   تسجيل الدخول
                 </h2>
-                <p className="mt-1.5 text-[13px] leading-[1.6] text-muted">
+                <p className="mt-1.5 text-[13px] leading-[1.6] text-clay">
                   {cfg.subtitle}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setHelpOpen(true)}
-                className="inline-flex flex-none cursor-pointer items-center gap-1.5 rounded-[10px] border border-teal/25 bg-teal/[0.08] px-2.5 py-1.5 text-[12.5px] font-semibold text-teal transition hover:bg-teal/15"
+                className="inline-flex flex-none cursor-pointer items-center gap-1.5 rounded-[10px] border border-gold/35 bg-gold/12 px-2.5 py-1.5 text-[12.5px] font-semibold text-gold transition hover:bg-gold/20"
               >
                 <HelpCircle size={15} />
                 مساعدة
               </button>
             </div>
 
-            <div className="my-5 flex items-center gap-3 text-xs text-muted2 before:h-px before:flex-1 before:bg-white/[0.07] after:h-px after:flex-1 after:bg-white/[0.07]">
+            <div className="my-5 flex items-center gap-3 text-xs text-clay/70 before:h-px before:flex-1 before:bg-forest/10 after:h-px after:flex-1 after:bg-forest/10">
               <span>عبر بيانات الجامعة</span>
             </div>
 

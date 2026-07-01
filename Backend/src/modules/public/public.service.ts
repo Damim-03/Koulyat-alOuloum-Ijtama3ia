@@ -33,9 +33,9 @@ export const listPublicTopicsService = async (q: ListPublicTopicsDTO) => {
   const where = {
     status: statusWhere as never,
     ...(q.specializationId ? { specializationId: q.specializationId } : {}),
-    // Filter by department through the topic → specialization → department chain.
+    // Filter by department through topic → specialization → filiere → department.
     ...(q.departmentId
-      ? { specialization: { departmentId: q.departmentId } }
+      ? { specialization: { filiere: { departmentId: q.departmentId } } }
       : {}),
     ...(q.academicYearId ? { academicYearId: q.academicYearId } : {}),
     ...(q.search
@@ -114,11 +114,21 @@ export const getPublicTopicService = async (id: string) => {
 export const listPublicSpecializationsService = async (
   departmentId?: string,
 ) => {
-  return prisma.specialization.findMany({
-    where: departmentId ? { departmentId } : undefined,
-    select: { id: true, name: true, departmentId: true },
+  const rows = await prisma.specialization.findMany({
+    where: departmentId ? { filiere: { departmentId } } : undefined,
+    select: {
+      id: true,
+      name: true,
+      filiere: { select: { departmentId: true } },
+    },
     orderBy: { name: "asc" },
   });
+  // احتفظ بنفس شكل المخرجات السابق للواجهة: { id, name, departmentId }
+  return rows.map((s) => ({
+    id: s.id,
+    name: s.name,
+    departmentId: s.filiere.departmentId,
+  }));
 };
 
 // Departments list for the filter dropdown (public, minimal fields).

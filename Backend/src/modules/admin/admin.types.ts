@@ -16,6 +16,8 @@ export type {
   UpdateFacultyDTO,
   CreateDepartmentDTO,
   UpdateDepartmentDTO,
+  CreateFiliereDTO,
+  UpdateFiliereDTO,
   CreateSpecializationDTO,
   UpdateSpecializationDTO,
   CreateAcademicYearDTO,
@@ -26,6 +28,10 @@ export type {
   AssignStudentDTO,
   CreateDefenseDTO,
   UpdateDefenseDTO,
+  CreateDomainDTO,
+  UpdateDomainDTO,
+  ListDomainsDTO,
+  ListFilieresDTO,
 } from "./admin.validation";
 
 // Standard paginated list response shape returned by list services.

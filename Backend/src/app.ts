@@ -75,8 +75,13 @@ io.on("connection", (socket) => {
 // ======================================================
 //
 
-app.use(helmet());
-
+app.use(
+  helmet({
+    crossOriginResourcePolicy: {
+      policy: "cross-origin",
+    },
+  }),
+);
 //
 // ======================================================
 // RATE LIMITER
@@ -159,6 +164,14 @@ app.use(compression());
 //
 
 app.use(morgan("dev"));
+
+//
+// ======================================================
+// UPLOADS
+// ======================================================
+//
+
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 //
 // ======================================================

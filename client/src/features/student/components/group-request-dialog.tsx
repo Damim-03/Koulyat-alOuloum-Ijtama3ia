@@ -292,6 +292,7 @@ export function GroupRequestDialog({ open, onClose, topic }: Props) {
             {fields.length > 0 && (
               <div className="space-y-3 pt-1">
                 {fields.map((f, i) => {
+                  // eslint-disable-next-line react-hooks/incompatible-library
                   const reg = watch(`memberRegistrationNumbers.${i}`) as string;
                   return (
                     <div

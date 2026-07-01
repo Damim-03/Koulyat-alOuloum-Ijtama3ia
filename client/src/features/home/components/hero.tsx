@@ -37,14 +37,16 @@ export function Hero() {
         </p>
 
         <div className="flex flex-col items-center gap-3 sm:flex-row animate-[riseIn_0.5s_0.2s_both]">
-          <a href="#features" className="flex h-12 items-center justify-center
+          <LocaleLink
+            to={PATHS.topics}
+            className="flex h-12 items-center justify-center
             gap-2 rounded-xl bg-linear-to-br from-gold to-gold-soft px-7
             text-sm font-bold text-forest-deep shadow-lg shadow-gold/20
             transition hover:-translate-y-0.5 hover:brightness-105"
           >
             <Compass size={17} />
             {t("hero.ctaPrimary")}
-          </a>
+          </LocaleLink>
           <LocaleLink
             to={PATHS.login}
             className="flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-cream/15 px-7 text-sm font-semibold text-cream transition hover:bg-white/5"

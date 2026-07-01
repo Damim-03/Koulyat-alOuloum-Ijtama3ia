@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* ── Fonts: Latin (IBM Plex) + Arabic (Amiri display / IBM Plex Sans Arabic body) ── */
+@import url("https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600;700&family=Work+Sans:wght@400;500;600;700&display=swap");
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -11,7 +14,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.72 0.15 175);          /* mint/teal to match your auth */
+  --primary: oklch(0.72 0.15 175); /* mint/teal to match your auth */
   --primary-foreground: oklch(0.18 0.04 175);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -69,6 +72,105 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   AUTH VISUAL SYSTEM — warm academic palette ("Graduation Portal")
+   New, additive tokens. They do NOT touch your app-wide colors,
+   so dashboards/other screens keep their current look. Auth screens
+   opt in by using bg-cream / text-ink / from-ink / text-gold … etc.
+   ────────────────────────────────────────────────────────────── */
+@theme {
+  --color-cream: #f4e9d6; /* main warm surface            */
+  --color-cream-2: #fbf5ea; /* card / elevated surface      */
+  --color-cream-3: #fefaf2; /* input fill                   */
+
+  --color-ink: #26423d; /* primary deep evergreen       */
+  --color-ink-2: #1b302b; /* darkest green (hero base)    */
+  --color-ink-3: #2f5249; /* lighter green (gradients)    */
+
+  --color-gold: #c1965a; /* secondary / accent           */
+  --color-gold-2: #a87c42; /* gold deep                    */
+  --color-gold-3: #e2c290; /* gold light (text highlight)  */
+
+  --color-sage: #4a7066; /* tertiary                     */
+  --color-sand: #beb29e; /* neutral                      */
+
+  --color-taupe: #6a6356; /* muted body text on cream     */
+  --color-taupe-2: #938a78; /* faint text / placeholders    */
+  --color-brick: #a8442d; /* warm error                   */
+
+  --font-display: "Amiri", "IBM Plex Serif", Georgia, serif;
+}
+
+/* Body type for the auth surfaces (scoped — leaves global font-sans alone) */
+:root {
+  --font-body: "IBM Plex Sans Arabic", "Work Sans", system-ui, sans-serif;
+}
+.auth-bg,
+.auth-scope {
+  font-family: var(--font-body);
+}
+
+/* Cream page background with a faint warm paper glow */
+.auth-bg {
+  background-color: #f1e4cf;
+  background-image:
+    radial-gradient(
+      1100px 520px at 78% -8%,
+      rgba(193, 150, 90, 0.16),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 600px at 0% 110%,
+      rgba(74, 112, 102, 0.12),
+      transparent 60%
+    ),
+    linear-gradient(180deg, #f6ecdb 0%, #f1e4cf 100%);
+}
+
+/* Soft dotted "engraved" atmosphere — used inside the dark hero panel */
+.dot-matrix {
+  background-image: radial-gradient(
+    rgba(226, 194, 144, 0.22) 1px,
+    transparent 1.4px
+  );
+  background-size: 22px 22px;
+}
+
+/* Concentric "seal" ring behind the brand mark (hero signature element) */
+.seal-ring {
+  background: repeating-radial-gradient(
+    circle at center,
+    rgba(193, 150, 90, 0) 0 9px,
+    rgba(193, 150, 90, 0.1) 9px 10px
+  );
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-bg *,
+  .auth-scope * {
+    animation: none !important;
+  }
 }
 
 @layer base {

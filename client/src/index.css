@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&family=Tajawal:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&family=IBM+Plex+Serif:wght@500;600;700&family=Tajawal:wght@400;500;700&family=Work+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -99,24 +99,6 @@
   --color-teal: #2dd4bf;
 }
 
-/* radial glow background for auth screens */
-@layer utilities {
-  .auth-bg {
-    background:
-      radial-gradient(
-        900px 520px at 86% 10%,
-        rgba(45, 212, 191, 0.1),
-        transparent 60%
-      ),
-      radial-gradient(
-        720px 520px at 8% 92%,
-        rgba(52, 211, 153, 0.06),
-        transparent 60%
-      ),
-      var(--color-ink);
-  }
-}
-
 @keyframes fadeUp {
   from {
     opacity: 0;
@@ -146,17 +128,10 @@
 }
 
 /* ============================================================
-   APPEND THIS TO src/index.css
-   (home page theme: cream + forest + gold. Distinct token names
-    so it never collides with the dark auth tokens.)
-   Also REPLACE your Google Fonts @import line at the very top
-   of index.css with the one below (adds IBM Plex Serif + Work Sans).
+   HOME / AUTH WARM THEME — cream + forest + gold.
+   Distinct token names so it never collides with the dark tokens.
+   The auth screens now opt into this warm palette.
    ============================================================ */
-
-/* TOP OF FILE — replace the existing @import url(... fonts ...) with: */
-/*
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&family=IBM+Plex+Serif:wght@500;600;700&family=Tajawal:wght@400;500;700&family=Work+Sans:wght@400;500;600;700&display=swap");
-*/
 
 @theme {
   /* fonts */
@@ -166,6 +141,7 @@
   /* home palette */
   --color-forest: #26423d; /* primary  */
   --color-forest-deep: #1a312d;
+  --color-forest-soft: #2f5249; /* ← NEW: lighter green for button gradients */
   --color-gold: #c1965a; /* secondary */
   --color-gold-soft: #d4af75;
   --color-sage: #4a7066; /* tertiary */
@@ -175,6 +151,7 @@
   --color-cream-2: #fbf6ea;
   --color-cream-card: #fffaf2; /* card bg   */
   --color-clay: #6b6357; /* muted text on cream */
+  --color-brick: #a8442d; /* ← NEW: warm error/validation color */
 }
 
 @layer utilities {
@@ -201,7 +178,47 @@
         transparent 32%
       );
   }
+
+  /* ← Auth page background is now WARM CREAM (was a dark radial glow).
+     The old dark version is kept commented below in case you want it back. */
+  .auth-bg {
+    background-color: var(--color-cream);
+    background-image:
+      radial-gradient(
+        1100px 520px at 86% -8%,
+        rgba(193, 150, 90, 0.16),
+        transparent 60%
+      ),
+      radial-gradient(
+        900px 600px at 6% 110%,
+        rgba(74, 112, 102, 0.12),
+        transparent 60%
+      ),
+      linear-gradient(180deg, #f6ecdb 0%, #f1e4cf 100%);
+  }
+
+  /* concentric "seal" ring behind the auth brand mark (hero signature) */
+  .seal-ring {
+    background: repeating-radial-gradient(
+      circle at center,
+      rgba(193, 150, 90, 0) 0 9px,
+      rgba(193, 150, 90, 0.1) 9px 10px
+    );
+  }
 }
+
+/*  OLD dark auth background — restore this block (and delete the cream
+    .auth-bg above) if you ever want the dark login back:
+
+@layer utilities {
+  .auth-bg {
+    background:
+      radial-gradient(900px 520px at 86% 10%, rgba(45,212,191,0.10), transparent 60%),
+      radial-gradient(720px 520px at 8% 92%, rgba(52,211,153,0.06), transparent 60%),
+      var(--color-ink);
+  }
+}
+*/
 
 @keyframes riseIn {
   from {

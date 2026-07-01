@@ -3,6 +3,7 @@ import { HTTPSTATUS } from "../../core/config/http/http.config";
 import {
   listFacultiesService,
   listDepartmentsService,
+  listFilieresService,
   listSpecializationsService,
   listAcademicYearsService,
 } from "./common.service";
@@ -34,14 +35,32 @@ export const listDepartmentsController = async (
   }
 };
 
-export const listSpecializationsController = async (
+export const listFilieresController = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
     const departmentId = req.query.departmentId as string | undefined;
-    const specializations = await listSpecializationsService(departmentId);
+    const filieres = await listFilieresService(departmentId);
+    return res.status(HTTPSTATUS.OK).json({ filieres });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listSpecializationsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const filiereId = req.query.filiereId as string | undefined;
+    const departmentId = req.query.departmentId as string | undefined;
+    const specializations = await listSpecializationsService({
+      filiereId,
+      departmentId,
+    });
     return res.status(HTTPSTATUS.OK).json({ specializations });
   } catch (error) {
     next(error);

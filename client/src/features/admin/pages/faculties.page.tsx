@@ -8,15 +8,14 @@ import {
   Network,
   ChevronLeft,
 } from "lucide-react";
-import {
-  useFaculties,
-  useDeleteFaculty,
-} from "../hooks/admin-hook";
+import { useFaculties, useDeleteFaculty } from "../hooks/admin-hook";
 import { FacultyFormDialog } from "../components/Faculty.form-dialog";
 import type { Faculty } from "../../../types/admin";
+import { useLangNavigate } from "../../../hooks/useLangNavigate";
 
 export function AdminFacultiesPage() {
   const { t } = useTranslation();
+  const navigate = useLangNavigate();
 
   const { data: faculties, isLoading } = useFaculties();
   const deleteFaculty = useDeleteFaculty();
@@ -35,7 +34,11 @@ export function AdminFacultiesPage() {
     setDialogOpen(true);
   }
   function handleDelete(f: Faculty) {
-    if (confirm(t("admin.confirmDeleteFaculty", { name: f.name }))) deleteFaculty.mutate(f.id);
+    if (confirm(t("admin.confirmDeleteFaculty", { name: f.name })))
+      deleteFaculty.mutate(f.id);
+  }
+  function openDetails(f: Faculty) {
+    navigate(`/admin/faculties/${f.id}`);
   }
 
   return (
@@ -43,8 +46,12 @@ export function AdminFacultiesPage() {
       {/* Header */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-serif text-2xl font-bold text-forest">{t("admin.facultiesTitle")}</h1>
-          <p className="mt-1 text-sm text-clay">{t("admin.facultiesSubtitle")}</p>
+          <h1 className="font-serif text-2xl font-bold text-forest">
+            {t("admin.facultiesTitle")}
+          </h1>
+          <p className="mt-1 text-sm text-clay">
+            {t("admin.facultiesSubtitle")}
+          </p>
         </div>
         <button
           onClick={openCreate}
@@ -83,19 +90,32 @@ export function AdminFacultiesPage() {
                     <Pencil size={14} />
                   </button>
                 </div>
-                <span className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest" dir="ltr">
+                <span
+                  className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest"
+                  dir="ltr"
+                >
                   {f.code}
                 </span>
               </div>
 
-              <h3 className="mb-2 text-right font-serif text-base font-bold text-forest">{f.name}</h3>
+              <h3
+                onClick={() => openDetails(f)}
+                className="mb-2 cursor-pointer text-right font-serif text-base font-bold text-forest transition hover:text-sage"
+              >
+                {f.name}
+              </h3>
 
               <div className="mb-4 flex items-center justify-end gap-1.5 text-clay">
-                <span className="text-xs">{f._count?.departments ?? 0} {t("admin.departmentsShort")}</span>
+                <span className="text-xs">
+                  {f._count?.departments ?? 0} {t("admin.departmentsShort")}
+                </span>
                 <Network size={14} />
               </div>
 
-              <button className="mt-auto flex items-center justify-end gap-1 border-t border-forest/10 pt-3 text-xs text-sage transition hover:text-forest">
+              <button
+                onClick={() => openDetails(f)}
+                className="mt-auto flex items-center justify-end gap-1 border-t border-forest/10 pt-3 text-xs text-sage transition hover:text-forest"
+              >
                 {t("admin.viewDetails")}
                 <ChevronLeft size={14} />
               </button>
@@ -109,7 +129,9 @@ export function AdminFacultiesPage() {
         <div className="flex items-center gap-3">
           <Building2 size={24} className="text-gold" />
           <div>
-            <h3 className="font-serif text-lg font-bold">{t("admin.excellenceTitle")}</h3>
+            <h3 className="font-serif text-lg font-bold">
+              {t("admin.excellenceTitle")}
+            </h3>
             <p className="text-sm text-cream/70">{t("admin.excellenceBody")}</p>
           </div>
         </div>

@@ -14,6 +14,10 @@ import type {
   AdminProject,
   AdminDefense,
   AdminGroupRequest,
+  AdminDashboard,
+  UserDetail,
+  Filiere,
+  Domain,
 } from "../../../types/admin";
 
 const BASE = "/admin";
@@ -32,6 +36,10 @@ export const adminApi = {
       .get<{ stats: OverviewStats }>(`${BASE}/stats/overview`)
       .then((r) => r.data.stats),
 
+  // ── Dashboard ──
+  getDashboard: () =>
+    client.get<AdminDashboard>(`${BASE}/dashboard`).then((r) => r.data),
+
   // ── Users ──
   listUsers: (params?: ListParams) =>
     client
@@ -39,7 +47,7 @@ export const adminApi = {
       .then((r) => r.data),
   getUser: (id: string) =>
     client
-      .get<{ user: UserLite }>(`${BASE}/users/${id}`)
+      .get<{ user: UserDetail }>(`${BASE}/users/${id}`)
       .then((r) => r.data.user),
   createUser: (data: unknown) =>
     client
@@ -79,6 +87,16 @@ export const adminApi = {
     client.delete(`${BASE}/students/${id}`).then((r) => r.data),
 
   // ── Professors ──
+
+  uploadImage: async (file: File) => {
+    const fd = new FormData();
+    fd.append("image", file); // "image" لمطابقة cardUpload.single("image")
+    const r = await client.post<{ url: string }>(`${BASE}/uploads/image`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return r.data.url;
+  },
+
   listProfessors: (params?: ListParams) =>
     client
       .get<Paginated<Professor>>(`${BASE}/professors`, { params })
@@ -147,6 +165,51 @@ export const adminApi = {
       .then((r) => r.data.specialization),
   deleteSpecialization: (id: string) =>
     client.delete(`${BASE}/specializations/${id}`).then((r) => r.data),
+
+  // ── Domains (الميادين) ──
+  listDomains: (departmentId?: string) =>
+    client
+      .get<{ domains: Domain[] }>(`${BASE}/domains`, {
+        params: departmentId ? { departmentId } : undefined,
+      })
+      .then((r) => r.data.domains),
+  createDomain: (data: unknown) =>
+    client
+      .post<{ domain: Domain }>(`${BASE}/domains`, data)
+      .then((r) => r.data.domain),
+  updateDomain: (id: string, data: unknown) =>
+    client
+      .patch<{ domain: Domain }>(`${BASE}/domains/${id}`, data)
+      .then((r) => r.data.domain),
+  deleteDomain: (id: string) =>
+    client.delete(`${BASE}/domains/${id}`).then((r) => r.data),
+
+  // ── Filieres ──
+
+  listFilieresByDomain: (domainId?: string) =>
+    client
+      .get<{ filieres: Filiere[] }>(`${BASE}/filieres`, {
+        params: domainId ? { domainId } : undefined,
+      })
+      .then((r) => r.data.filieres),
+  createFiliere: (data: unknown) =>
+    client
+      .post<{ filiere: Filiere }>(`${BASE}/filieres`, data)
+      .then((r) => r.data.filiere),
+  updateFiliere: (id: string, data: unknown) =>
+    client
+      .patch<{ filiere: Filiere }>(`${BASE}/filieres/${id}`, data)
+      .then((r) => r.data.filiere),
+  deleteFiliere: (id: string) =>
+    client.delete(`${BASE}/filieres/${id}`).then((r) => r.data),
+
+  listFilieres: (departmentId?: string) =>
+    client
+      .get<{ filieres: Filiere[] }>(`${BASE}/filieres`, {
+        // ← /admin/filieres
+        params: departmentId ? { departmentId } : undefined,
+      })
+      .then((r) => r.data.filieres),
 
   // ── Academic Years ──
   listAcademicYears: () =>

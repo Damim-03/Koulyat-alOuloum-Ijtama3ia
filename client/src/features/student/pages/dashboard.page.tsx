@@ -31,7 +31,9 @@ export function StudentDashboardPage() {
   const { data: project } = useMyProject();
   const { data: requests } = useMyGroupRequests();
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const reqList = requests ?? [];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const milestones = project?.milestones ?? [];
 
   const stats = useMemo(() => {

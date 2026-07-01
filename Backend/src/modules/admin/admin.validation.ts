@@ -64,6 +64,11 @@ export type ResetPasswordDTO = z.infer<typeof resetPasswordSchema>;
 export const listStudentsSchema = listQuerySchema.extend({
   specializationId: z.string().uuid().optional(),
   academicYearId: z.string().uuid().optional(),
+  // Hierarchical filters — only one level is applied at a time (most
+  // specific wins: specializationId > filiereId > departmentId > facultyId).
+  filiereId: z.string().uuid().optional(),
+  departmentId: z.string().uuid().optional(),
+  facultyId: z.string().uuid().optional(),
 });
 export type ListStudentsDTO = z.infer<typeof listStudentsSchema>;
 
@@ -72,17 +77,27 @@ export const createStudentSchema = z.object({
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
   email: z.string().email().optional(),
+  phone: z.string().trim().min(1).optional(),
+  avatarUrl: z.string().url().optional(),
   password: z.string().min(6),
   // student side
   registrationNumber: z.string().trim().min(1),
+  // The student is attached to a specialization; the form selects it by
+  // cascading faculty → department → filiere → specialization, but only the
+  // final specializationId is persisted (the chain is derivable from it).
   specializationId: z.string().uuid(),
   academicYearId: z.string().uuid(),
 });
 export type CreateStudentDTO = z.infer<typeof createStudentSchema>;
 
+// Full edit: every editable field on the student + their user account.
 export const updateStudentSchema = z.object({
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
+  email: z.string().email().optional(),
+  phone: z.string().trim().min(1).optional(),
+  avatarUrl: z.string().url().optional(),
+  registrationNumber: z.string().trim().min(1).optional(),
   specializationId: z.string().uuid().optional(),
   academicYearId: z.string().uuid().optional(),
 });
@@ -91,6 +106,15 @@ export type UpdateStudentDTO = z.infer<typeof updateStudentSchema>;
 //
 // ─── PROFESSORS ───────────────────────────────────────────────
 //
+
+export const listProfessorsSchema = listQuerySchema.extend({
+  filiereId: z.string().uuid().optional(),
+  departmentId: z.string().uuid().optional(),
+  facultyId: z.string().uuid().optional(),
+  // exact-tag match over the grade array (optional UI filter)
+  grade: z.string().trim().optional(),
+});
+export type ListProfessorsDTO = z.infer<typeof listProfessorsSchema>;
 
 export const createProfessorSchema = z.object({
   firstName: z.string().trim().min(1).optional(),
@@ -105,19 +129,48 @@ export const createProfessorSchema = z.object({
       "Must be a valid @univ-eloued.dz email",
     ),
   departmentId: z.string().uuid(),
+  grade: z.array(z.string().trim().min(1)).max(20).optional(), // ← جديد
+  tags: z.array(z.string().trim().min(1)).max(20).optional(), // ← جديد
 });
 export type CreateProfessorDTO = z.infer<typeof createProfessorSchema>;
 
 export const updateProfessorSchema = z.object({
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
+  email: z.string().email().nullable().optional(), // ← جديد
+  phone: z.string().trim().min(1).nullable().optional(), // ← جديد
+  avatarUrl: z.string().url().nullable().optional(), // ← جديد
   universityEmail: z
     .string()
     .regex(/^[a-zA-Z0-9._%+-]+@univ-eloued\.dz$/)
     .optional(),
   departmentId: z.string().uuid().optional(),
+  grade: z.array(z.string().trim().min(1)).max(20).optional(),
+  tags: z.array(z.string().trim().min(1)).max(20).optional(),
 });
 export type UpdateProfessorDTO = z.infer<typeof updateProfessorSchema>;
+
+//
+// ─── DOMAINS ──────────────────────────────────────────────────
+//
+export const listDomainsSchema = z.object({
+  departmentId: z.string().uuid().optional(),
+});
+export type ListDomainsDTO = z.infer<typeof listDomainsSchema>;
+
+export const createDomainSchema = z.object({
+  name: z.string().trim().min(1),
+  code: z.string().trim().min(1),
+  departmentId: z.string().uuid(),
+});
+export type CreateDomainDTO = z.infer<typeof createDomainSchema>;
+
+export const updateDomainSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  code: z.string().trim().min(1).optional(),
+  departmentId: z.string().uuid().optional(),
+});
+export type UpdateDomainDTO = z.infer<typeof updateDomainSchema>;
 
 //
 // ─── FACULTIES ────────────────────────────────────────────────
@@ -151,13 +204,43 @@ export const updateDepartmentSchema = z.object({
 export type UpdateDepartmentDTO = z.infer<typeof updateDepartmentSchema>;
 
 //
+// ─── FILIERES ─────────────────────────────────────────────────
+//
+
+export const createFiliereSchema = z
+  .object({
+    name: z.string().trim().min(1),
+    code: z.string().trim().min(1),
+    departmentId: z.string().uuid().optional(),
+    domainId: z.string().uuid().optional(),
+  })
+  .refine((d) => d.departmentId || d.domainId, {
+    message: "departmentId or domainId is required",
+  });
+export type CreateFiliereDTO = z.infer<typeof createFiliereSchema>;
+
+export const updateFiliereSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  code: z.string().trim().min(1).optional(),
+  departmentId: z.string().uuid().optional(),
+  domainId: z.string().uuid().optional(),
+});
+export type UpdateFiliereDTO = z.infer<typeof updateFiliereSchema>;
+
+export const listFilieresSchema = z.object({
+  domainId: z.string().uuid().optional(),
+  departmentId: z.string().uuid().optional(),
+});
+export type ListFilieresDTO = z.infer<typeof listFilieresSchema>;
+
+//
 // ─── SPECIALIZATIONS ──────────────────────────────────────────
 //
 
 export const createSpecializationSchema = z.object({
   name: z.string().trim().min(1),
   level: LevelEnum,
-  departmentId: z.string().uuid(),
+  filiereId: z.string().uuid(),
 });
 export type CreateSpecializationDTO = z.infer<
   typeof createSpecializationSchema
@@ -166,7 +249,7 @@ export type CreateSpecializationDTO = z.infer<
 export const updateSpecializationSchema = z.object({
   name: z.string().trim().min(1).optional(),
   level: LevelEnum.optional(),
-  departmentId: z.string().uuid().optional(),
+  filiereId: z.string().uuid().optional(),
 });
 export type UpdateSpecializationDTO = z.infer<
   typeof updateSpecializationSchema
@@ -255,3 +338,15 @@ export const updateDefenseSchema = z.object({
   committee: z.array(committeeMemberSchema).optional(),
 });
 export type UpdateDefenseDTO = z.infer<typeof updateDefenseSchema>;
+
+//
+// ─── NOTIFICATIONS (admin's own bell) ─────────────────────────
+//
+
+export const listNotificationsSchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  // "true" → only unread notifications.
+  unread: z.coerce.boolean().optional().default(false),
+});
+export type ListNotificationsDTO = z.infer<typeof listNotificationsSchema>;

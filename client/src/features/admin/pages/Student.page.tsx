@@ -1,24 +1,27 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Search,
   Plus,
-  Pencil,
-  Trash2,
-  Eye,
+  X,
   Layers,
   Clock,
   FolderCheck,
   GraduationCap,
+  ChevronLeft,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   useStudents,
   useSpecializations,
-  useAcademicYears,
-  useDeleteStudent,
+  useDepartments,
+  useFaculties,
+  useFilieres,
 } from "../hooks/admin-hook";
 import { UserFormDialog } from "../components/user-form-dialog";
-import type { Student } from "../../../types/admin";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 function initials(
   first?: string | null,
@@ -29,61 +32,157 @@ function initials(
   return a || fallback;
 }
 
-function fullName(s: Student) {
-  const u = s.user;
-  return (
-    [u?.firstName, u?.lastName].filter(Boolean).join(" ") ||
-    s.registrationNumber ||
-    "\u2014"
-  );
-}
-
 const PAGE_SIZE = 10;
+
+function chain(s: any) {
+  const spec = s.specialization;
+  const filiere = spec?.filiere;
+  const dept = filiere?.department;
+  const faculty = dept?.faculty;
+  return {
+    specName: spec?.name ?? null,
+    filiereName: filiere?.name ?? null,
+    deptName: dept?.name ?? null,
+    facultyName: faculty?.name ?? null,
+  };
+}
 
 export function AdminStudentsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { lang } = useParams();
+  const goToStudent = (sid: string) =>
+    navigate(`/${lang}/admin/students/${sid}`);
 
-  // Filters
   const [search, setSearch] = useState("");
+  const [facultyId, setFacultyId] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [filiereId, setFiliereId] = useState("");
   const [specializationId, setSpecializationId] = useState("");
-  const [academicYearId, setAcademicYearId] = useState("");
   const [page, setPage] = useState(1);
-
-  // Applied filters (only sent on "apply" click)
-  const [applied, setApplied] = useState<{
-    search?: string;
-    specializationId?: string;
-    academicYearId?: string;
-  }>({});
-
-  const { data, isLoading } = useStudents({
-    page,
-    limit: PAGE_SIZE,
-    ...applied,
-  });
-  const { data: specs } = useSpecializations();
-  const { data: years } = useAcademicYears();
-  const deleteStudent = useDeleteStudent();
-
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const students = data?.items ?? [];
+  // debounced search
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [debouncedSearch, facultyId, departmentId, filiereId, specializationId]);
+
+  const params = useMemo(
+    () => ({
+      page,
+      limit: PAGE_SIZE,
+      search: debouncedSearch || undefined,
+      facultyId: facultyId || undefined,
+      departmentId: departmentId || undefined,
+      filiereId: filiereId || undefined,
+      specializationId: specializationId || undefined,
+    }),
+    [
+      page,
+      debouncedSearch,
+      facultyId,
+      departmentId,
+      filiereId,
+      specializationId,
+    ],
+  );
+
+  const { data, isLoading, isFetching } = useStudents(params);
+  const { data: faculties } = useFaculties();
+  const { data: departments } = useDepartments();
+  const { data: filieres } = useFilieres();
+  const { data: specs } = useSpecializations();
+
+  // ── cascading option lists ──
+  const deptOptions = useMemo(
+    () =>
+      (departments ?? []).filter(
+        (d: any) => !facultyId || d.facultyId === facultyId,
+      ),
+    [departments, facultyId],
+  );
+
+  const filiereOptions = useMemo(
+    () =>
+      (filieres ?? []).filter((f: any) => {
+        if (departmentId && f.departmentId !== departmentId) return false;
+        if (facultyId && !departmentId) {
+          const d = (departments ?? []).find(
+            (dd: any) => dd.id === f.departmentId,
+          );
+          if (d && d.facultyId !== facultyId) return false;
+        }
+        return true;
+      }),
+    [filieres, departmentId, facultyId, departments],
+  );
+
+  const specOptions = useMemo(
+    () =>
+      (specs ?? []).filter((sp: any) => {
+        if (filiereId && sp.filiereId !== filiereId) return false;
+        if (departmentId && !filiereId && sp.departmentId !== departmentId)
+          return false;
+        if (facultyId && !departmentId && !filiereId) {
+          const d = (departments ?? []).find(
+            (dd: any) => dd.id === sp.departmentId,
+          );
+          if (d && d.facultyId !== facultyId) return false;
+        }
+        return true;
+      }),
+    [specs, filiereId, departmentId, facultyId, departments],
+  );
+
+  // clear children when a parent becomes incompatible
+  useEffect(() => {
+    if (departmentId && !deptOptions.some((d: any) => d.id === departmentId))
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDepartmentId("");
+  }, [deptOptions, departmentId]);
+  useEffect(() => {
+    if (filiereId && !filiereOptions.some((f: any) => f.id === filiereId))
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFiliereId("");
+  }, [filiereOptions, filiereId]);
+  useEffect(() => {
+    if (
+      specializationId &&
+      !specOptions.some((s: any) => s.id === specializationId)
+    )
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSpecializationId("");
+  }, [specOptions, specializationId]);
+
+  const students = (data?.items ?? []) as any[];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  function applyFilters() {
-    setApplied({
-      search: search || undefined,
-      specializationId: specializationId || undefined,
-      academicYearId: academicYearId || undefined,
-    });
-    setPage(1);
-  }
+  const facultyName = faculties?.find((f: any) => f.id === facultyId)?.name;
+  const deptName = departments?.find((d: any) => d.id === departmentId)?.name;
+  const filiereName = filieres?.find((f: any) => f.id === filiereId)?.name;
+  const specName = specs?.find((s: any) => s.id === specializationId)?.name;
 
-  function handleDelete(s: Student) {
-    if (confirm(t("admin.confirmDeleteStudent", { name: fullName(s) }))) {
-      deleteStudent.mutate(s.id);
-    }
+  const activeFilters =
+    (debouncedSearch ? 1 : 0) +
+    (facultyId ? 1 : 0) +
+    (departmentId ? 1 : 0) +
+    (filiereId ? 1 : 0) +
+    (specializationId ? 1 : 0);
+
+  function clearAll() {
+    setSearch("");
+    setFacultyId("");
+    setDepartmentId("");
+    setFiliereId("");
+    setSpecializationId("");
   }
 
   return (
@@ -136,55 +235,114 @@ export function AdminStudentsPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <div className="relative">
-            <Search
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-clay"
-              size={18}
-            />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-              placeholder={t("admin.searchByNameOrReg")}
-              className="w-full rounded-xl border border-forest/15 bg-cream-2 py-2.5 pr-10 pl-3 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-            />
-          </div>
-
-          <select
-            value={specializationId}
-            onChange={(e) => setSpecializationId(e.target.value)}
-            className="rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
-          >
-            <option value="">{t("admin.allSpecializations")}</option>
-            {specs?.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={academicYearId}
-            onChange={(e) => setAcademicYearId(e.target.value)}
-            className="rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
-          >
-            <option value="">{t("admin.allYears")}</option>
-            {years?.map((y) => (
-              <option key={y.id} value={y.id}>
-                {y.title}
-              </option>
-            ))}
-          </select>
-
-          <button
-            onClick={applyFilters}
-            className="rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
-          >
-            {t("admin.applyFilter")}
-          </button>
+      <div className="mb-4 rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+        <div className="relative mb-3">
+          <Search
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-clay"
+            size={18}
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("admin.searchByNameOrReg")}
+            className="w-full rounded-xl border border-forest/15 bg-cream-2 py-2.5 pr-10 pl-9 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-clay hover:text-forest"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
+
+        {/* row 1: faculty → department → filiere → specialization */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Select
+            label="الكلّية"
+            value={facultyId}
+            onChange={setFacultyId}
+            placeholder="كل الكلّيات"
+            options={(faculties ?? []).map((f: any) => ({
+              v: f.id,
+              l: f.name,
+            }))}
+          />
+          <Select
+            label="القسم"
+            value={departmentId}
+            onChange={setDepartmentId}
+            placeholder="كل الأقسام"
+            options={deptOptions.map((d: any) => ({ v: d.id, l: d.name }))}
+          />
+          <Select
+            label="الشعبة"
+            value={filiereId}
+            onChange={setFiliereId}
+            placeholder="كل الشُّعب"
+            options={filiereOptions.map((f: any) => ({ v: f.id, l: f.name }))}
+          />
+          <Select
+            label={t("admin.specialization")}
+            value={specializationId}
+            onChange={setSpecializationId}
+            placeholder={t("admin.allSpecializations")}
+            options={specOptions.map((s: any) => ({ v: s.id, l: s.name }))}
+          />
+        </div>
+
+        {activeFilters > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-forest/10 pt-3">
+            <SlidersHorizontal size={14} className="text-clay" />
+            {debouncedSearch && (
+              <Chip
+                label={`بحث: ${debouncedSearch}`}
+                onClear={() => setSearch("")}
+              />
+            )}
+            {facultyName && (
+              <Chip
+                label={`الكلّية: ${facultyName}`}
+                onClear={() => setFacultyId("")}
+              />
+            )}
+            {deptName && (
+              <Chip
+                label={`القسم: ${deptName}`}
+                onClear={() => setDepartmentId("")}
+              />
+            )}
+            {filiereName && (
+              <Chip
+                label={`الشعبة: ${filiereName}`}
+                onClear={() => setFiliereId("")}
+              />
+            )}
+            {specName && (
+              <Chip
+                label={`التخصّص: ${specName}`}
+                onClear={() => setSpecializationId("")}
+              />
+            )}
+
+            <button
+              onClick={clearAll}
+              className="ms-auto inline-flex items-center gap-1 text-xs font-medium text-red-500 hover:underline"
+            >
+              <X size={13} /> مسح الكل
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* count */}
+      <div className="mb-3 flex items-center gap-2 text-sm text-clay">
+        <GraduationCap size={15} />
+        <span>{total} طالب</span>
+        {isFetching && (
+          <span className="text-[11px] text-clay/70">· تحديث…</span>
+        )}
       </div>
 
       {/* Table */}
@@ -193,39 +351,38 @@ export function AdminStudentsPage() {
           <table className="w-full text-right">
             <thead>
               <tr className="bg-forest text-cream">
-                <th className="px-5 py-3 text-xs font-medium">
-                  {t("admin.name")}
-                </th>
-                <th className="px-5 py-3 text-xs font-medium">
+                <th className="px-4 py-3 text-xs font-medium">الاسم</th>
+                <th className="px-4 py-3 text-xs font-medium">اللقب</th>
+                <th className="px-4 py-3 text-xs font-medium">
                   {t("admin.regNumber")}
                 </th>
-                <th className="px-5 py-3 text-xs font-medium">
+                <th className="px-4 py-3 text-xs font-medium">
                   {t("admin.specialization")}
                 </th>
-                <th className="px-5 py-3 text-xs font-medium">
+                <th className="px-4 py-3 text-xs font-medium">الشعبة</th>
+                <th className="px-4 py-3 text-xs font-medium">القسم</th>
+                <th className="px-4 py-3 text-xs font-medium">الكلّية</th>
+                <th className="px-4 py-3 text-xs font-medium">
                   {t("admin.academicYear")}
                 </th>
-                <th className="px-5 py-3 text-xs font-medium">
-                  {t("admin.actions")}
-                </th>
+                <th className="w-8 px-4 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-forest/10">
               {isLoading && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={9}
                     className="px-5 py-10 text-center text-sm text-clay"
                   >
                     {"\u2026"}
                   </td>
                 </tr>
               )}
-
               {!isLoading && students.length === 0 && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={9}
                     className="px-5 py-12 text-center text-sm text-clay"
                   >
                     {t("admin.noStudents")}
@@ -233,55 +390,59 @@ export function AdminStudentsPage() {
                 </tr>
               )}
 
-              {students.map((s) => (
-                <tr
-                  key={s.id}
-                  className="transition-colors hover:bg-forest/[0.03]"
-                >
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <div className="grid size-9 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream">
-                        {initials(s.user?.firstName, s.user?.lastName)}
+              {students.map((s) => {
+                const c = chain(s);
+                return (
+                  <tr
+                    key={s.id}
+                    onClick={() => goToStudent(s.id)}
+                    className="cursor-pointer transition-colors hover:bg-forest/[0.04]"
+                  >
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-3">
+                        {s.user?.avatarUrl ? (
+                          <img
+                            src={s.user.avatarUrl}
+                            alt=""
+                            className="size-9 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="grid size-9 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream">
+                            {initials(s.user?.firstName, s.user?.lastName)}
+                          </div>
+                        )}
+                        <span className="text-sm font-medium text-forest">
+                          {s.user?.firstName ?? "\u2014"}
+                        </span>
                       </div>
-                      <span className="text-sm font-medium text-forest">
-                        {fullName(s)}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-clay">
-                    {s.registrationNumber}
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-clay">
-                    {s.specialization?.name ?? "\u2014"}
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-clay">
-                    {s.academicYear?.title ?? "\u2014"}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1">
-                      <button
-                        className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                        title={t("admin.view")}
-                      >
-                        <Eye size={16} />
-                      </button>
-                      <button
-                        className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                        title={t("admin.edit")}
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(s)}
-                        className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
-                        title={t("admin.delete")}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm font-medium text-forest">
+                      {s.user?.lastName ?? "\u2014"}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-clay" dir="ltr">
+                      {s.registrationNumber}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-clay">
+                      {c.specName ?? "\u2014"}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-clay">
+                      {c.filiereName ?? "\u2014"}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-clay">
+                      {c.deptName ?? "\u2014"}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-clay">
+                      {c.facultyName ?? "\u2014"}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-clay">
+                      {s.academicYear?.title ?? "\u2014"}
+                    </td>
+                    <td className="px-4 py-3.5 text-clay">
+                      <ChevronLeft size={16} className="opacity-50" />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -326,6 +487,41 @@ export function AdminStudentsPage() {
   );
 }
 
+/* ── labeled select ───────────────────────────────────────── */
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { v: string; l: string }[];
+  placeholder: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-medium text-clay">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((o) => (
+          <option key={o.v} value={o.v}>
+            {o.l}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function StatTile({
   icon: Icon,
   value,
@@ -347,5 +543,16 @@ function StatTile({
         <p className="text-[11px] text-clay">{label}</p>
       </div>
     </div>
+  );
+}
+
+function Chip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-forest/8 px-2.5 py-1 text-[11px] text-forest">
+      {label}
+      <button onClick={onClear} className="text-clay hover:text-red-500">
+        <X size={12} />
+      </button>
+    </span>
   );
 }
