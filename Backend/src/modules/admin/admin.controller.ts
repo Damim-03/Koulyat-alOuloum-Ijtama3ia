@@ -18,6 +18,8 @@ import {
   updateFacultySchema,
   createDepartmentSchema,
   updateDepartmentSchema,
+  createFiliereSchema,
+  updateFiliereSchema,
   createSpecializationSchema,
   updateSpecializationSchema,
   createAcademicYearSchema,
@@ -28,8 +30,22 @@ import {
   assignStudentSchema,
   createDefenseSchema,
   updateDefenseSchema,
+  listNotificationsSchema,
+  listProfessorsSchema,
+  createDomainSchema,
+  listDomainsSchema,
+  updateDomainSchema,
+  ListDomainsDTO,
+  ListFilieresDTO,
+  listFilieresSchema,
 } from "./admin.validation";
 import * as svc from "./admin.service";
+import {
+  listNotificationsService,
+  unreadCountService,
+  markNotificationReadService,
+  markAllNotificationsReadService,
+} from "../notification/notification.service";
 
 // Small helper: validate body and throw a uniform error on failure.
 function parseBody<T>(
@@ -58,6 +74,19 @@ export const getOverviewStatsController = async (
   try {
     const stats = await svc.getOverviewStatsService();
     return res.status(HTTPSTATUS.OK).json({ stats });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const getDashboardController = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = await svc.getDashboardService();
+    return res.status(HTTPSTATUS.OK).json(data);
   } catch (e) {
     next(e);
   }
@@ -257,13 +286,23 @@ export const deleteStudentController = async (
 // ─── PROFESSORS ───────────────────────────────────────────────
 //
 
+export const uploadImageController = (req: Request, res: Response) => {
+  if (!req.file)
+    throw new BadRequestException(
+      "لم يُرفَع أي ملفّ",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  const url = `${req.protocol}://${req.get("host")}/uploads/cards/${req.file.filename}`;
+  return res.status(HTTPSTATUS.OK).json({ url });
+};
+
 export const listProfessorsController = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    const q = parseBody(listQuerySchema, req.query);
+    const q = parseBody(listProfessorsSchema, req.query);
     const data = await svc.listProfessorsService(q as never);
     return res.status(HTTPSTATUS.OK).json(data);
   } catch (e) {
@@ -400,6 +439,71 @@ export const deleteFacultyController = async (
 };
 
 //
+// ─── DOMAINS ──────────────────────────────────────────────────
+//
+export const listDomainsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const q = parseBody<ListDomainsDTO>(listDomainsSchema, req.query);
+    const domains = await svc.listDomainsService(q.departmentId);
+    return res.status(HTTPSTATUS.OK).json({ domains });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const createDomainController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(createDomainSchema, req.body);
+    const domain = await svc.createDomainService(data as never);
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Domain created", domain });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const updateDomainController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(updateDomainSchema, req.body);
+    const domain = await svc.updateDomainService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Domain updated", domain });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const deleteDomainController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await svc.deleteDomainService(req.params.id as string);
+    return res.status(HTTPSTATUS.OK).json(result);
+  } catch (e) {
+    next(e);
+  }
+};
+
+//
 // ─── DEPARTMENTS ──────────────────────────────────────────────
 //
 
@@ -458,6 +562,72 @@ export const deleteDepartmentController = async (
 ) => {
   try {
     const result = await svc.deleteDepartmentService(req.params.id as string);
+    return res.status(HTTPSTATUS.OK).json(result);
+  } catch (e) {
+    next(e);
+  }
+};
+
+//
+// ─── FILIERES ─────────────────────────────────────────────────
+//
+
+export const listFilieresController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const q = parseBody<ListFilieresDTO>(listFilieresSchema, req.query);
+    const filieres = await svc.listFilieresService(q);
+    return res.status(HTTPSTATUS.OK).json({ filieres });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const createFiliereController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(createFiliereSchema, req.body);
+    const filiere = await svc.createFiliereService(data as never);
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Filiere created", filiere });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const updateFiliereController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(updateFiliereSchema, req.body);
+    const filiere = await svc.updateFiliereService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Filiere updated", filiere });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const deleteFiliereController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await svc.deleteFiliereService(req.params.id as string);
     return res.status(HTTPSTATUS.OK).json(result);
   } catch (e) {
     next(e);
@@ -982,6 +1152,83 @@ export const rejectGroupRequestController = async (
     return res
       .status(HTTPSTATUS.OK)
       .json({ message: "Group request rejected", groupRequest });
+  } catch (e) {
+    next(e);
+  }
+};
+
+//
+// ─── NOTIFICATIONS (admin's own bell) ─────────────────────────
+//
+
+// عدِّل هذا إن كان وسيط المصادقة يخزّن المستخدم بمفتاح مختلف
+// (مثل req.userId أو req.user.userId).
+const getAuthUserId = (req: Request): string => {
+  const id =
+    (req as any).user?.id ?? (req as any).user?.userId ?? (req as any).userId;
+  if (!id)
+    throw new BadRequestException(
+      "Authenticated user not found",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  return id as string;
+};
+
+export const listMyNotificationsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const q = listNotificationsSchema.parse(req.query);
+    const data = await listNotificationsService(getAuthUserId(req), {
+      page: q.page,
+      limit: q.limit,
+      onlyUnread: q.unread,
+    });
+    return res.status(HTTPSTATUS.OK).json(data);
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const unreadNotificationsCountController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = await unreadCountService(getAuthUserId(req));
+    return res.status(HTTPSTATUS.OK).json(data);
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const markNotificationReadController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = await markNotificationReadService(
+      getAuthUserId(req),
+      req.params.id as string,
+    );
+    return res.status(HTTPSTATUS.OK).json(data);
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const markAllNotificationsReadController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = await markAllNotificationsReadService(getAuthUserId(req));
+    return res.status(HTTPSTATUS.OK).json(data);
   } catch (e) {
     next(e);
   }

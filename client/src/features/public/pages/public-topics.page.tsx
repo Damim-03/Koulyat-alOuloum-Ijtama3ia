@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Search, User, Lock, Bookmark } from "lucide-react";
 import {
@@ -7,6 +7,9 @@ import {
   usePublicDepartments,
   usePublicSpecializations,
 } from "../hooks/public-hook";
+import { useAuth } from "../../../hooks/use-auth";
+import { useLanguage } from "../../../hooks/use-language";
+import { PATHS } from "../../../routes/paths";
 import type { PublicTopic } from "../../../types/public.types";
 
 const PAGE_SIZE = 9;
@@ -15,6 +18,21 @@ export function PublicTopicsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { lang } = useParams();
+
+  // Topics are for LOGGED-IN users only. A visitor (not authenticated) is sent
+  // to the login page, remembering this path so they return here afterwards.
+  const { isAuthenticated } = useAuth();
+  const { localePath } = useLanguage();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate(localePath(PATHS.login), {
+        state: { from: location.pathname },
+        replace: true,
+      });
+    }
+  }, [isAuthenticated, navigate, localePath, location.pathname]);
 
   const [search, setSearch] = useState("");
   const [departmentId, setDepartmentId] = useState("");
@@ -55,6 +73,10 @@ export function PublicTopicsPage() {
   function openDetail(id: string) {
     navigate(`/${lang}/topics/${id}`);
   }
+
+  // Visitors are being redirected to login — render nothing to avoid a flash
+  // of the topics page.
+  if (!isAuthenticated) return null;
 
   return (
     <div className="font-body mx-auto w-full max-w-7xl px-6 py-10">

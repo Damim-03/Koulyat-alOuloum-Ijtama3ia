@@ -11,6 +11,7 @@ const KEYS = {
   departments: ["admin", "departments"] as const,
   specializations: ["admin", "specializations"] as const,
   academicYears: ["admin", "academic-years"] as const,
+  dashboard: ["admin", "dashboard"] as const,
   topics: (p?: object) => ["admin", "topics", p ?? {}] as const,
   applications: (p?: object) => ["admin", "applications", p ?? {}] as const,
   projects: (p?: object) => ["admin", "projects", p ?? {}] as const,
@@ -23,12 +24,30 @@ export function useAdminStats() {
 }
 
 // ─── USERS ───
+export function useUser(id: string | null) {
+  return useQuery({
+    queryKey: ["admin", "user", id],
+    queryFn: () => adminApi.getUser(id as string),
+    enabled: !!id,
+  });
+}
+
 export function useUsers(params?: ListParams) {
   return useQuery({
     queryKey: KEYS.users(params),
     queryFn: () => adminApi.listUsers(params),
   });
 }
+
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      adminApi.resetUserPassword(id, password),
+    onSuccess: () => toast.success("تم تغيير كلمة المرور"),
+    onError: () => toast.error("تعذّر تغيير كلمة المرور"),
+  });
+}
+
 export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
@@ -69,6 +88,14 @@ export function useSetUserStatus() {
     onError: () => toast.error("تعذّر تحديث الحالة"),
   });
 }
+
+export function useAdminDashboard() {
+  return useQuery({
+    queryKey: KEYS.dashboard,
+    queryFn: adminApi.getDashboard,
+    staleTime: 60_000,
+  });
+}
 export function useDeleteUser() {
   const qc = useQueryClient();
   return useMutation({
@@ -81,6 +108,50 @@ export function useDeleteUser() {
   });
 }
 
+// ─── DOMAINS (الميادين) ───
+export function useDomains(departmentId?: string) {
+  return useQuery({
+    queryKey: ["admin", "domains", departmentId ?? null],
+    queryFn: () => adminApi.listDomains(departmentId),
+  });
+}
+export function useCreateDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: unknown) => adminApi.createDomain(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "domains"] });
+      qc.invalidateQueries({ queryKey: ["admin", "departments"] });
+      toast.success("تم إضافة الميدان");
+    },
+    onError: () => toast.error("تعذّر الإضافة"),
+  });
+}
+export function useUpdateDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: unknown }) =>
+      adminApi.updateDomain(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "domains"] });
+      toast.success("تم التحديث");
+    },
+    onError: () => toast.error("تعذّر التحديث"),
+  });
+}
+export function useDeleteDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.deleteDomain(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "domains"] });
+      qc.invalidateQueries({ queryKey: ["admin", "departments"] });
+      toast.success("تم الحذف");
+    },
+    onError: () => toast.error("تعذّر الحذف"),
+  });
+}
+
 // ─── STUDENTS ───
 export function useStudents(params?: ListParams) {
   return useQuery({
@@ -88,6 +159,15 @@ export function useStudents(params?: ListParams) {
     queryFn: () => adminApi.listStudents(params),
   });
 }
+
+export function useStudent(id: string | null) {
+  return useQuery({
+    queryKey: ["admin", "student", id],
+    queryFn: () => adminApi.getStudent(id as string),
+    enabled: !!id,
+  });
+}
+
 export function useCreateStudent() {
   const qc = useQueryClient();
   return useMutation({
@@ -124,6 +204,22 @@ export function useDeleteStudent() {
 }
 
 // ─── PROFESSORS ───
+
+export function useProfessor(id: string | null) {
+  return useQuery({
+    queryKey: ["admin", "professor", id],
+    queryFn: () => adminApi.getProfessor(id as string),
+    enabled: !!id,
+  });
+}
+
+export function useUploadImage() {
+  return useMutation({
+    mutationFn: (file: File) => adminApi.uploadImage(file),
+    onError: () => toast.error("تعذّر رفع الصورة"),
+  });
+}
+
 export function useProfessors(params?: ListParams) {
   return useQuery({
     queryKey: KEYS.professors(params),
@@ -146,8 +242,9 @@ export function useUpdateProfessor() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: unknown }) =>
       adminApi.updateProfessor(id, data),
-    onSuccess: () => {
+    onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: ["admin", "professors"] });
+      qc.invalidateQueries({ queryKey: ["admin", "professor", v.id] });
       toast.success("تم تحديث الأستاذ");
     },
     onError: () => toast.error("تعذّر التحديث"),
@@ -168,8 +265,8 @@ export function useDeleteProfessor() {
 // ─── FACULTIES ───
 export function useFaculties() {
   return useQuery({
-    queryKey: KEYS.faculties,
-    queryFn: adminApi.listFaculties,
+    queryKey: ["admin", "faculties"],
+    queryFn: () => adminApi.listFaculties(),
   });
 }
 export function useCreateFaculty() {
@@ -256,6 +353,58 @@ export function useSpecializations() {
     queryFn: adminApi.listSpecializations,
   });
 }
+
+export function useFilieresByDomain(domainId?: string) {
+  return useQuery({
+    queryKey: ["admin", "filieres", "by-domain", domainId ?? null],
+    queryFn: () => adminApi.listFilieresByDomain(domainId),
+    enabled: !!domainId,
+  });
+}
+export function useCreateFiliere() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: unknown) => adminApi.createFiliere(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "filieres"] });
+      qc.invalidateQueries({ queryKey: ["admin", "domains"] });
+      toast.success("تم إضافة الشعبة");
+    },
+    onError: () => toast.error("تعذّر الإضافة"),
+  });
+}
+export function useUpdateFiliere() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: unknown }) =>
+      adminApi.updateFiliere(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "filieres"] });
+      toast.success("تم التحديث");
+    },
+    onError: () => toast.error("تعذّر التحديث"),
+  });
+}
+export function useDeleteFiliere() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.deleteFiliere(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "filieres"] });
+      qc.invalidateQueries({ queryKey: ["admin", "domains"] });
+      toast.success("تم الحذف");
+    },
+    onError: () => toast.error("تعذّر الحذف"),
+  });
+}
+
+export function useFilieres() {
+  return useQuery({
+    queryKey: ["admin", "filieres"],
+    queryFn: () => adminApi.listFilieres(), // بلا وسيط → كل الشُّعب (نُصفّيها محلياً)
+  });
+}
+
 export function useCreateSpecialization() {
   const qc = useQueryClient();
   return useMutation({

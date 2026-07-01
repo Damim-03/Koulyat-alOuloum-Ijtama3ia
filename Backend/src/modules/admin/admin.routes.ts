@@ -4,6 +4,12 @@ import { adminOrOwner, ownerOnly } from "../../core/utils/roleGuard";
 import {
   // stats
   getOverviewStatsController,
+  getDashboardController,
+  // notifications
+  listMyNotificationsController,
+  unreadNotificationsCountController,
+  markNotificationReadController,
+  markAllNotificationsReadController,
   // users
   listUsersController,
   getUserController,
@@ -34,6 +40,11 @@ import {
   createDepartmentController,
   updateDepartmentController,
   deleteDepartmentController,
+  // filieres
+  listFilieresController,
+  createFiliereController,
+  updateFiliereController,
+  deleteFiliereController,
   // specializations
   listSpecializationsController,
   createSpecializationController,
@@ -72,7 +83,14 @@ import {
   createDefenseController,
   updateDefenseController,
   deleteDefenseController,
+  uploadImageController,
+  // domains
+  listDomainsController,
+  createDomainController,
+  updateDomainController,
+  deleteDomainController,
 } from "./admin.controller";
+import { cardUpload } from "../../core/middleware/upload.middleware";
 
 const adminRoutes = Router();
 
@@ -84,6 +102,22 @@ adminRoutes.use(adminOrOwner());
 // ─── STATS ────────────────────────────────────────────────────
 //
 adminRoutes.get("/stats/overview", getOverviewStatsController);
+adminRoutes.get("/dashboard", getDashboardController);
+
+//
+// ─── NOTIFICATIONS (admin's own bell) ─────────────────────────
+//
+// Literal paths first so they don't get captured by "/:id/read".
+adminRoutes.get("/notifications", listMyNotificationsController);
+adminRoutes.get(
+  "/notifications/unread-count",
+  unreadNotificationsCountController,
+);
+adminRoutes.patch(
+  "/notifications/read-all",
+  markAllNotificationsReadController,
+);
+adminRoutes.patch("/notifications/:id/read", markNotificationReadController);
 
 //
 // ─── USERS ────────────────────────────────────────────────────
@@ -108,6 +142,13 @@ adminRoutes.delete("/students/:id", ownerOnly(), deleteStudentController);
 //
 // ─── PROFESSORS ───────────────────────────────────────────────
 //
+
+adminRoutes.post(
+  "/uploads/image",
+  cardUpload.single("image"),
+  uploadImageController,
+);
+
 adminRoutes.get("/professors", listProfessorsController);
 adminRoutes.get("/professors/:id", getProfessorController);
 adminRoutes.post("/professors", createProfessorController);
@@ -129,6 +170,22 @@ adminRoutes.get("/departments", listDepartmentsController);
 adminRoutes.post("/departments", createDepartmentController);
 adminRoutes.patch("/departments/:id", updateDepartmentController);
 adminRoutes.delete("/departments/:id", deleteDepartmentController);
+
+//
+// ─── DOMAINS ──────────────────────────────────────────────────
+//
+adminRoutes.get("/domains", listDomainsController);
+adminRoutes.post("/domains", createDomainController);
+adminRoutes.patch("/domains/:id", updateDomainController);
+adminRoutes.delete("/domains/:id", deleteDomainController);
+
+//
+// ─── FILIERES ─────────────────────────────────────────────────
+//
+adminRoutes.get("/filieres", listFilieresController);
+adminRoutes.post("/filieres", createFiliereController);
+adminRoutes.patch("/filieres/:id", updateFiliereController);
+adminRoutes.delete("/filieres/:id", deleteFiliereController);
 
 //
 // ─── SPECIALIZATIONS ──────────────────────────────────────────

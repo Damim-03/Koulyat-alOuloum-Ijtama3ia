@@ -48,6 +48,14 @@ import { AdminTopicDetailPage } from "../features/admin/pages/topic-detail.page"
 import { AdminGroupRequestsPage } from "../features/admin/pages/group-requests.page";
 import { PublicTopicDetailPage } from "../features/public/pages/public-topic-detail.page";
 import { PublicTopicsPage } from "../features/public/pages/public-topics.page";
+import { AdminUserDetailPage } from "../features/admin/pages/user-detail.page";
+import { AdminStudentDetailPage } from "../features/admin/pages/student-detail.page";
+import { AdminProfessorDetailPage } from "../features/admin/pages/professor-detail-page";
+import { FacultyDetailPage } from "../features/admin/pages/FacultyDetailPage";
+import { DomainDetailPage } from "../features/admin/pages/DomainDetailPage";
+//import { DepartmentDetailPage } from "../features/admin/pages/DepartmentDetailPage";
+import { FiliereDetailPage } from "../features/admin/pages/FiliereDetailPage";
+import { DepartmentDetailPage } from "../features/admin/pages/DepartmentDetailPage";
 
 export function AppRouter() {
   return (
@@ -139,8 +147,11 @@ export function AppRouter() {
         >
           <Route index element={<AdminDashboardPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
+          <Route path="students/:id" element={<AdminStudentDetailPage />} />
           <Route path="users" element={<AdminUsersPage />} />
+          <Route path="users/:id" element={<AdminUserDetailPage />} />
           <Route path="professors" element={<AdminProfessorsPage />} />
+          <Route path="professors/:id" element={<AdminProfessorDetailPage />} />
           <Route
             path="specializations"
             element={<AdminAcademicStructurePage />}
@@ -157,6 +168,19 @@ export function AppRouter() {
             element={<AdminAcademicStructurePage />}
           />
           <Route path="faculties" element={<AdminFacultiesPage />} />
+          <Route path="faculties/:facultyId" element={<FacultyDetailPage />} />
+          <Route
+            path="faculties/:facultyId/departments/:departmentId"
+            element={<DepartmentDetailPage />}
+          />
+          <Route
+            path="faculties/:facultyId/departments/:departmentId/domains/:domainId"
+            element={<DomainDetailPage />}
+          />
+          <Route
+            path="faculties/:facultyId/departments/:departmentId/domains/:domainId/filieres/:filiereId"
+            element={<FiliereDetailPage />}
+          />
         </Route>
       </Route>
 

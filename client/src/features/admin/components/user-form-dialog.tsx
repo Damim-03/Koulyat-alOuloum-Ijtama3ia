@@ -17,6 +17,8 @@ import {
   Layers,
   CalendarDays,
   Network,
+  Building2,
+  GitBranch,
   Sparkles,
 } from "lucide-react";
 import { FormDialog, Field, inputClass } from "./form-dialog";
@@ -32,7 +34,10 @@ import {
   useSpecializations,
   useAcademicYears,
   useDepartments,
+  useFaculties,
+  useFilieres,
 } from "../hooks/admin-hook";
+import { TagInput } from "./tag-input";
 
 interface Props {
   open: boolean;
@@ -59,7 +64,11 @@ interface FormValues {
   // professor
   employeeNumber?: string;
   universityEmail?: string;
-  departmentId?: string;
+  facultyId?: string; // helper (not persisted)
+  departmentId?: string; // persisted
+  filiereId?: string; // helper (not persisted)
+  grade?: string[];
+  tags?: string[];
 }
 
 const EMPTY: FormValues = {
@@ -74,23 +83,26 @@ const EMPTY: FormValues = {
   academicYearId: "",
   employeeNumber: "",
   universityEmail: "",
+  facultyId: "",
   departmentId: "",
+  filiereId: "",
+  grade: [],
+  tags: [],
 };
 
-/** Strip empty strings → undefined before sending to the backend. */
+/** Strip empty strings/empty arrays + the helper-only fields before sending. */
 function clean<T extends Record<string, unknown>>(obj: T): Partial<T> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (v !== "" && v !== undefined && v !== null) out[k] = v;
+    if (Array.isArray(v)) {
+      if (v.length > 0) out[k] = v;
+    } else if (v !== "" && v !== undefined && v !== null) {
+      out[k] = v;
+    }
   }
   return out as Partial<T>;
 }
 
-/**
- * Generate a practically-unique employee number: EMP-<base36 time><rand>.
- * Final uniqueness is still enforced by the DB (employeeNumber @unique);
- * if a collision ever occurs the backend rejects it and the user re-rolls.
- */
 function generateEmployeeNumber(): string {
   const time = Date.now().toString(36).toUpperCase().slice(-6);
   const rand = Math.floor(Math.random() * 1296)
@@ -117,12 +129,12 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
     createStudent.isPending ||
     createProfessor.isPending;
 
-  // lists for the student/professor selects
   const { data: specializations } = useSpecializations();
   const { data: years } = useAcademicYears();
   const { data: departments } = useDepartments();
+  const { data: faculties } = useFaculties();
+  const { data: filieres } = useFilieres();
 
-  // Validate with the schema that matches the chosen role.
   const resolver: Resolver<FormValues> = async (values, ctx, opts) => {
     const schema =
       values.role === "student"
@@ -130,7 +142,6 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
         : values.role === "professor"
           ? createProfessorSchema
           : createUserSchema;
-    // keep `role` available after parsing (zod strips unknown keys)
     return zodResolver(schema as never)(values, ctx, opts) as never;
   };
 
@@ -144,6 +155,24 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
   } = useForm<FormValues>({ resolver, defaultValues: initial });
 
   const role = watch("role");
+  const facultyId = watch("facultyId");
+  const departmentId = watch("departmentId");
+
+  // ── cascading options for the professor branch ──
+  const deptOptions = useMemo(
+    () =>
+      (departments ?? []).filter(
+        (d) => !facultyId || d.facultyId === facultyId,
+      ),
+    [departments, facultyId],
+  );
+  const filiereOptions = useMemo(
+    () =>
+      (filieres ?? []).filter(
+        (f) => !departmentId || f.departmentId === departmentId,
+      ),
+    [filieres, departmentId],
+  );
 
   useEffect(() => {
     if (open) {
@@ -154,6 +183,9 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
 
   function onSubmit(values: FormValues) {
     const payload = clean(values);
+    // strip helper-only fields the backend doesn't accept
+    delete (payload as Record<string, unknown>).facultyId;
+    delete (payload as Record<string, unknown>).filiereId;
     const done = () => {
       onClose();
       reset(initial);
@@ -169,7 +201,6 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
     }
   }
 
-  // typed access to role-specific errors (resolver returns a union)
   const e = errors as Record<string, { message?: string } | undefined>;
 
   return (
@@ -211,7 +242,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
         onSubmit={handleSubmit(onSubmit)}
         className="space-y-4"
       >
-        {/* role FIRST — drives the rest of the form (hidden when locked) */}
+        {/* role FIRST */}
         {!lockedRole && (
           <Field
             label={t("admin.userRole")}
@@ -227,7 +258,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
           </Field>
         )}
 
-        {/* name (shared by all roles) */}
+        {/* name (shared) */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field
             label={t("admin.firstName")}
@@ -253,7 +284,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
           </Field>
         </div>
 
-        {/* ── STUDENT fields ── */}
+        {/* ── STUDENT ── */}
         {role === "student" && (
           <>
             <Field
@@ -316,7 +347,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
           </>
         )}
 
-        {/* ── PROFESSOR fields ── */}
+        {/* ── PROFESSOR ── */}
         {role === "professor" && (
           <>
             <Field
@@ -331,54 +362,116 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                 placeholder="prof@univ-eloued.dz"
               />
             </Field>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Field
-                label={t("admin.employeeNumber")}
-                icon={Hash}
-                error={e.employeeNumber?.message}
-              >
-                <div className="flex gap-2">
-                  <input
-                    {...register("employeeNumber")}
-                    dir="ltr"
-                    className={inputClass}
-                    placeholder="EMP-0001"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setValue("employeeNumber", generateEmployeeNumber(), {
-                        shouldValidate: true,
-                        shouldDirty: true,
-                      })
-                    }
-                    title={t("admin.generate")}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-forest/20 bg-cream-2 px-3 text-xs font-semibold text-forest transition hover:border-gold hover:bg-gold/10"
-                  >
-                    <Sparkles size={14} />
-                    {t("admin.generate")}
-                  </button>
-                </div>
+
+            <Field
+              label={t("admin.employeeNumber")}
+              icon={Hash}
+              error={e.employeeNumber?.message}
+            >
+              <div className="flex gap-2">
+                <input
+                  {...register("employeeNumber")}
+                  dir="ltr"
+                  className={inputClass}
+                  placeholder="EMP-0001"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setValue("employeeNumber", generateEmployeeNumber(), {
+                      shouldValidate: true,
+                      shouldDirty: true,
+                    })
+                  }
+                  title={t("admin.generate")}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-forest/20 bg-cream-2 px-3 text-xs font-semibold text-forest transition hover:border-gold hover:bg-gold/10"
+                >
+                  <Sparkles size={14} />
+                  {t("admin.generate")}
+                </button>
+              </div>
+            </Field>
+
+            {/* cascading: faculty → department → filiere */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <Field label="الكلّية" icon={Building2}>
+                <select
+                  {...register("facultyId", {
+                    onChange: () => {
+                      setValue("departmentId", "");
+                      setValue("filiereId", "");
+                    },
+                  })}
+                  className={inputClass}
+                >
+                  <option value="">كل الكلّيات</option>
+                  {faculties?.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field
                 label={t("admin.department")}
                 icon={Network}
                 error={e.departmentId?.message}
               >
-                <select {...register("departmentId")} className={inputClass}>
+                <select
+                  {...register("departmentId", {
+                    onChange: () => setValue("filiereId", ""),
+                  })}
+                  className={inputClass}
+                >
                   <option value="">{t("admin.selectDepartment")}</option>
-                  {departments?.map((d) => (
+                  {deptOptions.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
                     </option>
                   ))}
                 </select>
               </Field>
+              <Field label="الشعبة" icon={GitBranch}>
+                <select {...register("filiereId")} className={inputClass}>
+                  <option value="">كل الشُّعب</option>
+                  {filiereOptions.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            {/* الرتبة + الصفة */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <TagInput
+                label="الرتبة"
+                placeholder="أضِف رتبة ثم Enter…"
+                value={watch("grade") ?? []}
+                onChange={(v) =>
+                  setValue("grade", v, {
+                    shouldValidate: true,
+                    shouldDirty: true,
+                  })
+                }
+              />
+              <TagInput
+                label="الصفة"
+                placeholder="أضِف صفة ثم Enter…"
+                value={watch("tags") ?? []}
+                onChange={(v) =>
+                  setValue("tags", v, {
+                    shouldValidate: true,
+                    shouldDirty: true,
+                  })
+                }
+              />
             </div>
           </>
         )}
 
-        {/* ── ADMIN / OWNER fields ── */}
+        {/* ── ADMIN / OWNER ── */}
         {(role === "admin" || role === "owner") && (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field
@@ -408,7 +501,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
           </div>
         )}
 
-        {/* password (shared by all roles) */}
+        {/* password (shared) */}
         <Field
           label={t("admin.password")}
           icon={Lock}
@@ -432,7 +525,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
           </div>
         </Field>
 
-        {/* Important note */}
+        {/* note */}
         <div className="rounded-xl bg-cream-2 px-4 py-3">
           <p className="mb-1 text-xs font-bold text-forest">
             {t("admin.importantNote")}

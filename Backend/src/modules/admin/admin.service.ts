@@ -21,6 +21,8 @@ import {
   UpdateFacultyDTO,
   CreateDepartmentDTO,
   UpdateDepartmentDTO,
+  CreateFiliereDTO,
+  UpdateFiliereDTO,
   CreateSpecializationDTO,
   UpdateSpecializationDTO,
   CreateAcademicYearDTO,
@@ -31,8 +33,12 @@ import {
   AssignStudentDTO,
   CreateDefenseDTO,
   UpdateDefenseDTO,
+  ListProfessorsDTO,
+  CreateDomainDTO,
+  UpdateDomainDTO,
 } from "./admin.validation";
 import { Role } from "../../generated/prisma";
+import { createNotification } from "../notification/notification.service";
 
 const SALT_ROUNDS = 10;
 
@@ -42,11 +48,43 @@ const userSelect = {
   lastName: true,
   email: true,
   username: true,
+  avatarUrl: true, // ← جديد
   role: true,
   status: true,
   isVerified: true,
   lastLoginAt: true,
   createdAt: true,
+};
+
+// Rich user projection for the student profile (adds avatar + phone).
+const studentUserSelect = {
+  ...userSelect,
+  avatarUrl: true,
+  phone: true,
+};
+
+// Rich user projection for the professor profile (adds phone).
+const professorUserSelect = {
+  ...userSelect,
+  phone: true,
+};
+
+// Resolve the userId of a topic's supervising professor (for notifications).
+const getTopicProfessorUserId = async (topicId: string) => {
+  const t = await prisma.graduationTopic.findUnique({
+    where: { id: topicId },
+    select: { professor: { select: { userId: true } } },
+  });
+  return t?.professor.userId ?? null;
+};
+
+// Resolve a student's userId (for notifications).
+const getStudentUserId = async (studentId: string) => {
+  const s = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: { userId: true },
+  });
+  return s?.userId ?? null;
 };
 
 //
@@ -83,6 +121,308 @@ export const getOverviewStatsService = async () => {
 };
 
 //
+// ════════ DASHBOARD ════════
+//
+// Aggregated payload for the admin dashboard page:
+//   stats             → counters row
+//   pendingProposals  → topics professors submitted, awaiting admin approval
+//   recentRequests    → latest team (group) requests: topic + the students
+//   upcomingDefenses  → next scheduled defenses
+//   attention         → items that need the admin to act
+//   topicBreakdown    → topic count per status (for a small chart)
+//
+const DASHBOARD_STALE_DAYS = 3;
+
+export const getDashboardService = async () => {
+  const now = new Date();
+  const staleBefore = new Date(
+    now.getTime() - DASHBOARD_STALE_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  // أشهر آخر 6 أشهر (للنموّ).
+  const months: { month: string; start: Date; end: Date }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+    months.push({
+      month: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`,
+      start,
+      end,
+    });
+  }
+
+  const [
+    // counters
+    students,
+    professors,
+    openTopics,
+    fullTopics,
+    pendingTopics,
+    pendingApplications,
+    pendingGroupRequests,
+    upcomingDefensesCount,
+    // lists
+    pendingProposals,
+    recentRequests,
+    upcomingDefenses,
+    staleProposals,
+    openWithoutRequests,
+    breakdownGrouped,
+    // widgets
+    activeAcademicYear,
+    healthGrouped,
+    studentsPerSpecRows,
+    // trends (this month vs previous)
+    studentsThisMonth,
+    studentsPrevMonth,
+    topicsThisMonth,
+    topicsPrevMonth,
+    requestsThisMonth,
+    requestsPrevMonth,
+    // monthly growth (6m)
+    monthlyGrowth,
+  ] = await Promise.all([
+    prisma.student.count(),
+    prisma.professor.count(),
+    prisma.graduationTopic.count({ where: { status: "open" } }),
+    prisma.graduationTopic.count({ where: { status: "full" } }),
+    prisma.graduationTopic.count({ where: { status: "pending" } }),
+    prisma.topicApplication.count({ where: { status: "pending" } }),
+    prisma.groupRequest.count({ where: { status: "pending" } }),
+    prisma.defense.count({
+      where: { status: "scheduled", date: { gte: now } },
+    }),
+
+    // مقترحات الأساتذة المعلّقة
+    prisma.graduationTopic.findMany({
+      where: { status: "pending" },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: {
+        id: true,
+        title: true,
+        maxStudents: true,
+        createdAt: true,
+        professor: {
+          select: { user: { select: { firstName: true, lastName: true } } },
+        },
+        specialization: { select: { id: true, name: true } },
+      },
+    }),
+
+    // آخر طلبات الفرق: الموضوع + الطلبة
+    prisma.groupRequest.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: {
+        id: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        topic: { select: { id: true, title: true } },
+        leader: {
+          select: {
+            registrationNumber: true,
+            user: { select: { firstName: true, lastName: true } },
+          },
+        },
+        members: {
+          select: {
+            student: {
+              select: {
+                registrationNumber: true,
+                user: { select: { firstName: true, lastName: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+
+    // مناقشات قادمة
+    prisma.defense.findMany({
+      where: { status: "scheduled", date: { gte: now } },
+      orderBy: { date: "asc" },
+      take: 5,
+      select: {
+        id: true,
+        date: true,
+        room: true,
+        group: { select: { topic: { select: { id: true, title: true } } } },
+      },
+    }),
+
+    // يحتاج انتباهك: مقترحات معلّقة منذ أكثر من 3 أيام
+    prisma.graduationTopic.findMany({
+      where: { status: "pending", createdAt: { lt: staleBefore } },
+      orderBy: { createdAt: "asc" },
+      take: 5,
+      select: {
+        id: true,
+        title: true,
+        createdAt: true,
+        professor: {
+          select: { user: { select: { firstName: true, lastName: true } } },
+        },
+      },
+    }),
+
+    // يحتاج انتباهك: مواضيع منشورة بلا أي طلب
+    prisma.graduationTopic.findMany({
+      where: {
+        status: "open",
+        applications: { none: {} },
+        groupRequests: { none: {} },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        title: true,
+        updatedAt: true,
+        specialization: { select: { id: true, name: true } },
+      },
+    }),
+
+    // توزيع المواضيع حسب الحالة
+    prisma.graduationTopic.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+    }),
+
+    // السنة الجامعية النشطة
+    prisma.academicYear.findFirst({
+      where: { isActive: true },
+      select: { id: true, title: true, isActive: true },
+    }),
+
+    // صحّة النظام: تجميع المستخدمين حسب الحالة
+    prisma.user.groupBy({ by: ["status"], _count: { _all: true } }),
+
+    // الطلبة لكل تخصص (لرسم أعمدة)
+    prisma.specialization.findMany({
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { students: true } },
+      },
+      orderBy: { students: { _count: "desc" } },
+      take: 8,
+    }),
+
+    // اتّجاهات: هذا الشهر مقابل السابق
+    prisma.student.count({ where: { createdAt: { gte: thisMonthStart } } }),
+    prisma.student.count({
+      where: { createdAt: { gte: prevMonthStart, lt: thisMonthStart } },
+    }),
+    prisma.graduationTopic.count({
+      where: { createdAt: { gte: thisMonthStart } },
+    }),
+    prisma.graduationTopic.count({
+      where: { createdAt: { gte: prevMonthStart, lt: thisMonthStart } },
+    }),
+    prisma.groupRequest.count({
+      where: { createdAt: { gte: thisMonthStart } },
+    }),
+    prisma.groupRequest.count({
+      where: { createdAt: { gte: prevMonthStart, lt: thisMonthStart } },
+    }),
+
+    // نموّ آخر 6 أشهر
+    Promise.all(
+      months.map(async (m) => {
+        const [s, t, p] = await Promise.all([
+          prisma.student.count({
+            where: { createdAt: { gte: m.start, lt: m.end } },
+          }),
+          prisma.graduationTopic.count({
+            where: { createdAt: { gte: m.start, lt: m.end } },
+          }),
+          prisma.projectGroup.count({
+            where: { createdAt: { gte: m.start, lt: m.end } },
+          }),
+        ]);
+        return { month: m.month, students: s, topics: t, projects: p };
+      }),
+    ),
+  ]);
+
+  // ── توزيع الحالات بترتيب ثابت ──
+  const STATUS_ORDER = [
+    "pending",
+    "approved",
+    "open",
+    "full",
+    "rejected",
+    "archived",
+  ] as const;
+  const breakdownMap = new Map(
+    breakdownGrouped.map((g) => [g.status, g._count._all]),
+  );
+  const topicBreakdown = STATUS_ORDER.map((status) => ({
+    status,
+    count: breakdownMap.get(status) ?? 0,
+  }));
+
+  // ── صحّة النظام ──
+  const healthMap = new Map(
+    healthGrouped.map((g) => [g.status, g._count._all]),
+  );
+  const activeUsers = healthMap.get("active") ?? 0;
+  const suspendedUsers = healthMap.get("suspended") ?? 0;
+  const systemHealth = {
+    totalAccounts: activeUsers + suspendedUsers,
+    activeUsers,
+    suspendedUsers,
+  };
+
+  // ── الطلبة لكل تخصص ──
+  const studentsPerSpecialization = studentsPerSpecRows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    count: r._count.students,
+  }));
+
+  // ── الاتّجاهات (مقارنة شهرية) ──
+  const trend = (current: number, previous: number) => ({
+    current,
+    previous,
+    delta: current - previous,
+  });
+  const trends = {
+    students: trend(studentsThisMonth, studentsPrevMonth),
+    topics: trend(topicsThisMonth, topicsPrevMonth),
+    requests: trend(requestsThisMonth, requestsPrevMonth),
+  };
+
+  return {
+    stats: {
+      students,
+      professors,
+      openTopics,
+      fullTopics,
+      pendingTopics,
+      pendingApplications,
+      pendingGroupRequests,
+      pendingRequests: pendingApplications + pendingGroupRequests,
+      upcomingDefenses: upcomingDefensesCount,
+    },
+    trends,
+    academicYear: activeAcademicYear,
+    pendingProposals,
+    recentRequests,
+    upcomingDefenses,
+    attention: { staleProposals, openWithoutRequests },
+    topicBreakdown,
+    studentsPerSpecialization,
+    monthlyGrowth,
+    systemHealth,
+  };
+};
+
+//
 // ════════ USERS ════════
 //
 export const listUsersService = async (q: ListUsersDTO) => {
@@ -112,14 +452,58 @@ export const listUsersService = async (q: ListUsersDTO) => {
   return { items, total, page: q.page, limit: q.limit };
 };
 
+// ════════════════════════════════════════════════════════════
+//  REPLACE getUserByIdService in admin.service.ts WITH THIS
+//  Expands the student projection to the full academic chain
+//  (specialization → filiere → department → faculty) + academicYear,
+//  so the ID card can be filled. Professor/admin unchanged.
+// ════════════════════════════════════════════════════════════
+
 export const getUserByIdService = async (id: string) => {
   const user = await prisma.user.findUnique({
     where: { id },
     select: {
       ...userSelect,
-      student: { select: { id: true, registrationNumber: true } },
+      phone: true,
+      student: {
+        select: {
+          id: true,
+          registrationNumber: true,
+          academicYear: { select: { id: true, title: true } },
+          specialization: {
+            select: {
+              id: true,
+              name: true,
+              filiere: {
+                select: {
+                  id: true,
+                  name: true,
+                  department: {
+                    select: {
+                      id: true,
+                      name: true,
+                      faculty: { select: { id: true, name: true } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       professor: {
-        select: { id: true, employeeNumber: true, universityEmail: true },
+        select: {
+          id: true,
+          employeeNumber: true,
+          universityEmail: true,
+          department: {
+            select: {
+              id: true,
+              name: true,
+              faculty: { select: { id: true, name: true } },
+            },
+          },
+        },
       },
     },
   });
@@ -187,7 +571,17 @@ export const resetUserPasswordService = async (
 };
 
 export const deleteUserService = async (id: string) => {
-  await getUserByIdService(id);
+  const user = await getUserByIdService(id);
+  if (user.student)
+    throw new BadRequestException(
+      "هذا الحساب طالب؛ احذفه من إدارة الطلبة لتُنظَّف بياناته المرتبطة.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  if (user.professor)
+    throw new BadRequestException(
+      "هذا الحساب أستاذ؛ احذفه من إدارة الأساتذة.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
   await prisma.user.delete({ where: { id } });
   return { message: "User deleted" };
 };
@@ -195,10 +589,29 @@ export const deleteUserService = async (id: string) => {
 //
 // ════════ STUDENTS ════════
 //
+// ════════════════════════════════════════════════════════════
+//  REPLACE listStudentsService in admin.service.ts WITH THIS
+//  Adds full academic chain to each row + filiere/department/faculty filters.
+// ════════════════════════════════════════════════════════════
+
 export const listStudentsService = async (q: ListStudentsDTO) => {
   const where: Record<string, unknown> = {};
+
   if (q.specializationId) where.specializationId = q.specializationId;
   if (q.academicYearId) where.academicYearId = q.academicYearId;
+
+  // Hierarchical filters resolved through the specialization → filiere chain.
+  // (Prisma lets us filter on nested relations.)
+  if (q.filiereId) {
+    where.specialization = { filiereId: q.filiereId };
+  } else if (q.departmentId) {
+    where.specialization = { filiere: { departmentId: q.departmentId } };
+  } else if (q.facultyId) {
+    where.specialization = {
+      filiere: { department: { facultyId: q.facultyId } },
+    };
+  }
+
   if (q.search) {
     where.OR = [
       { registrationNumber: { contains: q.search, mode: "insensitive" } },
@@ -212,8 +625,15 @@ export const listStudentsService = async (q: ListStudentsDTO) => {
       where,
       include: {
         user: { select: userSelect },
-        specialization: true,
         academicYear: true,
+        // Full chain so the list can show specialization/filiere/department/faculty.
+        specialization: {
+          include: {
+            filiere: {
+              include: { department: { include: { faculty: true } } },
+            },
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
       skip: (q.page - 1) * q.limit,
@@ -229,11 +649,71 @@ export const getStudentByIdService = async (id: string) => {
   const student = await prisma.student.findUnique({
     where: { id },
     include: {
-      user: { select: userSelect },
-      specialization: true,
+      user: { select: studentUserSelect },
       academicYear: true,
-      applications: { include: { topic: true } },
-      projectMembers: { include: { group: { include: { topic: true } } } },
+      // Full academic chain: specialization → filiere → department → faculty.
+      specialization: {
+        include: {
+          filiere: {
+            include: { department: { include: { faculty: true } } },
+          },
+        },
+      },
+      // Individual topic applications (with the topic + its status).
+      applications: {
+        orderBy: { priority: "asc" },
+        include: {
+          topic: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              professor: { include: { user: { select: userSelect } } },
+            },
+          },
+        },
+      },
+      // Group requests this student LEADS.
+      ledGroupRequests: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          topic: { select: { id: true, title: true, status: true } },
+          members: {
+            include: {
+              student: { include: { user: { select: userSelect } } },
+            },
+          },
+        },
+      },
+      // Group requests this student is a MEMBER of (led by someone else).
+      groupRequestMembers: {
+        include: {
+          request: {
+            include: {
+              topic: { select: { id: true, title: true, status: true } },
+              leader: { include: { user: { select: userSelect } } },
+            },
+          },
+        },
+      },
+      // The final, accepted project (chosen topic + defense).
+      projectMembers: {
+        include: {
+          group: {
+            include: {
+              topic: {
+                select: {
+                  id: true,
+                  title: true,
+                  status: true,
+                  professor: { include: { user: { select: userSelect } } },
+                },
+              },
+              defense: true,
+            },
+          },
+        },
+      },
     },
   });
   if (!student)
@@ -266,6 +746,8 @@ export const createStudentService = async (data: CreateStudentDTO) => {
           firstName: data.firstName,
           lastName: data.lastName,
           email: data.email,
+          phone: data.phone,
+          avatarUrl: data.avatarUrl,
           password: hashed,
           role: "student" as Role,
         },
@@ -286,23 +768,48 @@ export const updateStudentService = async (
 ) => {
   await getStudentByIdService(id);
 
+  // If changing the registration number, keep it unique.
+  if (data.registrationNumber !== undefined) {
+    const clash = await prisma.student.findFirst({
+      where: { registrationNumber: data.registrationNumber, id: { not: id } },
+      select: { id: true },
+    });
+    if (clash)
+      throw new BadRequestException(
+        "Registration number already exists",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+  }
+
   const updateData: Record<string, unknown> = {};
+  if (data.registrationNumber !== undefined)
+    updateData.registrationNumber = data.registrationNumber;
   if (data.specializationId !== undefined)
     updateData.specializationId = data.specializationId;
   if (data.academicYearId !== undefined)
     updateData.academicYearId = data.academicYearId;
-  if (data.firstName !== undefined || data.lastName !== undefined) {
-    updateData.user = {
-      update: { firstName: data.firstName, lastName: data.lastName },
-    };
-  }
+
+  const userUpdate: Record<string, unknown> = {};
+  if (data.firstName !== undefined) userUpdate.firstName = data.firstName;
+  if (data.lastName !== undefined) userUpdate.lastName = data.lastName;
+  if (data.email !== undefined) userUpdate.email = data.email;
+  if (data.phone !== undefined) userUpdate.phone = data.phone;
+  if (data.avatarUrl !== undefined) userUpdate.avatarUrl = data.avatarUrl;
+  if (Object.keys(userUpdate).length > 0)
+    updateData.user = { update: userUpdate };
 
   const student = await prisma.student.update({
     where: { id },
     data: updateData,
     include: {
-      user: { select: userSelect },
-      specialization: true,
+      user: { select: studentUserSelect },
+      specialization: {
+        include: {
+          filiere: {
+            include: { department: { include: { faculty: true } } },
+          },
+        },
+      },
       academicYear: true,
     },
   });
@@ -310,17 +817,40 @@ export const updateStudentService = async (
 };
 
 export const deleteStudentService = async (id: string) => {
-  const student = await getStudentByIdService(id);
-  await prisma.student.delete({ where: { id } });
-  await prisma.user.delete({ where: { id: student.userId } });
+  const student = await prisma.student.findUnique({
+    where: { id },
+    select: { id: true, userId: true },
+  });
+  if (!student)
+    throw new NotFoundException(
+      "Student not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+
+  await prisma.$transaction(async (tx) => {
+    // ملفّات الطالب المرفوعة
+    await tx.submission.deleteMany({ where: { uploadedById: student.userId } });
+    // طلبات الالتحاق الفردية
+    await tx.topicApplication.deleteMany({ where: { studentId: id } });
+    // عضوياته في طلبات فرق الآخرين
+    await tx.groupRequestMember.deleteMany({ where: { studentId: id } });
+    // طلبات الفرق التي يقودها (تتعاقب أعضاؤها تلقائيًّا عبر onDelete: Cascade)
+    await tx.groupRequest.deleteMany({ where: { leaderStudentId: id } });
+    // عضويته في المشاريع
+    await tx.projectMember.deleteMany({ where: { studentId: id } });
+    // أخيرًا الطالب ثم حسابه (الإشعارات تتعاقب عبر onDelete: Cascade)
+    await tx.student.delete({ where: { id } });
+    await tx.user.delete({ where: { id: student.userId } });
+  });
   return { message: "Student deleted" };
 };
 
 //
 // ════════ PROFESSORS ════════
 //
-export const listProfessorsService = async (q: ListQueryDTO) => {
+export const listProfessorsService = async (q: ListProfessorsDTO) => {
   const where: Record<string, unknown> = {};
+
   if (q.search) {
     where.OR = [
       { employeeNumber: { contains: q.search, mode: "insensitive" } },
@@ -330,12 +860,24 @@ export const listProfessorsService = async (q: ListQueryDTO) => {
     ];
   }
 
+  // Most specific wins: department > filiere > faculty.
+  if (q.departmentId) {
+    where.departmentId = q.departmentId;
+  } else if (q.filiereId) {
+    where.department = { filieres: { some: { id: q.filiereId } } };
+  } else if (q.facultyId) {
+    where.department = { facultyId: q.facultyId };
+  }
+
+  // Optional exact-tag match over the grade array (if you wire a UI filter).
+  if (q.grade) where.grade = { has: q.grade };
+
   const [items, total] = await Promise.all([
     prisma.professor.findMany({
       where,
       include: {
         user: { select: userSelect },
-        department: true,
+        department: { include: { faculty: true, filieres: true } }, // ← faculty + الشعبة
         _count: { select: { topics: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -352,9 +894,15 @@ export const getProfessorByIdService = async (id: string) => {
   const professor = await prisma.professor.findUnique({
     where: { id },
     include: {
-      user: { select: userSelect },
-      department: true,
-      topics: true,
+      user: { select: professorUserSelect }, // ← adds phone
+      department: { include: { faculty: true } }, // ← adds faculty
+      topics: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          specialization: { select: { id: true, name: true } },
+          _count: { select: { applications: true } },
+        },
+      },
     },
   });
   if (!professor)
@@ -386,6 +934,8 @@ export const createProfessorService = async (data: CreateProfessorDTO) => {
     data: {
       employeeNumber: data.employeeNumber,
       universityEmail: data.universityEmail,
+      grade: data.grade ?? [], // ← الرتبة (tags)
+      tags: data.tags ?? [], // ← الصفة (tags)
       department: { connect: { id: data.departmentId } },
       user: {
         create: {
@@ -412,25 +962,55 @@ export const updateProfessorService = async (
   if (data.universityEmail !== undefined)
     updateData.universityEmail = data.universityEmail;
   if (data.departmentId !== undefined)
-    updateData.departmentId = data.departmentId;
-  if (data.firstName !== undefined || data.lastName !== undefined) {
-    updateData.user = {
-      update: { firstName: data.firstName, lastName: data.lastName },
-    };
-  }
+    updateData.department = { connect: { id: data.departmentId } }; // ← الإصلاح
+  if (data.grade !== undefined) updateData.grade = data.grade; // full replace
+  if (data.tags !== undefined) updateData.tags = data.tags; // full replace
+
+  // user-account fields (name, personal email, phone, avatar)
+  const userUpdate: Record<string, unknown> = {};
+  if (data.firstName !== undefined) userUpdate.firstName = data.firstName;
+  if (data.lastName !== undefined) userUpdate.lastName = data.lastName;
+  if (data.email !== undefined) userUpdate.email = data.email;
+  if (data.phone !== undefined) userUpdate.phone = data.phone;
+  if (data.avatarUrl !== undefined) userUpdate.avatarUrl = data.avatarUrl;
+  if (Object.keys(userUpdate).length > 0)
+    updateData.user = { update: userUpdate };
 
   const professor = await prisma.professor.update({
     where: { id },
     data: updateData,
-    include: { user: { select: userSelect }, department: true },
+    include: {
+      user: { select: professorUserSelect }, // ← يرجع phone + avatarUrl
+      department: { include: { faculty: true } }, // ← يرجع faculty للواجهة
+    },
   });
   return professor;
 };
 
 export const deleteProfessorService = async (id: string) => {
-  const professor = await getProfessorByIdService(id);
-  await prisma.professor.delete({ where: { id } });
-  await prisma.user.delete({ where: { id: professor.userId } });
+  const professor = await prisma.professor.findUnique({
+    where: { id },
+    select: { id: true, userId: true, _count: { select: { topics: true } } },
+  });
+  if (!professor)
+    throw new NotFoundException(
+      "Professor not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (professor._count.topics > 0)
+    throw new BadRequestException(
+      `لا يمكن حذف الأستاذ لارتباطه بـ ${professor._count.topics} موضوع. أعِد إسناد المواضيع أو أرشفتها أولاً.`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  await prisma.$transaction(async (tx) => {
+    await tx.submission.deleteMany({
+      where: { uploadedById: professor.userId },
+    });
+    await tx.defenseCommitteeMember.deleteMany({ where: { professorId: id } });
+    await tx.professor.delete({ where: { id } });
+    await tx.user.delete({ where: { id: professor.userId } });
+  });
   return { message: "Professor deleted" };
 };
 
@@ -470,14 +1050,72 @@ export const updateFacultyService = async (
 };
 
 export const deleteFacultyService = async (id: string) => {
-  const found = await prisma.faculty.findUnique({ where: { id } });
+  const found = await prisma.faculty.findUnique({
+    where: { id },
+    include: { _count: { select: { departments: true } } },
+  });
   if (!found)
     throw new NotFoundException(
       "Faculty not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+  if (found._count.departments > 0)
+    throw new BadRequestException(
+      `لا يمكن حذف الكلية لارتباطها بـ ${found._count.departments} قسم. احذف الأقسام أو انقلها أولاً.`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
   await prisma.faculty.delete({ where: { id } });
   return { message: "Faculty deleted" };
+};
+
+//
+// ════════ DOMAINS (الميادين) ════════
+//
+export const listDomainsService = async (departmentId?: string) => {
+  return prisma.domain.findMany({
+    where: departmentId ? { departmentId } : undefined,
+    include: { department: true },
+    orderBy: { createdAt: "desc" },
+  });
+};
+
+export const createDomainService = async (data: CreateDomainDTO) => {
+  const exists = await prisma.domain.findUnique({ where: { code: data.code } });
+  if (exists)
+    throw new BadRequestException(
+      "Domain code already exists",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  return prisma.domain.create({ data, include: { department: true } });
+};
+
+export const updateDomainService = async (
+  id: string,
+  data: UpdateDomainDTO,
+) => {
+  const found = await prisma.domain.findUnique({ where: { id } });
+  if (!found)
+    throw new NotFoundException(
+      "Domain not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  return prisma.domain.update({
+    where: { id },
+    data,
+    include: { department: true },
+  });
+};
+
+export const deleteDomainService = async (id: string) => {
+  const found = await prisma.domain.findUnique({ where: { id } });
+  if (!found)
+    throw new NotFoundException(
+      "Domain not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  // عند ربط الشعبة بالميدان أضِف هنا فحص _count.filieres كما في القسم.
+  await prisma.domain.delete({ where: { id } });
+  return { message: "Domain deleted" };
 };
 
 //
@@ -487,7 +1125,7 @@ export const listDepartmentsService = async () => {
   return prisma.department.findMany({
     include: {
       faculty: true,
-      _count: { select: { specializations: true, professors: true } },
+      _count: { select: { filieres: true, professors: true, domains: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -523,14 +1161,148 @@ export const updateDepartmentService = async (
 };
 
 export const deleteDepartmentService = async (id: string) => {
-  const found = await prisma.department.findUnique({ where: { id } });
+  const found = await prisma.department.findUnique({
+    where: { id },
+    include: {
+      _count: { select: { filieres: true, professors: true, domains: true } },
+    },
+  });
   if (!found)
     throw new NotFoundException(
       "Department not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+  const blockers: string[] = [];
+  if (found._count.domains > 0) blockers.push(`${found._count.domains} ميدان`);
+  if (found._count.filieres > 0) blockers.push(`${found._count.filieres} شعبة`);
+  if (found._count.professors > 0)
+    blockers.push(`${found._count.professors} أستاذ`);
+  if (blockers.length)
+    throw new BadRequestException(
+      `لا يمكن حذف القسم لارتباطه بـ ${blockers.join(" و ")}.`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
   await prisma.department.delete({ where: { id } });
   return { message: "Department deleted" };
+};
+
+//
+// ════════ FILIERES ════════
+//
+export const listFilieresService = async (filter?: {
+  domainId?: string;
+  departmentId?: string;
+}) => {
+  const where: { domainId?: string; departmentId?: string } = {};
+  if (filter?.domainId) where.domainId = filter.domainId;
+  else if (filter?.departmentId) where.departmentId = filter.departmentId;
+  return prisma.filiere.findMany({
+    where: Object.keys(where).length ? where : undefined,
+    include: {
+      department: true,
+      domain: true,
+      _count: { select: { specializations: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+};
+
+export const createFiliereService = async (data: CreateFiliereDTO) => {
+  const exists = await prisma.filiere.findUnique({
+    where: { code: data.code },
+  });
+  if (exists)
+    throw new BadRequestException(
+      "Filiere code already exists",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  // المصدر الأساسي للقسم هو الميدان؛ نشتقّه منه عند توفّر domainId.
+  let departmentId = data.departmentId;
+  if (data.domainId) {
+    const domain = await prisma.domain.findUnique({
+      where: { id: data.domainId },
+      select: { departmentId: true },
+    });
+    if (!domain)
+      throw new NotFoundException(
+        "Domain not found",
+        ErrorCodeEnum.RESOURCE_NOT_FOUND,
+      );
+    departmentId = domain.departmentId;
+  }
+  if (!departmentId)
+    throw new BadRequestException(
+      "departmentId or domainId is required",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  return prisma.filiere.create({
+    data: {
+      name: data.name,
+      code: data.code,
+      departmentId,
+      domainId: data.domainId ?? null,
+    },
+    include: { department: true, domain: true },
+  });
+};
+
+export const updateFiliereService = async (
+  id: string,
+  data: UpdateFiliereDTO,
+) => {
+  const found = await prisma.filiere.findUnique({ where: { id } });
+  if (!found)
+    throw new NotFoundException(
+      "Filiere not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+
+  // عند نقل الشعبة إلى ميدان آخر، اشتقّ القسم من الميدان الجديد.
+  let departmentId = data.departmentId;
+  if (data.domainId) {
+    const domain = await prisma.domain.findUnique({
+      where: { id: data.domainId },
+      select: { departmentId: true },
+    });
+    if (!domain)
+      throw new NotFoundException(
+        "Domain not found",
+        ErrorCodeEnum.RESOURCE_NOT_FOUND,
+      );
+    departmentId = domain.departmentId;
+  }
+
+  return prisma.filiere.update({
+    where: { id },
+    data: {
+      name: data.name,
+      code: data.code,
+      ...(data.domainId !== undefined ? { domainId: data.domainId } : {}),
+      ...(departmentId !== undefined ? { departmentId } : {}),
+    },
+    include: { department: true, domain: true },
+  });
+};
+
+export const deleteFiliereService = async (id: string) => {
+  const found = await prisma.filiere.findUnique({
+    where: { id },
+    include: { _count: { select: { specializations: true } } },
+  });
+  if (!found)
+    throw new NotFoundException(
+      "Filiere not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (found._count.specializations > 0)
+    throw new BadRequestException(
+      `لا يمكن حذف الشعبة لارتباطها بـ ${found._count.specializations} تخصص.`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  await prisma.filiere.delete({ where: { id } });
+  return { message: "Filiere deleted" };
 };
 
 //
@@ -539,7 +1311,7 @@ export const deleteDepartmentService = async (id: string) => {
 export const listSpecializationsService = async () => {
   return prisma.specialization.findMany({
     include: {
-      department: true,
+      filiere: { include: { department: true } },
       _count: { select: { students: true, topics: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -549,7 +1321,10 @@ export const listSpecializationsService = async () => {
 export const createSpecializationService = async (
   data: CreateSpecializationDTO,
 ) => {
-  return prisma.specialization.create({ data, include: { department: true } });
+  return prisma.specialization.create({
+    data,
+    include: { filiere: { include: { department: true } } },
+  });
 };
 
 export const updateSpecializationService = async (
@@ -565,16 +1340,27 @@ export const updateSpecializationService = async (
   return prisma.specialization.update({
     where: { id },
     data,
-    include: { department: true },
+    include: { filiere: { include: { department: true } } },
   });
 };
 
 export const deleteSpecializationService = async (id: string) => {
-  const found = await prisma.specialization.findUnique({ where: { id } });
+  const found = await prisma.specialization.findUnique({
+    where: { id },
+    include: { _count: { select: { students: true, topics: true } } },
+  });
   if (!found)
     throw new NotFoundException(
       "Specialization not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  const blockers: string[] = [];
+  if (found._count.students > 0) blockers.push(`${found._count.students} طالب`);
+  if (found._count.topics > 0) blockers.push(`${found._count.topics} موضوع`);
+  if (blockers.length)
+    throw new BadRequestException(
+      `لا يمكن حذف التخصص لارتباطه بـ ${blockers.join(" و ")}.`,
+      ErrorCodeEnum.VALIDATION_ERROR,
     );
   await prisma.specialization.delete({ where: { id } });
   return { message: "Specialization deleted" };
@@ -629,11 +1415,27 @@ export const activateAcademicYearService = async (id: string) => {
 };
 
 export const deleteAcademicYearService = async (id: string) => {
-  const found = await prisma.academicYear.findUnique({ where: { id } });
+  const found = await prisma.academicYear.findUnique({
+    where: { id },
+    include: { _count: { select: { students: true, topics: true } } },
+  });
   if (!found)
     throw new NotFoundException(
       "Academic year not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (found.isActive)
+    throw new BadRequestException(
+      "لا يمكن حذف السنة الجامعية النشطة. فعِّل سنة أخرى أولاً.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  const blockers: string[] = [];
+  if (found._count.students > 0) blockers.push(`${found._count.students} طالب`);
+  if (found._count.topics > 0) blockers.push(`${found._count.topics} موضوع`);
+  if (blockers.length)
+    throw new BadRequestException(
+      `لا يمكن حذف السنة الجامعية لارتباطها بـ ${blockers.join(" و ")}.`,
+      ErrorCodeEnum.VALIDATION_ERROR,
     );
   await prisma.academicYear.delete({ where: { id } });
   return { message: "Academic year deleted" };
@@ -715,13 +1517,37 @@ const setTopicStatus = async (
   });
 };
 
-export const approveTopicService = (id: string) =>
-  setTopicStatus(id, "approved");
+export const approveTopicService = async (id: string) => {
+  const topic = await setTopicStatus(id, "approved");
+  const userId = await getTopicProfessorUserId(topic.id);
+  if (userId)
+    await createNotification({
+      userId,
+      type: "topic_approved",
+      title: "تمت الموافقة على موضوعك",
+      message: `تمت الموافقة على الموضوع: «${topic.title}».`,
+      link: "/professor/topics",
+    });
+  return topic;
+};
+
 export const archiveTopicService = (id: string) =>
   setTopicStatus(id, "archived");
 
 export const rejectTopicService = async (id: string, data: RejectTopicDTO) => {
-  return setTopicStatus(id, "rejected", data.reason);
+  const topic = await setTopicStatus(id, "rejected", data.reason);
+  const userId = await getTopicProfessorUserId(topic.id);
+  if (userId)
+    await createNotification({
+      userId,
+      type: "topic_rejected",
+      title: "تم رفض موضوعك",
+      message: data.reason
+        ? `تم رفض الموضوع «${topic.title}». السبب: ${data.reason}`
+        : `تم رفض الموضوع «${topic.title}».`,
+      link: "/professor/topics",
+    });
+  return topic;
 };
 
 // ─── PUBLISH / UNPUBLISH (two-stage admin flow) ───────────────
@@ -840,7 +1666,7 @@ export const acceptApplicationService = async (applicationId: string) => {
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const group =
       topic.projectGroup ??
       (await tx.projectGroup.create({ data: { topicId: topic.id } }));
@@ -877,6 +1703,19 @@ export const acceptApplicationService = async (applicationId: string) => {
 
     return updated;
   });
+
+  // إشعار الطالب بقبول طلبه.
+  const studentUserId = await getStudentUserId(application.studentId);
+  if (studentUserId)
+    await createNotification({
+      userId: studentUserId,
+      type: "application_accepted",
+      title: "تم قبول طلبك",
+      message: `تم قبولك في الموضوع: «${topic.title}».`,
+      link: "/student/applications",
+    });
+
+  return result;
 };
 
 // ─── REJECT APPLICATION (admin decision) ──────────────────────
@@ -898,13 +1737,27 @@ export const rejectApplicationService = async (
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
-  return prisma.topicApplication.update({
+  const updated = await prisma.topicApplication.update({
     where: { id: applicationId },
     data: {
       status: "rejected",
       ...(rejectionReason !== undefined ? { rejectionReason } : {}),
     },
   });
+
+  const userId = await getStudentUserId(application.studentId);
+  if (userId)
+    await createNotification({
+      userId,
+      type: "application_rejected",
+      title: "تم رفض طلبك",
+      message: rejectionReason
+        ? `تم رفض طلبك. السبب: ${rejectionReason}`
+        : "تم رفض طلبك على الموضوع.",
+      link: "/student/applications",
+    });
+
+  return updated;
 };
 
 //
@@ -1266,9 +2119,6 @@ export const acceptGroupRequestService = async (id: string) => {
     );
 
   const topic = request.topic;
-  // The topic is locked to "full" the moment a request is submitted
-  // (first-come-first-served). So "full" is a VALID state to accept from —
-  // what actually blocks acceptance is an already-formed project group.
   if (
     topic.status !== "approved" &&
     topic.status !== "open" &&
@@ -1289,7 +2139,7 @@ export const acceptGroupRequestService = async (id: string) => {
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const fresh = await tx.graduationTopic.findUnique({
       where: { id: topic.id },
       include: { projectGroup: true },
@@ -1339,6 +2189,25 @@ export const acceptGroupRequestService = async (id: string) => {
 
     return updated;
   });
+
+  // إشعار كلّ عضو في الفريق بالموافقة.
+  const memberUserIds = (
+    await prisma.student.findMany({
+      where: { id: { in: request.members.map((m) => m.studentId) } },
+      select: { userId: true },
+    })
+  ).map((s) => s.userId);
+  for (const userId of memberUserIds) {
+    await createNotification({
+      userId,
+      type: "general",
+      title: "تمت الموافقة على مجموعتكم",
+      message: `تمت الموافقة على مجموعتكم لموضوع: «${topic.title}».`,
+      link: "/student/project",
+    });
+  }
+
+  return result;
 };
 
 export const rejectGroupRequestService = async (
@@ -1360,7 +2229,7 @@ export const rejectGroupRequestService = async (
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const updated = await tx.groupRequest.update({
       where: { id },
       data: {
@@ -1369,9 +2238,6 @@ export const rejectGroupRequestService = async (
       },
     });
 
-    // First-come-first-served: submitting a request locked the topic (→ full).
-    // If we reject it and no project group has formed and no other active
-    // request remains, reopen the topic so other students can request it again.
     if (request.topic.status === "full") {
       const projectGroup = await tx.projectGroup.findUnique({
         where: { topicId: request.topicId },
@@ -1393,4 +2259,19 @@ export const rejectGroupRequestService = async (
 
     return updated;
   });
+
+  // إشعار قائد الفريق برفض الطلب.
+  const leaderUserId = await getStudentUserId(request.leaderStudentId);
+  if (leaderUserId)
+    await createNotification({
+      userId: leaderUserId,
+      type: "general",
+      title: "تم رفض طلب مجموعتكم",
+      message: rejectionReason
+        ? `تم رفض طلب مجموعتكم. السبب: ${rejectionReason}`
+        : "تم رفض طلب مجموعتكم على الموضوع.",
+      link: "/student/requests",
+    });
+
+  return result;
 };

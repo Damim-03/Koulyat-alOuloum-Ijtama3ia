@@ -3,12 +3,11 @@
    - Bearer token attached from the auth store on every request
    - 401 -> refresh once (queued), retry the original + queued reqs
    - Auth endpoints are skipped to avoid 401 -> refresh -> 401 loops
+   - Guests (no refresh token) skip refresh entirely -> no false
+     "session expired" when hitting a protected endpoint while logged out
    - On refresh failure: logout + dispatch SESSION_EXPIRED_EVENT
 =============================================================== */
-import axios, {
-  AxiosError,
-  type InternalAxiosRequestConfig,
-} from "axios";
+import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { env } from "../../config/env";
 import { useAuthStore } from "../../store/auth.store";
 
@@ -74,11 +73,17 @@ client.interceptors.response.use(
       requestUrl.includes(url),
     );
 
+    // A visitor who is not logged in has no refresh token. A 401 for them is
+    // expected (protected endpoint) — don't attempt refresh / logout, just
+    // reject so the UI can redirect to login without a "session expired" flash.
+    const hasRefreshToken = !!useAuthStore.getState().refreshToken;
+
     if (
       error.response?.status === 401 &&
       originalRequest &&
       !originalRequest._retry &&
-      !isAuthEndpoint
+      !isAuthEndpoint &&
+      hasRefreshToken
     ) {
       originalRequest._retry = true;
 

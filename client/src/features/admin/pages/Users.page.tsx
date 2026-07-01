@@ -1,15 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Search,
   Plus,
-  Pencil,
-  Trash2,
-  KeyRound,
-  Ban,
-  CheckCircle2,
+  X,
+  Users as UsersIcon,
+  SlidersHorizontal,
+  ChevronLeft,
 } from "lucide-react";
-import { useUsers, useSetUserStatus, useDeleteUser } from "../hooks/admin-hook";
+import { useUsers } from "../hooks/admin-hook";
 import { UserFormDialog } from "../components/user-form-dialog";
 import type { UserLite } from "../../../types/admin";
 
@@ -43,48 +43,68 @@ const STATUS_STYLES: Record<string, string> = {
 
 const PAGE_SIZE = 10;
 
+type SortKey = "newest" | "oldest" | "name";
+
 export function AdminUsersPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { lang } = useParams();
+  const goToUser = (uid: string) => navigate(`/${lang}/admin/users/${uid}`);
 
+  // filter inputs
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
+  const [verified, setVerified] = useState(""); // "" | "true" | "false"
+  const [sort, setSort] = useState<SortKey>("newest");
   const [page, setPage] = useState(1);
-  const [applied, setApplied] = useState<{
-    search?: string;
-    role?: string;
-    status?: string;
-  }>({});
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const { data, isLoading } = useUsers({ page, limit: PAGE_SIZE, ...applied });
-  const setUserStatus = useSetUserStatus();
-  const deleteUser = useDeleteUser();
+  // debounced search term
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  // reset to page 1 whenever any filter changes
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [debouncedSearch, role, status, verified, sort]);
+
+  const params = useMemo(
+    () => ({
+      page,
+      limit: PAGE_SIZE,
+      search: debouncedSearch || undefined,
+      role: role || undefined,
+      status: status || undefined,
+      // these two are sent as-is; backend may ignore them until wired
+      isVerified: verified || undefined,
+      sort,
+    }),
+    [page, debouncedSearch, role, status, verified, sort],
+  );
+
+  const { data, isLoading, isFetching } = useUsers(params);
 
   const users = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  function applyFilters() {
-    setApplied({
-      search: search || undefined,
-      role: role || undefined,
-      status: status || undefined,
-    });
-    setPage(1);
-  }
+  const activeFilters =
+    (debouncedSearch ? 1 : 0) +
+    (role ? 1 : 0) +
+    (status ? 1 : 0) +
+    (verified ? 1 : 0);
 
-  function toggleStatus(u: UserLite) {
-    setUserStatus.mutate({
-      id: u.id,
-      status: u.status === "active" ? "suspended" : "active",
-    });
-  }
-
-  function handleDelete(u: UserLite) {
-    if (confirm(t("admin.confirmDeleteUser", { name: fullName(u) }))) {
-      deleteUser.mutate(u.id);
-    }
+  function clearAll() {
+    setSearch("");
+    setRole("");
+    setStatus("");
+    setVerified("");
+    setSort("newest");
   }
 
   function fmtDate(iso: string) {
@@ -117,51 +137,122 @@ export function AdminUsersPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <div className="relative">
-            <Search
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-clay"
-              size={18}
-            />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-              placeholder={t("admin.searchUser")}
-              className="w-full rounded-xl border border-forest/15 bg-cream-2 py-2.5 pr-10 pl-3 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-            />
-          </div>
-
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
-          >
-            <option value="">{t("admin.allRoles")}</option>
-            <option value="owner">{t("role.owner")}</option>
-            <option value="admin">{t("role.admin")}</option>
-            <option value="professor">{t("role.professor")}</option>
-            <option value="student">{t("role.student")}</option>
-          </select>
-
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
-          >
-            <option value="">{t("admin.allStatuses")}</option>
-            <option value="active">{t("admin.statusActive")}</option>
-            <option value="suspended">{t("admin.statusSuspended")}</option>
-          </select>
-
-          <button
-            onClick={applyFilters}
-            className="rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
-          >
-            {t("admin.applyFilter")}
-          </button>
+      <div className="mb-4 rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+        {/* search row */}
+        <div className="relative mb-3">
+          <Search
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-clay"
+            size={18}
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("admin.searchUser")}
+            className="w-full rounded-xl border border-forest/15 bg-cream-2 py-2.5 pr-10 pl-9 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-clay hover:text-forest"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
+
+        {/* selects row */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Select
+            label={t("admin.role")}
+            value={role}
+            onChange={setRole}
+            options={[
+              { v: "", l: t("admin.allRoles") },
+              { v: "owner", l: t("role.owner") },
+              { v: "admin", l: t("role.admin") },
+              { v: "professor", l: t("role.professor") },
+              { v: "student", l: t("role.student") },
+            ]}
+          />
+          <Select
+            label={t("admin.statusLabel")}
+            value={status}
+            onChange={setStatus}
+            options={[
+              { v: "", l: t("admin.allStatuses") },
+              { v: "active", l: t("admin.statusActive") },
+              { v: "suspended", l: t("admin.statusSuspended") },
+            ]}
+          />
+          <Select
+            label="التوثيق"
+            value={verified}
+            onChange={setVerified}
+            options={[
+              { v: "", l: "الكل" },
+              { v: "true", l: "موثّق" },
+              { v: "false", l: "غير موثّق" },
+            ]}
+          />
+          <Select
+            label="الترتيب"
+            value={sort}
+            onChange={(v) => setSort(v as SortKey)}
+            options={[
+              { v: "newest", l: "الأحدث" },
+              { v: "oldest", l: "الأقدم" },
+              { v: "name", l: "الاسم (أ-ي)" },
+            ]}
+          />
+        </div>
+
+        {/* active filters + clear */}
+        {activeFilters > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-forest/10 pt-3">
+            <SlidersHorizontal size={14} className="text-clay" />
+            {debouncedSearch && (
+              <Chip
+                label={`بحث: ${debouncedSearch}`}
+                onClear={() => setSearch("")}
+              />
+            )}
+            {role && (
+              <Chip
+                label={`الدور: ${t(`role.${role}`)}`}
+                onClear={() => setRole("")}
+              />
+            )}
+            {status && (
+              <Chip
+                label={`الحالة: ${status === "active" ? "نشط" : "موقوف"}`}
+                onClear={() => setStatus("")}
+              />
+            )}
+            {verified && (
+              <Chip
+                label={verified === "true" ? "موثّق" : "غير موثّق"}
+                onClear={() => setVerified("")}
+              />
+            )}
+            <button
+              onClick={clearAll}
+              className="ms-auto inline-flex items-center gap-1 text-xs font-medium text-red-500 hover:underline"
+            >
+              <X size={13} /> مسح الكل
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* results count */}
+      <div className="mb-3 flex items-center gap-2 text-sm text-clay">
+        <UsersIcon size={15} />
+        <span>
+          {total} {total === 1 ? "مستخدم" : "مستخدم"}
+        </span>
+        {isFetching && (
+          <span className="text-[11px] text-clay/70">· تحديث…</span>
+        )}
       </div>
 
       {/* Table */}
@@ -185,9 +276,7 @@ export function AdminUsersPage() {
                 <th className="px-5 py-3 text-xs font-medium">
                   {t("admin.createdAt")}
                 </th>
-                <th className="px-5 py-3 text-xs font-medium">
-                  {t("admin.actions")}
-                </th>
+                <th className="w-10 px-5 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-forest/10">
@@ -216,13 +305,22 @@ export function AdminUsersPage() {
               {users.map((u) => (
                 <tr
                   key={u.id}
-                  className="transition-colors hover:bg-forest/[0.03]"
+                  onClick={() => goToUser(u.id)}
+                  className="cursor-pointer transition-colors hover:bg-forest/[0.04]"
                 >
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="grid size-9 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream">
-                        {initials(u.firstName, u.lastName)}
-                      </div>
+                      {u.avatarUrl ? (
+                        <img
+                          src={u.avatarUrl}
+                          alt=""
+                          className="size-9 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="grid size-9 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream">
+                          {initials(u.firstName, u.lastName)}
+                        </div>
+                      )}
                       <div>
                         <p className="text-sm font-medium text-forest">
                           {fullName(u)}
@@ -257,43 +355,8 @@ export function AdminUsersPage() {
                   <td className="px-5 py-3.5 text-sm text-clay">
                     {fmtDate(u.createdAt)}
                   </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1">
-                      <button
-                        className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                        title={t("admin.edit")}
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                        title={t("admin.resetPassword")}
-                      >
-                        <KeyRound size={16} />
-                      </button>
-                      <button
-                        onClick={() => toggleStatus(u)}
-                        className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                        title={
-                          u.status === "active"
-                            ? t("admin.suspend")
-                            : t("admin.activate")
-                        }
-                      >
-                        {u.status === "active" ? (
-                          <Ban size={16} />
-                        ) : (
-                          <CheckCircle2 size={16} />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => handleDelete(u)}
-                        className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
-                        title={t("admin.delete")}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                  <td className="px-5 py-3.5 text-clay">
+                    <ChevronLeft size={16} className="opacity-50" />
                   </td>
                 </tr>
               ))}
@@ -334,5 +397,49 @@ export function AdminUsersPage() {
 
       <UserFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
     </div>
+  );
+}
+
+/* ── labeled select ───────────────────────────────────────── */
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { v: string; l: string }[];
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-medium text-clay">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
+      >
+        {options.map((o) => (
+          <option key={o.v} value={o.v}>
+            {o.l}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/* ── active-filter chip ───────────────────────────────────── */
+function Chip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-forest/8 px-2.5 py-1 text-[11px] text-forest">
+      {label}
+      <button onClick={onClear} className="text-clay hover:text-red-500">
+        <X size={12} />
+      </button>
+    </span>
   );
 }

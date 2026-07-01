@@ -8,6 +8,25 @@ export interface Paginated<T> {
   limit: number;
 }
 
+export interface Filiere {
+  id: string;
+  name: string;
+  code?: string;
+  departmentId: string;
+  domainId?: string | null;
+  department?: Department;
+  _count?: { specializations?: number };
+}
+
+export interface Domain {
+  id: string;
+  name: string;
+  code: string;
+  departmentId: string;
+  department?: Department;
+  _count?: { filieres?: number };
+}
+
 export interface TopicReference {
   id: string;
   title: string;
@@ -20,11 +39,44 @@ export interface UserLite {
   lastName: string | null;
   email: string | null;
   username: string | null;
+  avatarUrl?: string | null;
+  phone?: string | null;
   role: Role;
   status: "active" | "suspended";
   isVerified: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+}
+
+export interface UserDetail extends UserLite {
+  student?: {
+    id: string;
+    registrationNumber: string;
+    academicYear?: { id: string; title: string } | null;
+    specialization?: {
+      id: string;
+      name: string;
+      filiere?: {
+        id: string;
+        name: string;
+        department?: {
+          id: string;
+          name: string;
+          faculty?: { id: string; name: string } | null;
+        } | null;
+      } | null;
+    } | null;
+  } | null;
+  professor?: {
+    id: string;
+    employeeNumber: string;
+    universityEmail: string;
+    department?: {
+      id: string;
+      name: string;
+      faculty?: { id: string; name: string } | null;
+    } | null;
+  } | null;
 }
 
 // ── Stats ──
@@ -52,14 +104,26 @@ export interface Department {
   code: string;
   facultyId: string;
   faculty?: Faculty;
+  filieres?: Filiere[]; // ← included for the professors table ("الشعبة")
   _count?: { specializations: number; professors: number };
+}
+
+export interface Filiere {
+  id: string;
+  name: string;
+  code?: string;
+  departmentId: string;
+  department?: Department;
 }
 
 export interface Specialization {
   id: string;
   name: string;
   level: "licence" | "master" | "doctorate";
-  departmentId: string;
+  filiereId?: string;
+  filiere?: Filiere;
+  // kept for back-compat with places that still get a flat department
+  departmentId?: string;
   department?: Department;
   _count?: { students: number; topics: number };
 }
@@ -80,6 +144,17 @@ export interface Student {
   academicYear?: AcademicYear;
 }
 
+// A professor's supervised topic, as returned by GET /admin/professors/:id.
+export interface ProfessorTopicLite {
+  id: string;
+  title: string;
+  status: string;
+  maxStudents: number;
+  createdAt: string;
+  specialization?: { id: string; name: string } | null;
+  _count?: { applications: number };
+}
+
 export interface Professor {
   id: string;
   employeeNumber: string;
@@ -87,6 +162,9 @@ export interface Professor {
   userId: string;
   user?: UserLite;
   department?: Department;
+  grade?: string[]; // الرتبة — free tags entered by the admin
+  tags?: string[]; // الصفة — free tags entered by the admin
+  topics?: ProfessorTopicLite[]; // present in the detail payload
   _count?: { topics: number };
 }
 
@@ -176,4 +254,132 @@ export interface AdminGroupRequest {
     user?: { firstName: string | null; lastName: string | null } | null;
   } | null;
   members?: AdminGroupRequestMember[];
+}
+
+// Types for the GET /admin/dashboard payload (mirrors getDashboardService).
+
+export type TopicStatus =
+  | "pending"
+  | "approved"
+  | "open"
+  | "full"
+  | "rejected"
+  | "archived";
+
+export interface DashboardStats {
+  students: number;
+  professors: number;
+  openTopics: number;
+  fullTopics: number;
+  pendingTopics: number;
+  pendingApplications: number;
+  pendingGroupRequests: number;
+  pendingRequests: number;
+  upcomingDefenses: number;
+}
+
+export interface TrendValue {
+  current: number;
+  previous: number;
+  delta: number;
+}
+
+export interface DashboardTrends {
+  students: TrendValue;
+  topics: TrendValue;
+  requests: TrendValue;
+}
+
+export interface AcademicYearLite {
+  id: string;
+  title: string;
+  isActive: boolean;
+}
+
+interface UserName {
+  firstName: string | null;
+  lastName: string | null;
+}
+
+export interface PendingProposal {
+  id: string;
+  title: string;
+  maxStudents: number;
+  createdAt: string;
+  professor: { user: UserName };
+  specialization: { id: string; name: string };
+}
+
+export interface RecentRequest {
+  id: string;
+  status: "pending" | "accepted" | "rejected";
+  priority: number;
+  createdAt: string;
+  topic: { id: string; title: string };
+  leader: { registrationNumber: string; user: UserName };
+  members: { student: { registrationNumber: string; user: UserName } }[];
+}
+
+export interface UpcomingDefense {
+  id: string;
+  date: string;
+  room: string;
+  group: { topic: { id: string; title: string } };
+}
+
+export interface StaleProposal {
+  id: string;
+  title: string;
+  createdAt: string;
+  professor: { user: UserName };
+}
+
+export interface OpenWithoutRequests {
+  id: string;
+  title: string;
+  updatedAt: string;
+  specialization: { id: string; name: string };
+}
+
+export interface DashboardAttention {
+  staleProposals: StaleProposal[];
+  openWithoutRequests: OpenWithoutRequests[];
+}
+
+export interface TopicBreakdownItem {
+  status: TopicStatus;
+  count: number;
+}
+
+export interface StudentsPerSpecializationItem {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export interface MonthlyGrowthItem {
+  month: string; // "YYYY-MM"
+  students: number;
+  topics: number;
+  projects: number;
+}
+
+export interface SystemHealth {
+  totalAccounts: number;
+  activeUsers: number;
+  suspendedUsers: number;
+}
+
+export interface AdminDashboard {
+  stats: DashboardStats;
+  trends: DashboardTrends;
+  academicYear: AcademicYearLite | null;
+  pendingProposals: PendingProposal[];
+  recentRequests: RecentRequest[];
+  upcomingDefenses: UpcomingDefense[];
+  attention: DashboardAttention;
+  topicBreakdown: TopicBreakdownItem[];
+  studentsPerSpecialization: StudentsPerSpecializationItem[];
+  monthlyGrowth: MonthlyGrowthItem[];
+  systemHealth: SystemHealth;
 }

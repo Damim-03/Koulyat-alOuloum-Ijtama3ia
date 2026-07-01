@@ -13,6 +13,7 @@ import {
   ClipboardList,
   FolderKanban,
   MessagesSquare,
+  IdCard,
 } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { PATHS } from "../../../routes/paths";

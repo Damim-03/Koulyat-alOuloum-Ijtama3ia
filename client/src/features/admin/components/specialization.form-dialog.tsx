@@ -1,103 +1,152 @@
-import { useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Layers, Type, GraduationCap, Network, Save } from "lucide-react";
-import { FormDialog, Field, inputClass } from "./form-dialog";
-import { specializationSchema, type SpecializationInput } from "../validation/admin.schema";
-import { useCreateSpecialization, useUpdateSpecialization, useDepartments } from "../hooks/admin-hook";
+import { X } from "lucide-react";
+import {
+  useCreateSpecialization,
+  useUpdateSpecialization,
+} from "../hooks/admin-hook";
 import type { Specialization } from "../../../types/admin";
 
-interface Props {
+type Level = "licence" | "master" | "doctorate";
+const LEVELS: Level[] = ["licence", "master", "doctorate"];
+const LEVEL_LABEL: Record<Level, string> = {
+  licence: "admin.levelLicence",
+  master: "admin.levelMaster",
+  doctorate: "admin.levelDoctorate",
+};
+
+interface SpecializationFormDialogProps {
   open: boolean;
   onClose: () => void;
-  specialization?: Specialization | null;
+  specialization: Specialization | null;
+  filiereId: string;
 }
 
-export function SpecializationFormDialog({ open, onClose, specialization }: Props) {
+export function SpecializationFormDialog({
+  open,
+  onClose,
+  specialization,
+  filiereId,
+}: SpecializationFormDialogProps) {
   const { t } = useTranslation();
-  const isEdit = !!specialization;
-
-  const { data: departments } = useDepartments();
   const createSpec = useCreateSpecialization();
   const updateSpec = useUpdateSpecialization();
-  const pending = createSpec.isPending || updateSpec.isPending;
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<SpecializationInput>({ resolver: zodResolver(specializationSchema) });
+  const [name, setName] = useState("");
+  const [level, setLevel] = useState<Level>("licence");
+  const [submitting, setSubmitting] = useState(false);
+
+  const isEdit = Boolean(specialization);
 
   useEffect(() => {
     if (open) {
-      reset(
-        specialization
-          ? { name: specialization.name, level: specialization.level, departmentId: specialization.departmentId }
-          : { name: "", level: "licence", departmentId: "" },
-      );
+      setName(specialization?.name ?? "");
+      setLevel((specialization?.level as Level) ?? "licence");
     }
-  }, [open, specialization, reset]);
+  }, [open, specialization]);
 
-  function onSubmit(values: SpecializationInput) {
-    if (isEdit && specialization) {
-      updateSpec.mutate({ id: specialization.id, data: values }, { onSuccess: () => onClose() });
-    } else {
-      createSpec.mutate(values, { onSuccess: () => onClose() });
+  if (!open) return null;
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+
+    const payload = { name: trimmedName, level, filiereId };
+
+    setSubmitting(true);
+    try {
+      if (isEdit && specialization) {
+        await updateSpec.mutateAsync({ id: specialization.id, data: payload });
+      } else {
+        await createSpec.mutateAsync(payload);
+      }
+      onClose();
+    } catch {
+      // الأخطاء تظهر عبر toast داخل الـ hook
+    } finally {
+      setSubmitting(false);
     }
   }
 
+  const canSubmit = name.trim() !== "" && !submitting;
+
   return (
-    <FormDialog
-      open={open}
-      onClose={onClose}
-      title={isEdit ? t("admin.editSpecialization") : t("admin.addSpecialization")}
-      subtitle={t("admin.specializationDialogSubtitle")}
-      icon={Layers}
-      footer={
-        <>
-          <button
-            type="submit"
-            form="specialization-form"
-            disabled={pending}
-            className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:opacity-60"
-          >
-            <Save size={16} />
-            {pending ? t("admin.saving") : t("admin.saveData")}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-forest/20 px-5 py-2.5 text-sm font-semibold text-forest transition hover:bg-forest/5"
-          >
-            {t("admin.cancel")}
-          </button>
-        </>
-      }
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 grid place-items-center bg-forest-deep/40 p-4 backdrop-blur-sm"
     >
-      <form id="specialization-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <Field label={t("admin.specName")} icon={Type} error={errors.name?.message}>
-          <input {...register("name")} className={inputClass} placeholder={t("admin.specNamePlaceholder")} />
-        </Field>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        dir="rtl"
+        className="w-full max-w-md rounded-2xl bg-cream-card p-6 shadow-[0_20px_60px_rgba(38,66,61,0.25)]"
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="font-serif text-lg font-bold text-forest">
+            {isEdit
+              ? t("admin.editSpecialization")
+              : t("admin.newSpecialization")}
+          </h2>
+          <button
+            onClick={onClose}
+            className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+          >
+            <X size={18} />
+          </button>
+        </div>
 
-        <Field label={t("admin.level")} icon={GraduationCap} error={errors.level?.message}>
-          <select {...register("level")} className={inputClass}>
-            <option value="licence">{t("admin.level_licence")}</option>
-            <option value="master">{t("admin.level_master")}</option>
-            <option value="doctorate">{t("admin.level_doctorate")}</option>
-          </select>
-        </Field>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-right text-sm font-medium text-forest">
+              {t("admin.specializationName")}
+            </label>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              dir="rtl"
+              className="w-full rounded-xl border border-forest/15 bg-cream px-3.5 py-2.5 text-right text-sm text-forest outline-none transition focus:border-sage focus:ring-2 focus:ring-sage/20"
+            />
+          </div>
 
-        <Field label={t("admin.department")} icon={Network} error={errors.departmentId?.message}>
-          <select {...register("departmentId")} className={inputClass}>
-            <option value="">{t("admin.selectDepartment")}</option>
-            {departments?.map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-        </Field>
-      </form>
-    </FormDialog>
+          <div>
+            <label className="mb-1.5 block text-right text-sm font-medium text-forest">
+              {t("admin.specializationLevel")}
+            </label>
+            <select
+              value={level}
+              onChange={(e) => setLevel(e.target.value as Level)}
+              dir="rtl"
+              className="w-full rounded-xl border border-forest/15 bg-cream px-3.5 py-2.5 text-right text-sm text-forest outline-none transition focus:border-sage focus:ring-2 focus:ring-sage/20"
+            >
+              {LEVELS.map((lv) => (
+                <option key={lv} value={lv}>
+                  {t(LEVEL_LABEL[lv])}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex justify-start gap-2 pt-2">
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? "\u2026" : t("admin.save")}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-forest/15 px-5 py-2.5 text-sm font-medium text-clay transition hover:bg-forest/5"
+            >
+              {t("admin.cancel")}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

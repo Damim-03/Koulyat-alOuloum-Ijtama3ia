@@ -40,7 +40,7 @@ export function DirectorMessage() {
       {/* background atmosphere */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-[5%] top-[8%] size-80 rounded-full bg-forest/[0.04]" />
-        <div className="absolute bottom-[10%] right-[3%] size-96 rounded-full bg-gold/[0.05]" />
+        <div className="absolute bottom-[10%] right-[3%] size-96 rounded-full bg-gold/5" />
         <div className="dot-matrix absolute inset-0 opacity-[0.4]" />
       </div>
 

@@ -140,6 +140,26 @@ model Faculty {
 
 //
 // ════════════════════════════════════════════════════════════
+//  DOMAINS (الميادين) — القسم يضمّ ميادين، والميدان يضمّ شُعبًا
+// ════════════════════════════════════════════════════════════
+//
+model Domain {
+  id String @id @default(uuid())
+
+  name String
+  code String @unique
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+   filieres Filiere[] 
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// ════════════════════════════════════════════════════════════
 //  DEPARTMENTS
 // ════════════════════════════════════════════════════════════
 //
@@ -153,8 +173,34 @@ model Department {
   facultyId String
   faculty   Faculty @relation(fields: [facultyId], references: [id])
 
+  filieres   Filiere[]
+  professors Professor[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  domains Domain[]
+}
+
+//
+// ════════════════════════════════════════════════════════════
+//  FILIERES (الشُّعب) — القسم يضمّ شُعبًا، والشعبة تضمّ تخصّصات
+// ════════════════════════════════════════════════════════════
+//
+
+model Filiere {
+  id String @id @default(uuid())
+
+  name String
+  code String @unique
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
   specializations Specialization[]
-  professors      Professor[]
+
+  domainId String?
+  domain   Domain? @relation(fields: [domainId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -172,8 +218,8 @@ model Specialization {
   name  String
   level AcademicLevel
 
-  departmentId String
-  department   Department @relation(fields: [departmentId], references: [id])
+  filiereId String
+  filiere   Filiere @relation(fields: [filiereId], references: [id])
 
   students Student[]
   topics   GraduationTopic[]
@@ -249,6 +295,9 @@ model Professor {
 
   departmentId String
   department   Department @relation(fields: [departmentId], references: [id])
+
+  grade String[] @default([]) // الرتبة — free tags entered by the admin
+  tags  String[] @default([]) // الصفة — free tags entered by the admin
 
   topics           GraduationTopic[]
   committeeMembers DefenseCommitteeMember[]
@@ -535,6 +584,40 @@ model Notification {
   link String?
 
   isRead Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Append this enum near the other enums:
+enum CardRole {
+  student
+  professor
+  admin
+}
+
+// Append this model at the end of the schema:
+model CardTemplate {
+  id String @id @default(uuid())
+
+  // One template per role (student / professor / admin).
+  role CardRole @unique
+
+  // Visual base.
+  backgroundColor String  @default("#26423D")
+  textColor       String  @default("#F5EDDA")
+  accentColor     String  @default("#C1965A")
+  logoUrl         String? // uploaded logo
+  backgroundUrl   String? // uploaded background image
+
+  // Drag-and-drop field placements, stored as JSON:
+  // [{ "field": "fullName", "x": 50, "y": 20, "fontSize": 18,
+  //    "color": "#FFFFFF", "align": "center", "bold": true }, ...]
+  // x / y are PERCENT (0..100) of the card box → resolution-independent.
+  layout Json @default("[]")
+
+  // Whether this template is the approved one applied to all cards.
+  isPublished Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
