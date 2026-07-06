@@ -30,6 +30,16 @@ export interface ListParams {
 }
 
 export const adminApi = {
+  createAssignedTopic: (data: unknown) =>
+    client
+      .post<{ topic: AdminTopic }>(`${BASE}/topics/assigned`, data)
+      .then((r) => r.data.topic),
+
+  updateAssignedTopic: (id: string, data: unknown) =>
+    client
+      .patch<{ topic: AdminTopic }>(`${BASE}/topics/${id}/assignment`, data)
+      .then((r) => r.data.topic),
+
   // ── Stats ──
   getStats: () =>
     client

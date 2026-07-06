@@ -9,7 +9,9 @@ import {
   IdCard as IdCardIcon,
   Hash,
   CalendarDays,
+  CalendarClock,
   Clock,
+  Activity,
   BadgeCheck,
   KeyRound,
   Ban,
@@ -23,14 +25,22 @@ import {
   Building2,
   Layers,
   Network,
+  ChevronLeft,
+  Sparkles,
+  Pencil,
 } from "lucide-react";
 import {
   useUser,
+  useUpdateUser,
+  useProfessor,
+  useStudent,
   useResetUserPassword,
   useSetUserStatus,
   useDeleteUser,
 } from "../hooks/admin-hook";
 import { PageLoader } from "../../../components/page-loader";
+import { ProfessorEditDialog } from "../components/professor-edit-dialog";
+import { StudentEditDialog } from "../components/student-edit-dialog";
 import type { UserDetail } from "../../../types/admin";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -38,12 +48,6 @@ const ROLE_LABEL: Record<string, string> = {
   admin: "مدير",
   professor: "أستاذ",
   student: "طالب",
-};
-const ROLE_STYLES: Record<string, string> = {
-  owner: "bg-gold/20 text-gold",
-  admin: "bg-forest/10 text-forest",
-  professor: "bg-sage/20 text-sage",
-  student: "bg-soft-sage/30 text-forest",
 };
 
 const fullName = (u: UserDetail) =>
@@ -63,6 +67,123 @@ const arDateTime = (iso: string | null) =>
 const arDate = (iso: string) =>
   new Intl.DateTimeFormat("ar", { dateStyle: "medium" }).format(new Date(iso));
 
+/* ── عدد الأيام منذ الإنشاء ─────────────────────────────────── */
+function daysSince(iso: string): number {
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  return d < 0 ? 0 : d;
+}
+
+/* ── آخر دخول كوقت نسبي بالعربية ────────────────────────────── */
+function relLogin(iso: string | null): string {
+  if (!iso) return "لم يدخل بعد";
+  const diff = new Date(iso).getTime() - Date.now(); // سالب = في الماضي
+  const abs = Math.abs(diff);
+  const rtf = new Intl.RelativeTimeFormat("ar", { numeric: "auto" });
+  const min = 60_000,
+    hr = 3_600_000,
+    day = 86_400_000;
+  if (abs < hr) return rtf.format(Math.round(diff / min), "minute");
+  if (abs < day) return rtf.format(Math.round(diff / hr), "hour");
+  if (abs < 30 * day) return rtf.format(Math.round(diff / day), "day");
+  if (abs < 365 * day)
+    return rtf.format(Math.round(diff / (30 * day)), "month");
+  return rtf.format(Math.round(diff / (365 * day)), "year");
+}
+
+/* ── نسبة اكتمال الملف الشخصي ───────────────────────────────── */
+function completeness(u: UserDetail): number {
+  let fields: boolean[] = [
+    !!u.firstName,
+    !!u.lastName,
+    !!u.email,
+    !!u.phone,
+    !!u.username,
+    !!u.avatarUrl,
+    u.isVerified,
+  ];
+  if (u.student) {
+    fields = fields.concat([
+      !!u.student.registrationNumber,
+      !!u.student.academicYear,
+      !!u.student.specialization,
+    ]);
+  } else if (u.professor) {
+    fields = fields.concat([
+      !!u.professor.employeeNumber,
+      !!u.professor.universityEmail,
+    ]);
+  }
+  const filled = fields.filter(Boolean).length;
+  return Math.round((filled / fields.length) * 100);
+}
+
+/* ── حلقة تقدّم دائرية (SVG خالص) ───────────────────────────── */
+function Ring({ value }: { value: number }) {
+  const r = 17;
+  const c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, value));
+  const off = c - (pct / 100) * c;
+  return (
+    <div className="relative grid size-11 shrink-0 place-items-center">
+      <svg viewBox="0 0 44 44" className="size-11 -rotate-90">
+        <circle
+          cx="22"
+          cy="22"
+          r={r}
+          fill="none"
+          strokeWidth="4"
+          className="stroke-forest/10"
+        />
+        <circle
+          cx="22"
+          cy="22"
+          r={r}
+          fill="none"
+          strokeWidth="4"
+          strokeLinecap="round"
+          className="stroke-gold transition-[stroke-dashoffset] duration-700"
+          strokeDasharray={c}
+          strokeDashoffset={off}
+        />
+      </svg>
+    </div>
+  );
+}
+
+/* ── دائرة أيقونة ملوّنة ─────────────────────────────────────── */
+function iconChip(Icon: typeof Mail, tint: string) {
+  return (
+    <div
+      className={`grid size-11 shrink-0 place-items-center rounded-full ${tint}`}
+    >
+      <Icon size={20} />
+    </div>
+  );
+}
+
+/* ── بطاقة إحصائية ──────────────────────────────────────────── */
+function StatTile({
+  leading,
+  value,
+  label,
+}: {
+  leading: React.ReactNode;
+  value: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(38,66,61,0.10)]">
+      {leading}
+      <div className="min-w-0">
+        <div className="truncate font-serif text-lg font-bold text-forest">
+          {value}
+        </div>
+        <p className="text-[11px] text-clay">{label}</p>
+      </div>
+    </div>
+  );
+}
+
 /* ── labeled info row ─────────────────────────────────────── */
 function Info({
   icon: Icon,
@@ -76,7 +197,7 @@ function Info({
   ltr?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-xl bg-cream-2 px-4 py-3">
+    <div className="flex items-start gap-3 rounded-xl bg-cream-2 px-4 py-3 transition hover:bg-forest/5">
       <Icon size={16} className="mt-0.5 shrink-0 text-clay" />
       <div className="min-w-0">
         <p className="text-[11px] text-clay">{label}</p>
@@ -88,6 +209,45 @@ function Info({
         </p>
       </div>
     </div>
+  );
+}
+
+/* ── عنوان قسم بأيقونة داخل رقاقة ───────────────────────────── */
+function SectionTitle({
+  icon: Icon,
+  children,
+}: {
+  icon: typeof Mail;
+  children: React.ReactNode;
+}) {
+  return (
+    <h3 className="mb-4 flex items-center gap-2.5 font-serif text-base font-bold text-forest">
+      <span className="grid size-9 place-items-center rounded-xl bg-soft-sage/30 text-forest">
+        <Icon size={17} />
+      </span>
+      {children}
+    </h3>
+  );
+}
+
+/* ── shared field class + labeled input ─────────────────────── */
+const fieldCls =
+  "w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30";
+
+function Labeled({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-medium text-clay">
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }
 
@@ -141,20 +301,35 @@ function Modal({
   );
 }
 
-type ModalKind = "password" | "status" | "delete" | null;
+type ModalKind = "edit" | "password" | "status" | "delete" | null;
 
 export function AdminUserDetailPage() {
   const { id, lang } = useParams<{ id: string; lang: string }>();
   const navigate = useNavigate();
 
   const { data: user, isLoading, refetch } = useUser(id ?? null);
+  const updateUser = useUpdateUser();
   const resetPassword = useResetUserPassword();
   const setStatus = useSetUserStatus();
   const deleteUser = useDeleteUser();
 
+  // نجلب الكيان الكامل حسب الدور كي تُعبّئ النافذة المخصّصة حقولها.
+  const profId =
+    user?.role === "professor" ? (user.professor?.id ?? null) : null;
+  const studId = user?.role === "student" ? (user.student?.id ?? null) : null;
+  const { data: fullProfessor, refetch: refetchProfessor } =
+    useProfessor(profId);
+  const { data: fullStudent, refetch: refetchStudent } = useStudent(studId);
+
   const [modal, setModal] = useState<ModalKind>(null);
   const [pw, setPw] = useState("");
   const [showPw, setShowPw] = useState(false);
+  const [form, setForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    username: "",
+  });
 
   const usersPath = `/${lang}/admin/users`;
 
@@ -174,6 +349,15 @@ export function AdminUserDetailPage() {
     );
 
   const isActive = user.status === "active";
+  const isProfessor = user.role === "professor";
+  const isStudent = user.role === "student";
+  const isBase = !isProfessor && !isStudent; // admin / owner
+  const closeEdit = () => {
+    setModal(null);
+    refetch();
+    refetchProfessor();
+    refetchStudent();
+  };
   const closeModal = () => {
     setModal(null);
     setPw("");
@@ -201,11 +385,62 @@ export function AdminUserDetailPage() {
   function onDelete() {
     deleteUser.mutate(user!.id, { onSuccess: () => navigate(usersPath) });
   }
+  function openEdit() {
+    setForm({
+      firstName: user!.firstName ?? "",
+      lastName: user!.lastName ?? "",
+      email: user!.email ?? "",
+      username: user!.username ?? "",
+    });
+    setModal("edit");
+  }
+  function onSaveEdit() {
+    // أرسِل الحقول المتغيّرة فقط (كلها اختيارية في الـ backend).
+    const data: Record<string, string> = {};
+    const fn = form.firstName.trim();
+    const ln = form.lastName.trim();
+    const em = form.email.trim();
+    const un = form.username.trim();
+    if (fn && fn !== (user!.firstName ?? "")) data.firstName = fn;
+    if (ln && ln !== (user!.lastName ?? "")) data.lastName = ln;
+    if (em && em !== (user!.email ?? "")) data.email = em;
+    if (un && un !== (user!.username ?? "")) data.username = un;
+    if (Object.keys(data).length === 0) {
+      closeModal();
+      return;
+    }
+    updateUser.mutate(
+      { id: user!.id, data },
+      {
+        onSuccess: () => {
+          refetch();
+          closeModal();
+        },
+      },
+    );
+  }
 
   const spec = user.student?.specialization;
   const filiere = spec?.filiere;
   const dept = filiere?.department ?? user.professor?.department;
   const faculty = dept?.faculty;
+
+  const pct = completeness(user);
+  const age = daysSince(user.createdAt);
+
+  // صلاحية نموذج التعديل.
+  const emailOk =
+    !form.email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
+  const usernameOk = !form.username.trim() || form.username.trim().length >= 3;
+  const editValid = emailOk && usernameOk && !updateUser.isPending;
+
+  // سلسلة المسار الأكاديمي (للطلبة) — تُعرض فقط عند توفّر أي مستوى.
+  const pathChain = [
+    faculty?.name,
+    dept?.name,
+    filiere?.name,
+    spec?.name,
+  ].filter(Boolean) as string[];
 
   return (
     <div className="font-body space-y-6">
@@ -218,55 +453,109 @@ export function AdminUserDetailPage() {
         العودة لقائمة المستخدمين
       </button>
 
-      {/* identity banner */}
-      <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        {user.avatarUrl ? (
-          <img
-            src={user.avatarUrl}
-            alt={fullName(user)}
-            className="size-16 rounded-full object-cover"
-          />
-        ) : (
-          <div className="grid size-16 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-lg font-bold text-cream">
-            {(user.firstName?.[0] ?? "") + (user.lastName?.[0] ?? "") ||
-              "\u061f"}
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <h1 className="font-serif text-xl font-bold text-forest">
-            {fullName(user)}
-          </h1>
-          {user.username && (
-            <p className="text-sm text-clay" dir="ltr">
-              @{user.username}
-            </p>
+      {/* ── HERO ── */}
+      <div className="relative overflow-hidden rounded-2xl bg-linear-to-l from-forest-deep to-forest p-6 text-cream shadow-[0_10px_40px_rgba(38,66,61,0.20)]">
+        {/* decorative glows */}
+        <div className="pointer-events-none absolute -right-12 -top-16 size-44 rounded-full bg-cream/5" />
+        <div className="pointer-events-none absolute -bottom-16 left-24 size-48 rounded-full bg-gold/10 blur-2xl" />
+        <Sparkles
+          size={18}
+          className="pointer-events-none absolute left-6 top-6 text-gold/60"
+        />
+
+        <div className="relative flex flex-wrap items-center gap-5">
+          {user.avatarUrl ? (
+            <img
+              src={user.avatarUrl}
+              alt={fullName(user)}
+              className="size-20 rounded-full object-cover ring-4 ring-cream/20"
+            />
+          ) : (
+            <div className="grid size-20 place-items-center rounded-full bg-cream/15 text-2xl font-bold text-cream ring-4 ring-cream/20">
+              {(user.firstName?.[0] ?? "") + (user.lastName?.[0] ?? "") ||
+                "\u061f"}
+            </div>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-semibold ${ROLE_STYLES[user.role] ?? "bg-gray-100 text-gray-600"}`}
-          >
-            {ROLE_LABEL[user.role] ?? user.role}
-          </span>
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-semibold ${
-              isActive
-                ? "bg-emerald-100 text-emerald-700"
-                : "bg-red-100 text-red-700"
-            }`}
-          >
-            {isActive ? "نشط" : "موقوف"}
-          </span>
+
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <h1 className="font-serif text-2xl font-bold">
+                {fullName(user)}
+              </h1>
+              {user.isVerified && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-100 ring-1 ring-emerald-300/30">
+                  <BadgeCheck size={12} /> موثّق
+                </span>
+              )}
+            </div>
+            {user.username && (
+              <p className="text-sm text-cream/70" dir="ltr">
+                @{user.username}
+              </p>
+            )}
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-cream/15 px-3 py-1 text-xs font-semibold text-cream ring-1 ring-cream/20">
+                <Shield size={13} />
+                {ROLE_LABEL[user.role] ?? user.role}
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
+                  isActive
+                    ? "bg-emerald-400/20 text-emerald-100 ring-emerald-300/30"
+                    : "bg-red-400/20 text-red-100 ring-red-300/30"
+                }`}
+              >
+                {isActive ? <CheckCircle2 size={13} /> : <Ban size={13} />}
+                {isActive ? "نشط" : "موقوف"}
+              </span>
+              {user.email && (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full bg-cream/10 px-3 py-1 text-xs text-cream/80"
+                  dir="ltr"
+                >
+                  <Mail size={13} /> {user.email}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ── 2) INFO ── */}
+      {/* ── STATS STRIP ── */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatTile
+          leading={<Ring value={pct} />}
+          value={`${pct}%`}
+          label="اكتمال الملف"
+        />
+        <StatTile
+          leading={iconChip(CalendarClock, "bg-soft-sage/30 text-forest")}
+          value={`${age} يوم`}
+          label="عضو منذ الإنشاء"
+        />
+        <StatTile
+          leading={iconChip(Activity, "bg-gold/15 text-gold")}
+          value={relLogin(user.lastLoginAt)}
+          label="آخر دخول"
+        />
+        <StatTile
+          leading={iconChip(
+            BadgeCheck,
+            user.isVerified
+              ? "bg-emerald-100 text-emerald-600"
+              : "bg-gray-100 text-gray-400",
+          )}
+          value={user.isVerified ? "موثّق" : "غير موثّق"}
+          label="حالة التوثيق"
+        />
+      </div>
+
+      {/* ── INFO ── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* contact */}
         <div className="rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-          <h3 className="mb-4 flex items-center gap-2 font-serif text-base font-bold text-forest">
-            <Mail size={17} /> معلومات التواصل
-          </h3>
+          <SectionTitle icon={Mail}>معلومات التواصل</SectionTitle>
           <div className="space-y-2">
             <Info
               icon={Mail}
@@ -295,9 +584,30 @@ export function AdminUserDetailPage() {
 
         {/* account / academic */}
         <div className="rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-          <h3 className="mb-4 flex items-center gap-2 font-serif text-base font-bold text-forest">
-            <Shield size={17} /> معلومات الحساب
-          </h3>
+          <SectionTitle icon={Shield}>معلومات الحساب</SectionTitle>
+
+          {/* academic path chain (students) */}
+          {user.student && pathChain.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl bg-cream-2 px-4 py-3">
+              {pathChain.map((name, i) => (
+                <span key={i} className="flex items-center gap-1.5">
+                  <span
+                    className={`text-xs ${
+                      i === pathChain.length - 1
+                        ? "font-semibold text-sage"
+                        : "text-clay"
+                    }`}
+                  >
+                    {name}
+                  </span>
+                  {i < pathChain.length - 1 && (
+                    <ChevronLeft size={11} className="text-clay/40" />
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
           <div className="space-y-2">
             <Info
               icon={Shield}
@@ -365,12 +675,19 @@ export function AdminUserDetailPage() {
         </div>
       </div>
 
-      {/* ── 3) ACTIONS ── */}
+      {/* ── ACTIONS ── */}
       <div className="rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <h3 className="mb-4 font-serif text-base font-bold text-forest">
-          الإجراءات
-        </h3>
+        <SectionTitle icon={KeyRound}>الإجراءات</SectionTitle>
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={isBase ? openEdit : () => setModal("edit")}
+            disabled={
+              (isProfessor && !fullProfessor) || (isStudent && !fullStudent)
+            }
+            className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep disabled:opacity-50"
+          >
+            <Pencil size={16} /> تعديل البيانات
+          </button>
           <button
             onClick={() => setModal("password")}
             className="inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2.5 text-sm font-semibold text-forest transition hover:bg-forest/5"
@@ -397,7 +714,99 @@ export function AdminUserDetailPage() {
         </div>
       </div>
 
+      {/* role-specific edit dialogs */}
+      {isProfessor && modal === "edit" && (
+        <ProfessorEditDialog
+          open
+          professor={fullProfessor ?? null}
+          onClose={closeEdit}
+        />
+      )}
+      {isStudent && modal === "edit" && (
+        <StudentEditDialog
+          open
+          student={fullStudent ?? null}
+          onClose={closeEdit}
+        />
+      )}
+
       {/* ── MODALS ── */}
+      <Modal
+        open={isBase && modal === "edit"}
+        onClose={closeModal}
+        title="تعديل بيانات المستخدم"
+        icon={Pencil}
+      >
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Labeled label="الاسم الأول">
+              <input
+                autoFocus
+                value={form.firstName}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, firstName: e.target.value }))
+                }
+                className={fieldCls}
+              />
+            </Labeled>
+            <Labeled label="اسم العائلة">
+              <input
+                value={form.lastName}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, lastName: e.target.value }))
+                }
+                className={fieldCls}
+              />
+            </Labeled>
+          </div>
+          <Labeled label="البريد الإلكتروني">
+            <input
+              dir="ltr"
+              value={form.email}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, email: e.target.value }))
+              }
+              className={fieldCls}
+              placeholder="name@example.com"
+            />
+          </Labeled>
+          <Labeled label="اسم المستخدم">
+            <input
+              dir="ltr"
+              value={form.username}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, username: e.target.value }))
+              }
+              className={fieldCls}
+            />
+          </Labeled>
+          {!emailOk && (
+            <p className="text-[11px] text-red-500">بريد إلكتروني غير صالح</p>
+          )}
+          {!usernameOk && (
+            <p className="text-[11px] text-red-500">
+              اسم المستخدم ٣ أحرف على الأقل
+            </p>
+          )}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={closeModal}
+            className="rounded-xl px-4 py-2 text-sm font-semibold text-clay transition hover:bg-forest/5"
+          >
+            إلغاء
+          </button>
+          <button
+            onClick={onSaveEdit}
+            disabled={!editValid}
+            className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:opacity-60"
+          >
+            <Save size={16} />
+            {updateUser.isPending ? "جارٍ الحفظ…" : "حفظ"}
+          </button>
+        </div>
+      </Modal>
+
       <Modal
         open={modal === "password"}
         onClose={closeModal}

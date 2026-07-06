@@ -1,7 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { X } from "lucide-react";
-import { useCreateDepartment, useUpdateDepartment } from "../hooks/admin-hook";
+import { X, Wand2 } from "lucide-react";
+import {
+  useCreateDepartment,
+  useUpdateDepartment,
+  useDepartments,
+} from "../hooks/admin-hook";
 import type { Department } from "../../../types/admin";
 
 interface DepartmentFormDialogProps {
@@ -20,6 +24,7 @@ export function DepartmentFormDialog({
   const { t } = useTranslation();
   const createDept = useCreateDepartment();
   const updateDept = useUpdateDepartment();
+  const { data: departments } = useDepartments();
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -29,12 +34,36 @@ export function DepartmentFormDialog({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(department?.name ?? "");
       setCode(department?.code ?? "");
     }
   }, [open, department]);
 
   if (!open) return null;
+
+  /**
+   * يولّد رمزاً (D + ثلاثة أحرف كبيرة) غير مستخدَم من قِبل قسم آخر.
+   * الخادم يبقى الضامن النهائي للتفرّد عبر قيد @unique.
+   */
+  function generateCode() {
+    const taken = new Set(
+      (departments ?? [])
+        .filter((d) => d.id !== department?.id) // نستثني رمز القسم نفسه عند التعديل
+        .map((d) => (d.code ?? "").toUpperCase()),
+    );
+    const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    // eslint-disable-next-line no-useless-assignment
+    let next = "";
+    do {
+      let rest = "";
+      for (let i = 0; i < 3; i++)
+        rest += LETTERS[Math.floor(Math.random() * LETTERS.length)];
+      next = "D" + rest;
+    } while (taken.has(next));
+
+    setCode(next);
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -103,12 +132,23 @@ export function DepartmentFormDialog({
             <label className="mb-1.5 block text-right text-sm font-medium text-forest">
               {t("admin.departmentCode")}
             </label>
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              dir="ltr"
-              className="w-full rounded-xl border border-forest/15 bg-cream px-3.5 py-2.5 text-left font-mono text-sm text-forest outline-none transition focus:border-sage focus:ring-2 focus:ring-sage/20"
-            />
+            <div className="flex gap-2">
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                dir="ltr"
+                className="flex-1 rounded-xl border border-forest/15 bg-cream px-3.5 py-2.5 text-left font-mono text-sm text-forest outline-none transition focus:border-sage focus:ring-2 focus:ring-sage/20"
+              />
+              <button
+                type="button"
+                onClick={generateCode}
+                title={t("admin.generateCode")}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-forest/15 bg-cream-2 px-3 text-sm font-medium text-forest transition hover:border-sage hover:text-sage"
+              >
+                <Wand2 size={16} />
+                {t("admin.generateCode")}
+              </button>
+            </div>
           </div>
 
           <div className="flex justify-start gap-2 pt-2">

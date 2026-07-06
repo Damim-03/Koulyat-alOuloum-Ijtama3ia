@@ -16,7 +16,7 @@ import {
   useDeleteDepartment,
 } from "../hooks/admin-hook";
 import type { Department } from "../../../types/admin";
-import { DepartmentFormDialog } from "../components/department.form";
+import { DepartmentFormDialog } from "../components/Department.form-dialog";
 
 /** يقرأ معرّف الكلية من القسم سواء كان facultyId أو faculty.id */
 function getFacultyId(d: Department): string | undefined {

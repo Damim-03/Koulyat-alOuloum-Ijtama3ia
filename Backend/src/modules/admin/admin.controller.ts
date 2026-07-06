@@ -38,6 +38,8 @@ import {
   ListDomainsDTO,
   ListFilieresDTO,
   listFilieresSchema,
+  createAssignedTopicSchema,
+  updateAssignedTopicSchema,
 } from "./admin.validation";
 import * as svc from "./admin.service";
 import {
@@ -54,8 +56,11 @@ function parseBody<T>(
 ) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i: any) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join(" | ");
     throw new BadRequestException(
-      "Validation error",
+      `Validation error → ${issues}`,
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
@@ -1229,6 +1234,39 @@ export const markAllNotificationsReadController = async (
   try {
     const data = await markAllNotificationsReadService(getAuthUserId(req));
     return res.status(HTTPSTATUS.OK).json(data);
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const createAssignedTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(createAssignedTopicSchema, req.body);
+    const topic = await svc.createAssignedTopicService(data as never);
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Topic created and assigned", topic });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const updateAssignedTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(updateAssignedTopicSchema, req.body);
+    const topic = await svc.updateAssignedTopicService(
+      req.params.id as string,
+      data as never,
+    );
+    return res.status(HTTPSTATUS.OK).json({ message: "Topic updated", topic });
   } catch (e) {
     next(e);
   }

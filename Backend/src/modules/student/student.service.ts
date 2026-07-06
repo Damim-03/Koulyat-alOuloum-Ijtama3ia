@@ -38,6 +38,9 @@ export const browseTopicsService = async (
   return prisma.graduationTopic.findMany({
     where: {
       status: { in: ["approved", "open"] },
+      // محجوز = عليه طلب غير مرفوض ⇒ يختفي من التصفّح؛ ويعود تلقائياً إذا رُفض الطلب.
+      groupRequests: { none: { status: { in: ["pending", "accepted"] } } },
+      applications: { none: { status: { in: ["pending", "accepted"] } } },
       ...(filters.specializationId
         ? { specializationId: filters.specializationId }
         : {}),
@@ -151,6 +154,26 @@ export const createGroupRequestService = async (
   if (topic.status !== "approved" && topic.status !== "open") {
     throw new BadRequestException(
       "This topic is not open for requests",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  }
+
+  // 1.b الموضوع يُحجز عند أول طلب: امنع أي طلب جديد إن كان عليه طلب غير مرفوض.
+  const reserved = await prisma.graduationTopic.findFirst({
+    where: {
+      id: topic.id,
+      OR: [
+        {
+          groupRequests: { some: { status: { in: ["pending", "accepted"] } } },
+        },
+        { applications: { some: { status: { in: ["pending", "accepted"] } } } },
+      ],
+    },
+    select: { id: true },
+  });
+  if (reserved) {
+    throw new BadRequestException(
+      "هذا الموضوع محجوز بالفعل",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }

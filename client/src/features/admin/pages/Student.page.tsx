@@ -11,6 +11,8 @@ import {
   GraduationCap,
   ChevronLeft,
   SlidersHorizontal,
+  Users,
+  UserX,
 } from "lucide-react";
 import {
   useStudents,
@@ -61,6 +63,7 @@ export function AdminStudentsPage() {
   const [specializationId, setSpecializationId] = useState("");
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [tab, setTab] = useState<"all" | "unassigned">("all");
 
   // debounced search
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -72,7 +75,14 @@ export function AdminStudentsPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1);
-  }, [debouncedSearch, facultyId, departmentId, filiereId, specializationId]);
+  }, [
+    debouncedSearch,
+    facultyId,
+    departmentId,
+    filiereId,
+    specializationId,
+    tab,
+  ]);
 
   const params = useMemo(
     () => ({
@@ -83,6 +93,7 @@ export function AdminStudentsPage() {
       departmentId: departmentId || undefined,
       filiereId: filiereId || undefined,
       specializationId: specializationId || undefined,
+      unassigned: tab === "unassigned" ? "true" : undefined,
     }),
     [
       page,
@@ -91,10 +102,18 @@ export function AdminStudentsPage() {
       departmentId,
       filiereId,
       specializationId,
+      tab,
     ],
   );
 
   const { data, isLoading, isFetching } = useStudents(params);
+  // عدّاد الطلبة دون موضوع (صفحة واحدة تكفي لقراءة total)
+  const { data: unassignedData } = useStudents({
+    page: 1,
+    limit: 1,
+    unassigned: "true",
+  });
+  const unassignedTotal = unassignedData?.total ?? 0;
   const { data: faculties } = useFaculties();
   const { data: departments } = useDepartments();
   const { data: filieres } = useFilieres();
@@ -222,7 +241,7 @@ export function AdminStudentsPage() {
         />
         <StatTile
           icon={Clock}
-          value="\u2014"
+          value={unassignedTotal}
           label={t("admin.awaitingProject")}
           tint="bg-amber-100 text-amber-600"
         />
@@ -232,6 +251,43 @@ export function AdminStudentsPage() {
           label={t("admin.specializations")}
           tint="bg-gold/15 text-gold"
         />
+      </div>
+
+      {/* Tabs */}
+      <div className="mb-4 inline-flex rounded-xl border border-forest/15 bg-cream-2 p-1">
+        <button
+          onClick={() => setTab("all")}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            tab === "all"
+              ? "bg-forest text-cream"
+              : "text-clay hover:text-forest"
+          }`}
+        >
+          <Users size={15} />
+          {t("admin.allStudentsTab")}
+        </button>
+        <button
+          onClick={() => setTab("unassigned")}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            tab === "unassigned"
+              ? "bg-forest text-cream"
+              : "text-clay hover:text-forest"
+          }`}
+        >
+          <UserX size={15} />
+          {t("admin.unassignedTab")}
+          {unassignedTotal > 0 && (
+            <span
+              className={`grid min-w-5 place-items-center rounded-full px-1 text-[11px] font-bold ${
+                tab === "unassigned"
+                  ? "bg-cream/20 text-cream"
+                  : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {unassignedTotal}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Filters */}
@@ -335,6 +391,14 @@ export function AdminStudentsPage() {
           </div>
         )}
       </div>
+
+      {/* deadline hint (unassigned tab only) */}
+      {tab === "unassigned" && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <UserX size={18} className="mt-0.5 shrink-0" />
+          <p>{t("admin.unassignedStudentsHint")}</p>
+        </div>
+      )}
 
       {/* count */}
       <div className="mb-3 flex items-center gap-2 text-sm text-clay">

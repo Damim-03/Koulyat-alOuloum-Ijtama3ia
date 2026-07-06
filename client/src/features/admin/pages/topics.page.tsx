@@ -1,7 +1,16 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Search, Check, X, Archive, Eye, Send, EyeOff } from "lucide-react";
+import { useLangNavigate } from "../../../hooks/useLangNavigate";
+import {
+  Search,
+  Check,
+  X,
+  Archive,
+  Send,
+  EyeOff,
+  Plus,
+  Pencil,
+} from "lucide-react";
 import {
   useAdminTopics,
   useApproveTopic,
@@ -10,16 +19,18 @@ import {
   usePublishTopic,
   useUnpublishTopic,
   useProfessors,
+  useSpecializations,
+  useFaculties,
+  useAcademicYears,
 } from "../hooks/admin-hook";
-import type { AdminTopic } from "../../../types/admin";
+import { AssignedTopicDialog } from "../components/assigned-topic-dialog";
+import { EditAssignedTopicDialog } from "../components/edit-assigned-topic-dialog";
 
-function initials(
-  first?: string | null,
-  last?: string | null,
-  fallback = "\u061f",
-) {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+function initials(first?: string | null, last?: string | null, fb = "\u061f") {
   const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fallback;
+  return a || fb;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -38,54 +49,208 @@ const STATUS_FILTERS = [
   "open",
   "full",
   "rejected",
+  "archived",
 ] as const;
 
 const PAGE_SIZE = 10;
 
+const selectCls =
+  "rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30";
+
 export function AdminTopicsPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const { lang } = useParams();
+  const navigate = useLangNavigate();
+  const openTopic = (id: string) => navigate(`/admin/topics/${id}`);
 
-  const openTopic = (id: string) => navigate(`/${lang}/admin/topics/${id}`);
-
+  // filters
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [professorId, setProfessorId] = useState("");
+  const [academicYearId, setAcademicYearId] = useState("");
+  const [facultyId, setFacultyId] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [filiereId, setFiliereId] = useState("");
+  const [specializationId, setSpecializationId] = useState("");
   const [page, setPage] = useState(1);
-  const [applied, setApplied] = useState<{
-    search?: string;
-    status?: string;
-    professorId?: string;
-  }>({});
 
-  const { data, isLoading } = useAdminTopics({
-    page,
-    limit: PAGE_SIZE,
-    ...applied,
-  });
+  const [addOpen, setAddOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  // reset page + selection whenever a filter changes
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [
+    debouncedSearch,
+    status,
+    professorId,
+    academicYearId,
+    facultyId,
+    departmentId,
+    filiereId,
+    specializationId,
+  ]);
+
+  const params = useMemo(
+    () => ({
+      page,
+      limit: PAGE_SIZE,
+      search: debouncedSearch || undefined,
+      status: status || undefined,
+      professorId: professorId || undefined,
+      academicYearId: academicYearId || undefined,
+      facultyId: facultyId || undefined,
+      departmentId: departmentId || undefined,
+      filiereId: filiereId || undefined,
+      specializationId: specializationId || undefined,
+    }),
+    [
+      page,
+      debouncedSearch,
+      status,
+      professorId,
+      academicYearId,
+      facultyId,
+      departmentId,
+      filiereId,
+      specializationId,
+    ],
+  );
+
+  const { data, isLoading, refetch } = useAdminTopics(params);
   const { data: profsData } = useProfessors({ limit: 100 });
+  const { data: specs } = useSpecializations();
+  const { data: faculties } = useFaculties();
+  const { data: years } = useAcademicYears();
+
   const approve = useApproveTopic();
   const reject = useRejectTopic();
   const archive = useArchiveTopic();
   const publish = usePublishTopic();
   const unpublish = useUnpublishTopic();
 
-  const topics = data?.items ?? [];
+  const topics = (data?.items ?? []) as any[];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const professors = profsData?.items ?? [];
 
-  function applyFilters() {
-    setApplied({
-      search: search || undefined,
-      status: status || undefined,
-      professorId: professorId || undefined,
+  // ── Cascading options derived from specializations (each carries filiere.department) ──
+  const facultyById = useMemo(
+    () => new Map((faculties ?? []).map((f: any) => [f.id, f])),
+    [faculties],
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const specList = (specs ?? []) as any[];
+
+  const facultyOptions = useMemo(() => {
+    const seen = new Map<string, any>();
+    for (const s of specList) {
+      const fid = s.filiere?.department?.facultyId;
+      const fac = fid ? facultyById.get(fid) : undefined;
+      if (fac && !seen.has(fac.id)) seen.set(fac.id, fac);
+    }
+    return [...seen.values()];
+  }, [specList, facultyById]);
+
+  const deptOptions = useMemo(() => {
+    const seen = new Map<string, any>();
+    for (const s of specList) {
+      const d = s.filiere?.department;
+      if (!d) continue;
+      if (facultyId && d.facultyId !== facultyId) continue;
+      if (!seen.has(d.id)) seen.set(d.id, d);
+    }
+    return [...seen.values()];
+  }, [specList, facultyId]);
+
+  const filiereOptions = useMemo(() => {
+    const seen = new Map<string, any>();
+    for (const s of specList) {
+      const f = s.filiere;
+      if (!f) continue;
+      if (facultyId && f.department?.facultyId !== facultyId) continue;
+      if (departmentId && f.departmentId !== departmentId) continue;
+      if (!seen.has(f.id)) seen.set(f.id, f);
+    }
+    return [...seen.values()];
+  }, [specList, facultyId, departmentId]);
+
+  const specOptions = useMemo(() => {
+    return specList.filter((s) => {
+      if (filiereId) return s.filiereId === filiereId;
+      if (departmentId) return s.filiere?.departmentId === departmentId;
+      if (facultyId) return s.filiere?.department?.facultyId === facultyId;
+      return true;
     });
-    setPage(1);
+  }, [specList, facultyId, departmentId, filiereId]);
+
+  // ── Multi-select ──
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelected(new Set());
+  }, [params]);
+
+  const pageIds = topics.map((tp) => tp.id);
+  const allOnPageSelected =
+    pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
+      return next;
+    });
   }
 
-  function profName(tp: AdminTopic) {
+  const selectedTopics = topics.filter((tp) => selected.has(tp.id));
+  const approvable = selectedTopics.filter((tp) => tp.status === "pending");
+  const publishable = selectedTopics.filter((tp) => tp.status === "approved");
+  const unpublishable = selectedTopics.filter((tp) => tp.status === "open");
+  const rejectable = selectedTopics.filter(
+    (tp) => tp.status !== "rejected" && tp.status !== "archived",
+  );
+  const archivable = selectedTopics.filter((tp) => tp.status !== "archived");
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  async function runBulk(items: any[], fn: (id: string) => Promise<unknown>) {
+    if (items.length === 0) return;
+    setBulkBusy(true);
+    try {
+      for (const tp of items) await fn(tp.id);
+      setSelected(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  const bulkApprove = () =>
+    runBulk(approvable, (id) => approve.mutateAsync(id));
+  const bulkPublish = () =>
+    runBulk(publishable, (id) => publish.mutateAsync(id));
+  const bulkUnpublish = () =>
+    runBulk(unpublishable, (id) => unpublish.mutateAsync(id));
+  const bulkReject = () =>
+    runBulk(rejectable, (id) => reject.mutateAsync({ id }));
+  const bulkArchive = () =>
+    runBulk(archivable, (id) => archive.mutateAsync(id));
+
+  function profName(tp: any) {
     const u = tp.professor?.user;
     return (
       [u?.firstName, u?.lastName].filter(Boolean).join(" ") ||
@@ -104,12 +269,20 @@ export function AdminTopicsPage() {
           </h1>
           <p className="mt-1 text-sm text-clay">{t("admin.topicsSubtitle")}</p>
         </div>
+
+        <button
+          onClick={() => setAddOpen(true)}
+          className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep shadow-sm transition hover:bg-gold-soft"
+        >
+          <Plus size={18} />
+          {t("admin.assignTopicBtn")}
+        </button>
       </div>
 
       {/* Filters */}
       <div className="mb-6 rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <div className="relative">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="relative md:col-span-1">
             <Search
               className="absolute right-3 top-1/2 -translate-y-1/2 text-clay"
               size={18}
@@ -117,7 +290,6 @@ export function AdminTopicsPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
               placeholder={t("admin.searchTopic")}
               className="w-full rounded-xl border border-forest/15 bg-cream-2 py-2.5 pr-10 pl-3 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
             />
@@ -126,10 +298,10 @@ export function AdminTopicsPage() {
           <select
             value={professorId}
             onChange={(e) => setProfessorId(e.target.value)}
-            className="rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
+            className={selectCls}
           >
             <option value="">{t("admin.allProfessors")}</option>
-            {professors.map((p) => (
+            {professors.map((p: any) => (
               <option key={p.id} value={p.id}>
                 {[p.user?.firstName, p.user?.lastName]
                   .filter(Boolean)
@@ -141,7 +313,7 @@ export function AdminTopicsPage() {
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30 md:col-span-1"
+            className={selectCls}
           >
             {STATUS_FILTERS.map((st) => (
               <option key={st || "all"} value={st}>
@@ -149,15 +321,146 @@ export function AdminTopicsPage() {
               </option>
             ))}
           </select>
+        </div>
 
-          <button
-            onClick={applyFilters}
-            className="rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
+        {/* Cascading academic filters */}
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
+          <select
+            value={facultyId}
+            onChange={(e) => {
+              setFacultyId(e.target.value);
+              setDepartmentId("");
+              setFiliereId("");
+              setSpecializationId("");
+            }}
+            className={selectCls}
           >
-            {t("admin.applyFilter")}
-          </button>
+            <option value="">{t("admin.allFaculties")}</option>
+            {facultyOptions.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={departmentId}
+            onChange={(e) => {
+              setDepartmentId(e.target.value);
+              setFiliereId("");
+              setSpecializationId("");
+            }}
+            className={selectCls}
+          >
+            <option value="">{t("admin.allDepartments")}</option>
+            {deptOptions.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filiereId}
+            onChange={(e) => {
+              setFiliereId(e.target.value);
+              setSpecializationId("");
+            }}
+            className={selectCls}
+          >
+            <option value="">{t("admin.allFilieres")}</option>
+            {filiereOptions.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={specializationId}
+            onChange={(e) => setSpecializationId(e.target.value)}
+            className={selectCls}
+          >
+            <option value="">{t("admin.allSpecializations")}</option>
+            {specOptions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={academicYearId}
+            onChange={(e) => setAcademicYearId(e.target.value)}
+            className={selectCls}
+          >
+            <option value="">{t("admin.allYears")}</option>
+            {(years ?? []).map((y: any) => (
+              <option key={y.id} value={y.id}>
+                {y.title}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/10 px-4 py-3">
+          <span className="text-sm font-semibold text-forest">
+            {t("admin.selectedN", { n: selected.size })}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={bulkApprove}
+              disabled={bulkBusy || approvable.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40"
+            >
+              <Check size={14} />
+              {t("admin.approve")} ({approvable.length})
+            </button>
+            <button
+              onClick={bulkPublish}
+              disabled={bulkBusy || publishable.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-forest px-3.5 py-2 text-xs font-semibold text-cream transition hover:bg-forest-deep disabled:opacity-40"
+            >
+              <Send size={14} />
+              {t("admin.publish")} ({publishable.length})
+            </button>
+            <button
+              onClick={bulkUnpublish}
+              disabled={bulkBusy || unpublishable.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 px-3.5 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-50 disabled:opacity-40"
+            >
+              <EyeOff size={14} />
+              {t("admin.unpublish")} ({unpublishable.length})
+            </button>
+            <button
+              onClick={bulkReject}
+              disabled={bulkBusy || rejectable.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 px-3.5 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-40"
+            >
+              <X size={14} />
+              {t("admin.reject")} ({rejectable.length})
+            </button>
+            <button
+              onClick={bulkArchive}
+              disabled={bulkBusy || archivable.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-forest/20 px-3.5 py-2 text-xs font-semibold text-forest transition hover:bg-forest/5 disabled:opacity-40"
+            >
+              <Archive size={14} />
+              {t("admin.archive")} ({archivable.length})
+            </button>
+            <button
+              onClick={() => setSelected(new Set())}
+              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-clay transition hover:text-forest"
+            >
+              <X size={14} />
+              {t("admin.clearSelection")}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
@@ -165,6 +468,15 @@ export function AdminTopicsPage() {
           <table className="w-full text-right">
             <thead>
               <tr className="bg-forest text-cream">
+                <th className="w-10 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={toggleAll}
+                    className="size-4 accent-gold"
+                    aria-label={t("admin.selectAll")}
+                  />
+                </th>
                 <th className="px-5 py-3 text-xs font-medium">
                   {t("admin.topicTitle")}
                 </th>
@@ -181,7 +493,7 @@ export function AdminTopicsPage() {
                   {t("admin.applicationsCount")}
                 </th>
                 <th className="px-5 py-3 text-xs font-medium">
-                  {t("admin.actions")}
+                  {t("admin.actions", { defaultValue: "إجراءات" })}
                 </th>
               </tr>
             </thead>
@@ -189,7 +501,7 @@ export function AdminTopicsPage() {
               {isLoading && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-5 py-10 text-center text-sm text-clay"
                   >
                     {"\u2026"}
@@ -200,7 +512,7 @@ export function AdminTopicsPage() {
               {!isLoading && topics.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-5 py-12 text-center text-sm text-clay"
                   >
                     {t("admin.noTopics")}
@@ -208,120 +520,75 @@ export function AdminTopicsPage() {
                 </tr>
               )}
 
-              {topics.map((tp) => (
-                <tr
-                  key={tp.id}
-                  className="transition-colors hover:bg-forest/[0.03]"
-                >
-                  <td className="px-5 py-3.5">
-                    <button
-                      onClick={() => openTopic(tp.id)}
-                      className="text-right"
-                    >
-                      <p className="text-sm font-medium text-forest transition hover:text-gold">
-                        {tp.title}
-                      </p>
-                    </button>
-                    <p className="text-[11px] text-clay" dir="ltr">
-                      ID: {tp.id.slice(0, 8)}
-                    </p>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-2">
-                      <div className="grid size-7 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream">
-                        {initials(
-                          tp.professor?.user?.firstName,
-                          tp.professor?.user?.lastName,
-                        )}
-                      </div>
-                      <span className="text-sm text-clay">{profName(tp)}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-clay">
-                    {tp.specialization?.name ?? "\u2014"}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[tp.status] ?? "bg-gray-100 text-gray-600"}`}
-                    >
-                      {t(`status.${tp.status}`, { defaultValue: tp.status })}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span className="inline-grid min-w-7 place-items-center rounded-full bg-forest/10 px-2 py-0.5 text-xs font-bold text-forest">
-                      {tp._count?.applications ?? 0}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1">
+              {topics.map((tp) => {
+                const checked = selected.has(tp.id);
+                return (
+                  <tr
+                    key={tp.id}
+                    className={`transition-colors ${checked ? "bg-gold/5" : "hover:bg-forest/[0.03]"}`}
+                  >
+                    <td className="px-4 py-3.5">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleOne(tp.id)}
+                        className="size-4 accent-gold"
+                      />
+                    </td>
+                    <td className="px-5 py-3.5">
                       <button
                         onClick={() => openTopic(tp.id)}
-                        className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                        title={t("admin.view")}
+                        className="text-right"
                       >
-                        <Eye size={16} />
+                        <p className="text-sm font-medium text-forest transition hover:text-gold">
+                          {tp.title}
+                        </p>
                       </button>
-
-                      {/* قبول أوّلي — يظهر فقط للموضوع قيد الانتظار */}
-                      {tp.status === "pending" && (
-                        <button
-                          onClick={() => approve.mutate(tp.id)}
-                          disabled={approve.isPending}
-                          className="grid size-8 place-items-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-30"
-                          title={t("admin.approve")}
-                        >
-                          <Check size={16} />
-                        </button>
-                      )}
-
-                      {/* نشر — يظهر للموضوع المقبول أوّليًا */}
-                      {tp.status === "approved" && (
-                        <button
-                          onClick={() => publish.mutate(tp.id)}
-                          disabled={publish.isPending}
-                          className="grid size-8 place-items-center rounded-lg text-sky-600 transition hover:bg-sky-50 disabled:opacity-30"
-                          title={t("admin.publish")}
-                        >
-                          <Send size={16} />
-                        </button>
-                      )}
-
-                      {/* إلغاء النشر — يظهر للموضوع المنشور (لم تتشكّل مجموعة) */}
-                      {tp.status === "open" && (
-                        <button
-                          onClick={() => unpublish.mutate(tp.id)}
-                          disabled={unpublish.isPending}
-                          className="grid size-8 place-items-center rounded-lg text-amber-600 transition hover:bg-amber-50 disabled:opacity-30"
-                          title={t("admin.unpublish")}
-                        >
-                          <EyeOff size={16} />
-                        </button>
-                      )}
-
-                      {/* رفض — يظهر طالما الموضوع غير مرفوض وغير مؤرشف */}
-                      {tp.status !== "rejected" && tp.status !== "archived" && (
-                        <button
-                          onClick={() => reject.mutate({ id: tp.id })}
-                          disabled={reject.isPending}
-                          className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50 disabled:opacity-30"
-                          title={t("admin.reject")}
-                        >
-                          <X size={16} />
-                        </button>
-                      )}
-
+                      <p className="text-[11px] text-clay" dir="ltr">
+                        {tp.academicYear?.title ?? ""}
+                      </p>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2">
+                        <div className="grid size-7 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream">
+                          {initials(
+                            tp.professor?.user?.firstName,
+                            tp.professor?.user?.lastName,
+                          )}
+                        </div>
+                        <span className="text-sm text-clay">
+                          {profName(tp)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-clay">
+                      {tp.specialization?.name ?? "\u2014"}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[tp.status] ?? "bg-gray-100 text-gray-600"}`}
+                      >
+                        {t(`status.${tp.status}`, { defaultValue: tp.status })}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="inline-grid min-w-7 place-items-center rounded-full bg-forest/10 px-2 py-0.5 text-xs font-bold text-forest">
+                        {tp._count?.applications ?? 0}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
                       <button
-                        onClick={() => archive.mutate(tp.id)}
-                        disabled={tp.status === "archived"}
-                        className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 disabled:opacity-30"
-                        title={t("admin.archive")}
+                        onClick={() => setEditId(tp.id)}
+                        title={t("admin.edit", { defaultValue: "تعديل" })}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-forest/15 px-2.5 py-1.5 text-xs font-medium text-forest/80 transition hover:border-gold hover:bg-gold/10 hover:text-forest"
                       >
-                        <Archive size={16} />
+                        <Pencil size={13} />
+                        {t("admin.edit", { defaultValue: "تعديل" })}
                       </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -356,6 +623,20 @@ export function AdminTopicsPage() {
           </div>
         </div>
       </div>
+
+      {/* Assign-topic dialog */}
+      <AssignedTopicDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={() => refetch()}
+      />
+
+      {/* Edit-topic dialog */}
+      <EditAssignedTopicDialog
+        topicId={editId}
+        onClose={() => setEditId(null)}
+        onUpdated={() => refetch()}
+      />
     </div>
   );
 }

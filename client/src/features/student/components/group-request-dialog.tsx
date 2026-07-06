@@ -28,6 +28,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   topic: BrowseTopic | null;
+  /** يُستدعى بعد نجاح الإرسال — استخدمه للعودة إلى صفحة المواضيع. */
+  onSubmitted?: () => void;
 }
 
 type LookupStatus = "idle" | "loading" | "found" | "notfound" | "dupe";
@@ -45,7 +47,12 @@ function specOf(s: LookupStudent): string {
 
 type MemberMeta = { name: string; spec: string };
 
-export function GroupRequestDialog({ open, onClose, topic }: Props) {
+export function GroupRequestDialog({
+  open,
+  onClose,
+  topic,
+  onSubmitted,
+}: Props) {
   const { t } = useTranslation();
   const createReq = useCreateGroupRequest();
   const [memberInput, setMemberInput] = useState("");
@@ -142,6 +149,7 @@ export function GroupRequestDialog({ open, onClose, topic }: Props) {
         reset();
         setMeta({});
         onClose();
+        onSubmitted?.(); // العودة إلى صفحة المواضيع (تتكفّل به الصفحة الأمّ)
       },
     });
   }

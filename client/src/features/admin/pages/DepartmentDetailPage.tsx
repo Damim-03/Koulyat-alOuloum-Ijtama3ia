@@ -8,6 +8,8 @@ import {
   Trash2,
   ChevronRight,
   ChevronLeft,
+  Network,
+  Layers,
   GitBranch,
 } from "lucide-react";
 import {
@@ -56,11 +58,15 @@ export function DepartmentDetailPage() {
       deleteDomain.mutate(dm.id);
   }
 
+  const facultyUrl = `/admin/faculties/${facultyId}`;
+  const domainUrl = (id: string) =>
+    `/admin/faculties/${facultyId}/departments/${departmentId}/domains/${id}`;
+
   return (
     <div className="font-body">
       {/* Back */}
       <button
-        onClick={() => navigate(`/admin/faculties/${facultyId}`)}
+        onClick={() => navigate(facultyUrl)}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-clay transition hover:text-forest"
       >
         <ChevronRight size={16} />
@@ -73,52 +79,59 @@ export function DepartmentDetailPage() {
         </div>
       ) : (
         <>
+          {/* Breadcrumb */}
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => navigate("/admin/faculties")}
+              className="text-xs text-clay transition hover:text-forest"
+            >
+              {t("admin.facultiesBreadcrumb")}
+            </button>
+            <ChevronLeft size={12} className="text-clay/50" />
+            <button
+              onClick={() => navigate(facultyUrl)}
+              className="text-xs text-clay transition hover:text-forest"
+            >
+              {faculty?.name}
+            </button>
+            <ChevronLeft size={12} className="text-clay/50" />
+            <span className="text-xs font-semibold text-sage">
+              {department?.name}
+            </span>
+          </div>
+
           {/* Header */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
+              <div className="grid size-16 shrink-0 place-items-center rounded-2xl bg-forest text-cream">
+                <Network size={30} />
+              </div>
               <div>
-                {/* Breadcrumb */}
-                <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                  <button
-                    onClick={() => navigate("/admin/faculties")}
-                    className="text-xs text-clay transition hover:text-forest"
-                  >
-                    {t("admin.facultiesBreadcrumb")}
-                  </button>
-                  <ChevronLeft size={12} className="text-clay/50" />
-                  <button
-                    onClick={() => navigate(`/admin/faculties/${facultyId}`)}
-                    className="text-xs text-clay transition hover:text-forest"
-                  >
-                    {faculty?.name}
-                  </button>
-                  <ChevronLeft size={12} className="text-clay/50" />
-                  <span className="text-xs font-semibold text-sage">
-                    {department?.name}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="font-serif text-2xl font-bold text-forest">
+                    {department?.name ?? "\u2026"}
+                  </h1>
+                  {department?.code && (
+                    <span
+                      className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest"
+                      dir="ltr"
+                    >
+                      {department.code}
+                    </span>
+                  )}
+                  <span className="inline-flex items-center rounded-full bg-forest/10 px-2.5 py-0.5 text-[11px] font-medium text-forest">
+                    {list.length} {t("admin.domainsShort")}
                   </span>
                 </div>
-
-                <h1 className="font-serif text-2xl font-bold text-forest">
-                  {department?.name ?? "\u2026"}
-                </h1>
                 <p className="mt-1 text-sm text-clay">
                   {t("admin.departmentDomainsSubtitle")}
                 </p>
               </div>
-
-              {department?.code && (
-                <span
-                  className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest"
-                  dir="ltr"
-                >
-                  {department.code}
-                </span>
-              )}
             </div>
 
             <button
               onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft"
+              className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft active:scale-[0.98]"
             >
               <Plus size={18} />
               {t("admin.addDomain")}
@@ -135,65 +148,67 @@ export function DepartmentDetailPage() {
               {t("admin.noDomains")}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {list.map((dm) => (
                 <div
                   key={dm.id}
-                  className="flex flex-col rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]"
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:border-gold/40"
                 >
-                  <div className="mb-3 flex items-start justify-between">
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleDelete(dm)}
-                        className="grid size-7 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                      <button
-                        onClick={() => openEdit(dm)}
-                        className="grid size-7 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                      >
-                        <Pencil size={14} />
-                      </button>
+                  <div className="p-5">
+                    <div className="mb-4 flex items-start justify-between">
+                      <div className="grid size-14 place-items-center rounded-xl bg-soft-sage/30 text-forest transition group-hover:bg-forest/5">
+                        <Layers size={26} />
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => openEdit(dm)}
+                          title={t("admin.edit")}
+                          className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(dm)}
+                          title={t("admin.delete")}
+                          className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <span
-                      className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest"
-                      dir="ltr"
-                    >
-                      {dm.code}
-                    </span>
+
+                    <div className="space-y-1">
+                      <span
+                        className="font-mono text-[11px] font-bold uppercase tracking-widest text-gold"
+                        dir="ltr"
+                      >
+                        {dm.code}
+                      </span>
+                      <h3
+                        onClick={() => navigate(domainUrl(dm.id))}
+                        className="cursor-pointer font-serif text-lg font-bold text-forest transition hover:text-gold"
+                      >
+                        {dm.name}
+                      </h3>
+                    </div>
                   </div>
 
-                  <h3
-                    onClick={() =>
-                      navigate(
-                        `/admin/faculties/${facultyId}/departments/${departmentId}/domains/${dm.id}`,
-                      )
-                    }
-                    className="mb-2 cursor-pointer text-right font-serif text-base font-bold text-forest transition hover:text-sage"
-                  >
-                    {dm.name}
-                  </h3>
-
-                  <div className="mb-4 flex items-center justify-end gap-1.5 text-clay">
-                    {/* شُعب — يظهر 0 حتى يربط الخادم علاقة filieres بالميدان في عدّاده */}
-                    <span className="text-xs">
+                  <div className="mt-auto flex items-center justify-between border-t border-forest/10 bg-cream-2 px-5 py-3.5">
+                    <span className="flex items-center gap-1.5 text-xs text-clay">
+                      <GitBranch size={14} />
                       {dm._count?.filieres ?? 0} {t("admin.filieresShort")}
                     </span>
-                    <GitBranch size={14} />
+                    <button
+                      onClick={() => navigate(domainUrl(dm.id))}
+                      className="flex items-center gap-1 text-sm font-bold text-forest transition hover:text-gold"
+                    >
+                      {t("admin.viewDetails")}
+                      <ChevronLeft
+                        size={16}
+                        className="transition group-hover:-translate-x-1"
+                      />
+                    </button>
                   </div>
-
-                  <button
-                    onClick={() =>
-                      navigate(
-                        `/admin/faculties/${facultyId}/departments/${departmentId}/domains/${dm.id}`,
-                      )
-                    }
-                    className="mt-auto flex items-center justify-end gap-1 border-t border-forest/10 pt-3 text-xs text-sage transition hover:text-forest"
-                  >
-                    {t("admin.viewDetails")}
-                    <ChevronLeft size={14} />
-                  </button>
                 </div>
               ))}
             </div>

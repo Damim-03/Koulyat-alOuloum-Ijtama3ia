@@ -32,6 +32,7 @@ export type {
   UpdateDomainDTO,
   ListDomainsDTO,
   ListFilieresDTO,
+  CreateAssignedTopicDTO,
 } from "./admin.validation";
 
 // Standard paginated list response shape returned by list services.

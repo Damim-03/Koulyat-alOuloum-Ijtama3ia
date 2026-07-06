@@ -32,6 +32,14 @@ export const listPublicTopicsService = async (q: ListPublicTopicsDTO) => {
 
   const where = {
     status: statusWhere as never,
+    // محجوز = عليه طلب غير مرفوض (pending/accepted) ⇒ يختفي من القائمة العامة؛
+    // ويعود تلقائياً إذا رُفض الطلب.
+    groupRequests: {
+      none: { status: { in: ["pending", "accepted"] } as never },
+    },
+    applications: {
+      none: { status: { in: ["pending", "accepted"] } as never },
+    },
     ...(q.specializationId ? { specializationId: q.specializationId } : {}),
     // Filter by department through topic → specialization → filiere → department.
     ...(q.departmentId

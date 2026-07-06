@@ -6,14 +6,12 @@ import {
   GraduationCap,
   UserCog,
   Building2,
-  Network,
   Layers,
   CalendarDays,
   FileText,
   ClipboardList,
   FolderKanban,
   MessagesSquare,
-  IdCard,
 } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { PATHS } from "../../../routes/paths";
@@ -28,8 +26,11 @@ const NAV: NavItem[] = [
   { to: `${R}/users`, labelKey: "dash.users", icon: Users },
   { to: `${R}/students`, labelKey: "dash.students", icon: GraduationCap },
   { to: `${R}/professors`, labelKey: "dash.professors", icon: UserCog },
-  { to: `${R}/faculties`, labelKey: "admin.faculties", icon: Building2 },
-  { to: `${R}/departments`, labelKey: "admin.departments", icon: Network },
+  {
+    to: `${R}/faculties`,
+    labelKey: "admin.academicHierarchy",
+    icon: Building2,
+  },
   {
     to: `${R}/specializations`,
     labelKey: "dash.specializations",

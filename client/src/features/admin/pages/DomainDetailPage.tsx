@@ -8,6 +8,8 @@ import {
   Trash2,
   ChevronRight,
   ChevronLeft,
+  Layers,
+  GitBranch,
   GraduationCap,
 } from "lucide-react";
 import {
@@ -62,7 +64,10 @@ export function DomainDetailPage() {
       deleteFiliere.mutate(f.id);
   }
 
+  const facultyUrl = `/admin/faculties/${facultyId}`;
   const deptUrl = `/admin/faculties/${facultyId}/departments/${departmentId}`;
+  const domainUrl = `${deptUrl}/domains/${domainId}`;
+  const filiereUrl = (id: string) => `${domainUrl}/filieres/${id}`;
 
   return (
     <div className="font-body">
@@ -81,59 +86,66 @@ export function DomainDetailPage() {
         </div>
       ) : (
         <>
+          {/* Breadcrumb */}
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => navigate("/admin/faculties")}
+              className="text-xs text-clay transition hover:text-forest"
+            >
+              {t("admin.facultiesBreadcrumb")}
+            </button>
+            <ChevronLeft size={12} className="text-clay/50" />
+            <button
+              onClick={() => navigate(facultyUrl)}
+              className="text-xs text-clay transition hover:text-forest"
+            >
+              {faculty?.name}
+            </button>
+            <ChevronLeft size={12} className="text-clay/50" />
+            <button
+              onClick={() => navigate(deptUrl)}
+              className="text-xs text-clay transition hover:text-forest"
+            >
+              {department?.name}
+            </button>
+            <ChevronLeft size={12} className="text-clay/50" />
+            <span className="text-xs font-semibold text-sage">
+              {domain?.name}
+            </span>
+          </div>
+
           {/* Header */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
+              <div className="grid size-16 shrink-0 place-items-center rounded-2xl bg-forest text-cream">
+                <Layers size={30} />
+              </div>
               <div>
-                {/* Breadcrumb */}
-                <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                  <button
-                    onClick={() => navigate("/admin/faculties")}
-                    className="text-xs text-clay transition hover:text-forest"
-                  >
-                    {t("admin.facultiesBreadcrumb")}
-                  </button>
-                  <ChevronLeft size={12} className="text-clay/50" />
-                  <button
-                    onClick={() => navigate(`/admin/faculties/${facultyId}`)}
-                    className="text-xs text-clay transition hover:text-forest"
-                  >
-                    {faculty?.name}
-                  </button>
-                  <ChevronLeft size={12} className="text-clay/50" />
-                  <button
-                    onClick={() => navigate(deptUrl)}
-                    className="text-xs text-clay transition hover:text-forest"
-                  >
-                    {department?.name}
-                  </button>
-                  <ChevronLeft size={12} className="text-clay/50" />
-                  <span className="text-xs font-semibold text-sage">
-                    {domain?.name}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="font-serif text-2xl font-bold text-forest">
+                    {domain?.name ?? "\u2026"}
+                  </h1>
+                  {domain?.code && (
+                    <span
+                      className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest"
+                      dir="ltr"
+                    >
+                      {domain.code}
+                    </span>
+                  )}
+                  <span className="inline-flex items-center rounded-full bg-forest/10 px-2.5 py-0.5 text-[11px] font-medium text-forest">
+                    {list.length} {t("admin.filieresShort")}
                   </span>
                 </div>
-
-                <h1 className="font-serif text-2xl font-bold text-forest">
-                  {domain?.name ?? "\u2026"}
-                </h1>
                 <p className="mt-1 text-sm text-clay">
                   {t("admin.domainFilieresSubtitle")}
                 </p>
               </div>
-
-              {domain?.code && (
-                <span
-                  className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest"
-                  dir="ltr"
-                >
-                  {domain.code}
-                </span>
-              )}
             </div>
 
             <button
               onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft"
+              className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft active:scale-[0.98]"
             >
               <Plus size={18} />
               {t("admin.addFiliere")}
@@ -150,65 +162,68 @@ export function DomainDetailPage() {
               {t("admin.noFilieres")}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {list.map((f) => (
                 <div
                   key={f.id}
-                  className="flex flex-col rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]"
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:border-gold/40"
                 >
-                  <div className="mb-3 flex items-start justify-between">
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleDelete(f)}
-                        className="grid size-7 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                      <button
-                        onClick={() => openEdit(f)}
-                        className="grid size-7 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                      >
-                        <Pencil size={14} />
-                      </button>
+                  <div className="p-5">
+                    <div className="mb-4 flex items-start justify-between">
+                      <div className="grid size-14 place-items-center rounded-xl bg-soft-sage/30 text-forest transition group-hover:bg-forest/5">
+                        <GitBranch size={26} />
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => openEdit(f)}
+                          title={t("admin.edit")}
+                          className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(f)}
+                          title={t("admin.delete")}
+                          className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <span
-                      className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest"
-                      dir="ltr"
-                    >
-                      {f.code}
-                    </span>
+
+                    <div className="space-y-1">
+                      <span
+                        className="font-mono text-[11px] font-bold uppercase tracking-widest text-gold"
+                        dir="ltr"
+                      >
+                        {f.code}
+                      </span>
+                      <h3
+                        onClick={() => navigate(filiereUrl(f.id))}
+                        className="cursor-pointer font-serif text-lg font-bold text-forest transition hover:text-gold"
+                      >
+                        {f.name}
+                      </h3>
+                    </div>
                   </div>
 
-                  <h3
-                    onClick={() =>
-                      navigate(
-                        `${deptUrl}/domains/${domainId}/filieres/${f.id}`,
-                      )
-                    }
-                    className="mb-2 cursor-pointer text-right font-serif text-base font-bold text-forest transition hover:text-sage"
-                  >
-                    {f.name}
-                  </h3>
-
-                  <div className="mb-4 flex items-center justify-end gap-1.5 text-clay">
-                    <span className="text-xs">
+                  <div className="mt-auto flex items-center justify-between border-t border-forest/10 bg-cream-2 px-5 py-3.5">
+                    <span className="flex items-center gap-1.5 text-xs text-clay">
+                      <GraduationCap size={14} />
                       {f._count?.specializations ?? 0}{" "}
                       {t("admin.specializationsShort")}
                     </span>
-                    <GraduationCap size={14} />
+                    <button
+                      onClick={() => navigate(filiereUrl(f.id))}
+                      className="flex items-center gap-1 text-sm font-bold text-forest transition hover:text-gold"
+                    >
+                      {t("admin.viewDetails")}
+                      <ChevronLeft
+                        size={16}
+                        className="transition group-hover:-translate-x-1"
+                      />
+                    </button>
                   </div>
-
-                  <button
-                    onClick={() =>
-                      navigate(
-                        `${deptUrl}/domains/${domainId}/filieres/${f.id}`,
-                      )
-                    }
-                    className="mt-auto flex items-center justify-end gap-1 border-t border-forest/10 pt-3 text-xs text-sage transition hover:text-forest"
-                  >
-                    {t("admin.viewDetails")}
-                    <ChevronLeft size={14} />
-                  </button>
                 </div>
               ))}
             </div>
