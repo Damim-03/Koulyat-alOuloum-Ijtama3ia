@@ -89,6 +89,8 @@ import {
   createDomainController,
   updateDomainController,
   deleteDomainController,
+  createAssignedTopicController,
+  updateAssignedTopicController,
 } from "./admin.controller";
 import { cardUpload } from "../../core/middleware/upload.middleware";
 
@@ -211,6 +213,8 @@ adminRoutes.delete("/academic-years/:id", deleteAcademicYearController);
 // ─── TOPICS ───────────────────────────────────────────────────
 //
 adminRoutes.get("/topics", listTopicsController);
+adminRoutes.post("/topics/assigned", createAssignedTopicController);
+adminRoutes.patch("/topics/:id/assignment", updateAssignedTopicController);
 adminRoutes.get("/topics/:id", getTopicController);
 adminRoutes.patch("/topics/:id/approve", approveTopicController);
 adminRoutes.patch("/topics/:id/reject", rejectTopicController);

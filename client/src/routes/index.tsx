@@ -36,7 +36,6 @@ import { AdminProfessorsPage } from "../features/admin/pages/professors.page";
 import { AdminAcademicStructurePage } from "../features/admin/pages/academic.page";
 import { AdminTopicsPage } from "../features/admin/pages/topics.page";
 import { AdminDefensesPage } from "../features/admin/pages/defenses.page";
-import { AdminDepartmentsPage } from "../features/admin/pages/departments.page";
 import { AdminApplicationsPage } from "../features/admin/pages/applications.page";
 import { AdminFacultiesPage } from "../features/admin/pages/faculties.page";
 import { AdminProjectsPage } from "../features/admin/pages/projects.page";
@@ -56,6 +55,9 @@ import { DomainDetailPage } from "../features/admin/pages/DomainDetailPage";
 //import { DepartmentDetailPage } from "../features/admin/pages/DepartmentDetailPage";
 import { FiliereDetailPage } from "../features/admin/pages/FiliereDetailPage";
 import { DepartmentDetailPage } from "../features/admin/pages/DepartmentDetailPage";
+import { SpecializationDetailPage } from "../features/admin/pages/SpecializationDetailPage";
+import { AdminArchivePage } from "../features/admin/pages/AdminArchivePage";
+import { AdminUnassignedStudentsPage } from "../features/admin/pages/unassigned-students.page";
 
 export function AppRouter() {
   return (
@@ -160,12 +162,12 @@ export function AppRouter() {
           <Route path="topics/:id" element={<AdminTopicDetailPage />} />
           <Route path="group-requests" element={<AdminGroupRequestsPage />} />
           <Route path="defenses" element={<AdminDefensesPage />} />
-          <Route path="departments" element={<AdminDepartmentsPage />} />
           <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="projects" element={<AdminProjectsPage />} />
+          <Route path="academic-years" element={<AdminArchivePage />} />
           <Route
-            path="academic-years"
-            element={<AdminAcademicStructurePage />}
+            path="specializations/:specializationId"
+            element={<SpecializationDetailPage />}
           />
           <Route path="faculties" element={<AdminFacultiesPage />} />
           <Route path="faculties/:facultyId" element={<FacultyDetailPage />} />
@@ -180,6 +182,10 @@ export function AppRouter() {
           <Route
             path="faculties/:facultyId/departments/:departmentId/domains/:domainId/filieres/:filiereId"
             element={<FiliereDetailPage />}
+          />
+          <Route
+            path="students/unassigned"
+            element={<AdminUnassignedStudentsPage />}
           />
         </Route>
       </Route>

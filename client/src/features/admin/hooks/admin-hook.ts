@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { adminApi, type ListParams } from "../api/admin.api";
+import { t } from "i18next";
 
 const KEYS = {
   stats: ["admin", "stats"] as const,
@@ -563,6 +564,44 @@ export function useUnpublishTopic() {
       toast.success("تم إلغاء نشر الموضوع");
     },
     onError: () => toast.error("تعذّر إلغاء النشر"),
+  });
+}
+
+export function useCreateAssignedTopic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: adminApi.createAssignedTopic,
+    onSuccess: () => {
+      // إنشاء موضوع مُسنَد يُنشئ أيضاً مجموعة/مشروعاً ويُشغِّل الطلبة،
+      // فنُبطل ذاكرة كل القوائم المتأثّرة لا الموضوع والطلبة فقط.
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "students"] });
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      qc.invalidateQueries({ queryKey: ["admin", "dashboard"] });
+      toast.success("تم إنشاء الموضوع وإسناده");
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "تعذّر إنشاء الموضوع"),
+  });
+}
+
+export function useUpdateAssignedTopic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: unknown }) =>
+      adminApi.updateAssignedTopic(id, data),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "topic", v.id] });
+      qc.invalidateQueries({ queryKey: ["admin", "students"] });
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      qc.invalidateQueries({ queryKey: ["admin", "dashboard"] });
+      toast.success(
+        t("admin.topicUpdated", { defaultValue: "تم تحديث الموضوع" }),
+      );
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "تعذّر تحديث الموضوع"),
   });
 }
 

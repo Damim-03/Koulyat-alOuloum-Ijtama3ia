@@ -22,20 +22,66 @@ import {
   Users,
   ChevronLeft,
   Briefcase,
+  CheckCircle2,
+  Sparkles,
+  PieChart,
 } from "lucide-react";
 import { useProfessor, useDeleteProfessor } from "../hooks/admin-hook";
 import type { Professor, ProfessorTopicLite } from "../../../types/admin";
 import { ProfessorEditDialog } from "../components/professor-edit-dialog";
 import { ConfirmDialog } from "../components/confirm-dialog";
 
-const TOPIC_STATUS: Record<string, { label: string; cls: string }> = {
-  pending: { label: "قيد المراجعة", cls: "bg-amber-100 text-amber-600" },
-  approved: { label: "معتمد", cls: "bg-emerald-100 text-emerald-600" },
-  open: { label: "مفتوح", cls: "bg-soft-sage/50 text-forest" },
-  full: { label: "مكتمل", cls: "bg-gold/15 text-gold" },
-  rejected: { label: "مرفوض", cls: "bg-red-100 text-red-500" },
-  archived: { label: "مؤرشف", cls: "bg-clay/15 text-clay" },
+const TOPIC_STATUS: Record<
+  string,
+  { label: string; cls: string; edge: string }
+> = {
+  pending: {
+    label: "قيد المراجعة",
+    cls: "bg-amber-100 text-amber-600",
+    edge: "border-r-amber-400",
+  },
+  approved: {
+    label: "معتمد",
+    cls: "bg-emerald-100 text-emerald-600",
+    edge: "border-r-emerald-500",
+  },
+  open: {
+    label: "مفتوح",
+    cls: "bg-soft-sage/50 text-forest",
+    edge: "border-r-sage",
+  },
+  full: { label: "مكتمل", cls: "bg-gold/15 text-gold", edge: "border-r-gold" },
+  rejected: {
+    label: "مرفوض",
+    cls: "bg-red-100 text-red-500",
+    edge: "border-r-red-400",
+  },
+  archived: {
+    label: "مؤرشف",
+    cls: "bg-clay/15 text-clay",
+    edge: "border-r-clay",
+  },
 };
+
+// Ordered palette for the status-distribution bar + legend.
+const STATUS_BAR: { key: string; label: string; bar: string; dot: string }[] = [
+  {
+    key: "approved",
+    label: "معتمد",
+    bar: "bg-emerald-500",
+    dot: "bg-emerald-500",
+  },
+  { key: "open", label: "مفتوح", bar: "bg-sage", dot: "bg-sage" },
+  { key: "full", label: "مكتمل", bar: "bg-gold", dot: "bg-gold" },
+  {
+    key: "pending",
+    label: "قيد المراجعة",
+    bar: "bg-amber-400",
+    dot: "bg-amber-400",
+  },
+  { key: "rejected", label: "مرفوض", bar: "bg-red-400", dot: "bg-red-400" },
+  { key: "archived", label: "مؤرشف", bar: "bg-clay", dot: "bg-clay" },
+];
 
 function initials(
   first?: string | null,
@@ -115,6 +161,21 @@ export function AdminProfessorDetailPage() {
   const tags = p.tags ?? [];
   const grades = p.grade ?? [];
   const topics = p.topics ?? [];
+  const isActive = p.user?.status === "active";
+
+  // ── computed analytics from the professor's own topics ──
+  const totalTopics = p._count?.topics ?? topics.length;
+  const statusCounts: Record<string, number> = {};
+  for (const t of topics)
+    statusCounts[t.status] = (statusCounts[t.status] ?? 0) + 1;
+  const approved = statusCounts["approved"] ?? 0;
+  const pending = statusCounts["pending"] ?? 0;
+  const totalApplications = topics.reduce(
+    (s, t) => s + (t._count?.applications ?? 0),
+    0,
+  );
+  const barSegs = STATUS_BAR.filter((s) => (statusCounts[s.key] ?? 0) > 0);
+  const barTotal = topics.length || 1;
 
   const info: {
     icon: typeof Mail;
@@ -174,14 +235,22 @@ export function AdminProfessorDetailPage() {
 
       {/* ── Professor hero card ── */}
       <div className="relative overflow-hidden rounded-3xl border border-forest/10 bg-cream-card shadow-[0_10px_40px_rgba(38,66,61,0.10)]">
-        {/* gradient banner with subtle pattern */}
-        <div className="relative h-32 bg-linear-to-l from-forest via-forest-deep to-forest">
+        {/* layered gradient banner */}
+        <div className="relative h-36 bg-linear-to-l from-forest via-forest-deep to-forest">
           <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_1px_1px,var(--color-cream)_1px,transparent_0)] bg-size-[18px_18px]" />
+          <div className="pointer-events-none absolute -right-10 -top-12 size-44 rounded-full bg-gold/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-6 left-24 size-40 rounded-full bg-sage/20 blur-3xl" />
+          <GraduationCap
+            className="pointer-events-none absolute -bottom-3 left-6 size-28 text-cream/10"
+            strokeWidth={1.5}
+          />
+          <Sparkles size={16} className="absolute right-6 top-6 text-gold/60" />
         </div>
 
         <div className="px-6 pb-6 sm:px-8">
-          <div className="-mt-16 flex flex-wrap items-end justify-between gap-4">
-            <div className="flex items-end gap-4">
+          {/* avatar overlapping banner */}
+          <div className="-mt-16 flex">
+            <div className="relative">
               {p.user?.avatarUrl ? (
                 <img
                   src={p.user.avatarUrl}
@@ -193,33 +262,48 @@ export function AdminProfessorDetailPage() {
                   {initials(p.user?.firstName, p.user?.lastName)}
                 </div>
               )}
-              <div className="pb-1">
-                <h1 className="font-serif text-2xl font-bold text-forest sm:text-3xl">
-                  {fullName(p)}
-                </h1>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {grades.map((g) => (
-                    <span
-                      key={`g-${g}`}
-                      className="inline-flex items-center gap-1 rounded-full bg-gold/15 px-2.5 py-0.5 text-xs font-semibold text-gold"
-                    >
-                      <Award size={12} /> {g}
-                    </span>
-                  ))}
-                  {p.user?.status === "active" ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-600">
-                      <BadgeCheck size={12} /> نشط
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-500">
-                      <ShieldAlert size={12} /> موقوف
-                    </span>
-                  )}
-                </div>
+              <span
+                className={`absolute bottom-1 left-1 size-6 rounded-full border-4 border-cream-card ${
+                  isActive ? "bg-emerald-500" : "bg-red-500"
+                }`}
+                title={isActive ? "نشط" : "موقوف"}
+              />
+            </div>
+          </div>
+
+          {/* name + action buttons */}
+          <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="font-serif text-2xl font-bold text-forest sm:text-3xl">
+                {fullName(p)}
+              </h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {grades.map((g) => (
+                  <span
+                    key={`g-${g}`}
+                    className="inline-flex items-center gap-1 rounded-full bg-gold/15 px-2.5 py-0.5 text-xs font-semibold text-gold"
+                  >
+                    <Award size={12} /> {g}
+                  </span>
+                ))}
+                {isActive ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-600">
+                    <BadgeCheck size={12} /> نشط
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-500">
+                    <ShieldAlert size={12} /> موقوف
+                  </span>
+                )}
+                {p.user?.isVerified && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-soft-sage/50 px-2.5 py-0.5 text-xs font-semibold text-forest">
+                    <BadgeCheck size={12} /> موثّق
+                  </span>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 onClick={() => setEditOpen(true)}
                 className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
@@ -268,28 +352,72 @@ export function AdminProfessorDetailPage() {
           )}
 
           {/* stats */}
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <MiniStat
-              icon={FileText}
-              value={p._count?.topics ?? topics.length}
-              label="المواضيع المُرسَلة"
+              icon={Briefcase}
+              value={totalTopics}
+              label="إجمالي المواضيع"
+              tint="bg-forest/8 text-forest"
+            />
+            <MiniStat
+              icon={CheckCircle2}
+              value={approved}
+              label="مواضيع معتمدة"
               tint="bg-emerald-100 text-emerald-600"
             />
             <MiniStat
-              icon={BadgeCheck}
-              value={p.user?.isVerified ? "موثّق" : "غير موثّق"}
-              label="حالة الحساب"
-              tint="bg-soft-sage/40 text-forest"
+              icon={Clock}
+              value={pending}
+              label="قيد المراجعة"
+              tint="bg-amber-100 text-amber-600"
             />
             <MiniStat
-              icon={CalendarDays}
-              value={fmtDate(p.user?.createdAt)}
-              label="تاريخ الانضمام"
+              icon={Users}
+              value={totalApplications}
+              label="إجمالي الطلبات"
               tint="bg-gold/15 text-gold"
             />
           </div>
         </div>
       </div>
+
+      {/* ── Topic status distribution ── */}
+      {topics.length > 0 && (
+        <div className="mt-6 rounded-3xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)] sm:p-8">
+          <h2 className="mb-5 flex items-center gap-2 font-serif text-lg font-bold text-forest">
+            <span className="grid size-8 place-items-center rounded-lg bg-forest/5">
+              <PieChart size={17} />
+            </span>
+            توزيع المواضيع حسب الحالة
+          </h2>
+          <div className="flex h-3 w-full overflow-hidden rounded-full bg-cream-2">
+            {barSegs.map((s) => (
+              <div
+                key={s.key}
+                className={`${s.bar} h-full transition-all`}
+                style={{
+                  width: `${((statusCounts[s.key] ?? 0) / barTotal) * 100}%`,
+                }}
+                title={`${s.label}: ${statusCounts[s.key]}`}
+              />
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+            {barSegs.map((s) => (
+              <span
+                key={s.key}
+                className="inline-flex items-center gap-1.5 text-xs text-clay"
+              >
+                <span className={`size-2.5 rounded-full ${s.dot}`} />
+                {s.label}
+                <span className="font-bold text-forest">
+                  {statusCounts[s.key]}
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Personal information ── */}
       <div className="mt-6 rounded-3xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)] sm:p-8">
@@ -375,12 +503,13 @@ function TopicRow({
   const status = TOPIC_STATUS[topic.status] ?? {
     label: topic.status,
     cls: "bg-clay/15 text-clay",
+    edge: "border-r-clay",
   };
   return (
     <li>
       <button
         onClick={onClick}
-        className="group flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-forest/10 bg-cream-2 px-4 py-3 text-right transition hover:border-gold/40 hover:bg-gold/5"
+        className={`group flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-forest/10 border-r-4 ${status.edge} bg-cream-2 px-4 py-3 text-right transition hover:-translate-y-0.5 hover:border-gold/40 hover:bg-gold/5 hover:shadow-[0_6px_20px_rgba(38,66,61,0.08)]`}
       >
         <div className="min-w-0">
           <p className="text-sm font-semibold text-forest group-hover:text-forest-deep">
@@ -431,7 +560,7 @@ function MiniStat({
   tint: string;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-forest/10 bg-cream-2 p-3.5">
+    <div className="flex items-center gap-3 rounded-2xl border border-forest/10 bg-cream-2 p-3.5 transition hover:-translate-y-0.5 hover:border-gold/30 hover:shadow-[0_6px_20px_rgba(38,66,61,0.08)]">
       <div
         className={`grid size-10 shrink-0 place-items-center rounded-xl ${tint}`}
       >

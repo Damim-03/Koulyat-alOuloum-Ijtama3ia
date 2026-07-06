@@ -29,6 +29,7 @@ export function DomainFormDialog({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(domain?.name ?? "");
       setCode(domain?.code ?? "");
     }

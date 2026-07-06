@@ -8,6 +8,8 @@ import {
   Trash2,
   ChevronRight,
   ChevronLeft,
+  GitBranch,
+  GraduationCap,
   Users,
   BookOpen,
 } from "lucide-react";
@@ -26,6 +28,13 @@ const LEVEL_LABEL: Record<string, string> = {
   licence: "admin.levelLicence",
   master: "admin.levelMaster",
   doctorate: "admin.levelDoctorate",
+};
+
+/** لون مميّز لكل مستوى (يُستخدم لصندوق الأيقونة وشارة المستوى). */
+const LEVEL_TINT: Record<string, string> = {
+  licence: "bg-soft-sage/30 text-forest",
+  master: "bg-gold/15 text-gold",
+  doctorate: "bg-sage/20 text-sage",
 };
 
 /** يقرأ معرّف الشعبة من التخصص سواء كان filiereId أو filiere.id */
@@ -89,8 +98,9 @@ export function FiliereDetailPage() {
       deleteSpecialization.mutate(s.id);
   }
 
-  const domainUrl = `/admin/faculties/${facultyId}/departments/${departmentId}/domains/${domainId}`;
+  const facultyUrl = `/admin/faculties/${facultyId}`;
   const deptUrl = `/admin/faculties/${facultyId}/departments/${departmentId}`;
+  const domainUrl = `${deptUrl}/domains/${domainId}`;
 
   return (
     <div className="font-body">
@@ -109,66 +119,73 @@ export function FiliereDetailPage() {
         </div>
       ) : (
         <>
+          {/* Breadcrumb */}
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => navigate("/admin/faculties")}
+              className="text-xs text-clay transition hover:text-forest"
+            >
+              {t("admin.facultiesBreadcrumb")}
+            </button>
+            <ChevronLeft size={12} className="text-clay/50" />
+            <button
+              onClick={() => navigate(facultyUrl)}
+              className="text-xs text-clay transition hover:text-forest"
+            >
+              {faculty?.name}
+            </button>
+            <ChevronLeft size={12} className="text-clay/50" />
+            <button
+              onClick={() => navigate(deptUrl)}
+              className="text-xs text-clay transition hover:text-forest"
+            >
+              {department?.name}
+            </button>
+            <ChevronLeft size={12} className="text-clay/50" />
+            <button
+              onClick={() => navigate(domainUrl)}
+              className="text-xs text-clay transition hover:text-forest"
+            >
+              {domain?.name}
+            </button>
+            <ChevronLeft size={12} className="text-clay/50" />
+            <span className="text-xs font-semibold text-sage">
+              {filiere?.name}
+            </span>
+          </div>
+
           {/* Header */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
+              <div className="grid size-16 shrink-0 place-items-center rounded-2xl bg-forest text-cream">
+                <GitBranch size={30} />
+              </div>
               <div>
-                {/* Breadcrumb */}
-                <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                  <button
-                    onClick={() => navigate("/admin/faculties")}
-                    className="text-xs text-clay transition hover:text-forest"
-                  >
-                    {t("admin.facultiesBreadcrumb")}
-                  </button>
-                  <ChevronLeft size={12} className="text-clay/50" />
-                  <button
-                    onClick={() => navigate(`/admin/faculties/${facultyId}`)}
-                    className="text-xs text-clay transition hover:text-forest"
-                  >
-                    {faculty?.name}
-                  </button>
-                  <ChevronLeft size={12} className="text-clay/50" />
-                  <button
-                    onClick={() => navigate(deptUrl)}
-                    className="text-xs text-clay transition hover:text-forest"
-                  >
-                    {department?.name}
-                  </button>
-                  <ChevronLeft size={12} className="text-clay/50" />
-                  <button
-                    onClick={() => navigate(domainUrl)}
-                    className="text-xs text-clay transition hover:text-forest"
-                  >
-                    {domain?.name}
-                  </button>
-                  <ChevronLeft size={12} className="text-clay/50" />
-                  <span className="text-xs font-semibold text-sage">
-                    {filiere?.name}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="font-serif text-2xl font-bold text-forest">
+                    {filiere?.name ?? "\u2026"}
+                  </h1>
+                  {filiere?.code && (
+                    <span
+                      className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest"
+                      dir="ltr"
+                    >
+                      {filiere.code}
+                    </span>
+                  )}
+                  <span className="inline-flex items-center rounded-full bg-forest/10 px-2.5 py-0.5 text-[11px] font-medium text-forest">
+                    {list.length} {t("admin.specializationsShort")}
                   </span>
                 </div>
-
-                <h1 className="font-serif text-2xl font-bold text-forest">
-                  {filiere?.name ?? "\u2026"}
-                </h1>
                 <p className="mt-1 text-sm text-clay">
                   {t("admin.filiereSpecializationsSubtitle")}
                 </p>
               </div>
-
-              {filiere?.code && (
-                <span
-                  className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest"
-                  dir="ltr"
-                >
-                  {filiere.code}
-                </span>
-              )}
             </div>
 
             <button
               onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft"
+              className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft active:scale-[0.98]"
             >
               <Plus size={18} />
               {t("admin.addSpecialization")}
@@ -185,48 +202,65 @@ export function FiliereDetailPage() {
               {t("admin.noSpecializations")}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {list.map((s) => (
-                <div
-                  key={s.id}
-                  className="flex flex-col rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]"
-                >
-                  <div className="mb-3 flex items-start justify-between">
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleDelete(s)}
-                        className="grid size-7 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                      <button
-                        onClick={() => openEdit(s)}
-                        className="grid size-7 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                      >
-                        <Pencil size={14} />
-                      </button>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {list.map((s) => {
+                const tint =
+                  LEVEL_TINT[s.level] ?? "bg-soft-sage/30 text-forest";
+                return (
+                  <div
+                    key={s.id}
+                    className="flex flex-col overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:border-gold/40"
+                  >
+                    <div className="p-5">
+                      <div className="mb-4 flex items-start justify-between">
+                        <div
+                          className={`grid size-14 place-items-center rounded-xl ${tint}`}
+                        >
+                          <GraduationCap size={26} />
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => openEdit(s)}
+                            title={t("admin.edit")}
+                            className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(s)}
+                            title={t("admin.delete")}
+                            className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <span
+                          className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold ${tint}`}
+                        >
+                          {t(LEVEL_LABEL[s.level] ?? s.level)}
+                        </span>
+                        <h3 className="font-serif text-lg font-bold text-forest">
+                          {s.name}
+                        </h3>
+                      </div>
                     </div>
-                    <span className="rounded-full bg-gold/15 px-2.5 py-0.5 text-[10px] font-bold text-forest-deep">
-                      {t(LEVEL_LABEL[s.level] ?? s.level)}
-                    </span>
-                  </div>
 
-                  <h3 className="mb-3 text-right font-serif text-base font-bold text-forest">
-                    {s.name}
-                  </h3>
-
-                  <div className="mt-auto flex items-center justify-end gap-3 border-t border-forest/10 pt-3 text-clay">
-                    <span className="flex items-center gap-1 text-xs">
-                      {s._count?.topics ?? 0} {t("admin.topicsShort")}
-                      <BookOpen size={13} />
-                    </span>
-                    <span className="flex items-center gap-1 text-xs">
-                      {s._count?.students ?? 0} {t("admin.studentsShort")}
-                      <Users size={13} />
-                    </span>
+                    <div className="mt-auto flex items-center justify-between border-t border-forest/10 bg-cream-2 px-5 py-3.5 text-clay">
+                      <span className="flex items-center gap-1.5 text-xs">
+                        <BookOpen size={14} />
+                        {s._count?.topics ?? 0} {t("admin.topicsShort")}
+                      </span>
+                      <span className="flex items-center gap-1.5 text-xs">
+                        <Users size={14} />
+                        {s._count?.students ?? 0} {t("admin.studentsShort")}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

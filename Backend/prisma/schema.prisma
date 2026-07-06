@@ -462,6 +462,8 @@ model ProjectMember {
   studentId String
   student   Student @relation(fields: [studentId], references: [id])
 
+  isLeader Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

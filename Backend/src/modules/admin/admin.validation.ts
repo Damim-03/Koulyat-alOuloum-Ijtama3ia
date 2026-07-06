@@ -69,6 +69,7 @@ export const listStudentsSchema = listQuerySchema.extend({
   filiereId: z.string().uuid().optional(),
   departmentId: z.string().uuid().optional(),
   facultyId: z.string().uuid().optional(),
+  unassigned: z.enum(["true", "false"]).optional(),
 });
 export type ListStudentsDTO = z.infer<typeof listStudentsSchema>;
 
@@ -281,6 +282,10 @@ export const listTopicsSchema = listQuerySchema.extend({
     .optional(),
   professorId: z.string().uuid().optional(),
   specializationId: z.string().uuid().optional(),
+  academicYearId: z.string().uuid().optional(), // ← أضِف هذا السطر
+  facultyId: z.string().uuid().optional(),
+  departmentId: z.string().uuid().optional(),
+  filiereId: z.string().uuid().optional(),
 });
 export type ListTopicsDTO = z.infer<typeof listTopicsSchema>;
 
@@ -288,6 +293,67 @@ export const rejectTopicSchema = z.object({
   reason: z.string().trim().optional(),
 });
 export type RejectTopicDTO = z.infer<typeof rejectTopicSchema>;
+
+export const createAssignedTopicSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    description: z.string().trim().min(1),
+    requirements: z.array(z.string().trim().min(1)).max(50).optional(),
+    objectives: z.array(z.string().trim().min(1)).max(50).optional(),
+    maxStudents: z.number().int().min(1).max(10),
+    professorId: z.string().uuid(),
+    specializationId: z.string().uuid(),
+    academicYearId: z.string().uuid(),
+    memberStudentIds: z.array(z.string().uuid()).min(1).max(10),
+    leaderStudentId: z.string().uuid(),
+  })
+  .refine((d) => d.memberStudentIds.includes(d.leaderStudentId), {
+    message: "القائد يجب أن يكون ضمن الطلبة المُسنَدين",
+    path: ["leaderStudentId"],
+  })
+  .refine(
+    (d) => new Set(d.memberStudentIds).size === d.memberStudentIds.length,
+    {
+      message: "يوجد طالب مكرّر في القائمة",
+      path: ["memberStudentIds"],
+    },
+  )
+  .refine((d) => d.memberStudentIds.length <= d.maxStudents, {
+    message: "عدد الطلبة المُسنَدين يتجاوز الحدّ الأقصى",
+    path: ["memberStudentIds"],
+  });
+export type CreateAssignedTopicDTO = z.infer<typeof createAssignedTopicSchema>;
+
+// كل الحقول اختيارية → تعديل جزئي مسموح. عند إرسال الطلبة تُستبدل المجموعة بالكامل.
+export const updateAssignedTopicSchema = z
+  .object({
+    title: z.string().trim().min(1).optional(),
+    description: z.string().trim().min(1).optional(),
+    requirements: z.array(z.string().trim().min(1)).max(50).optional(),
+    objectives: z.array(z.string().trim().min(1)).max(50).optional(),
+    maxStudents: z.number().int().min(1).max(10).optional(),
+    professorId: z.string().uuid().optional(),
+    specializationId: z.string().uuid().optional(),
+    academicYearId: z.string().uuid().optional(),
+    memberStudentIds: z.array(z.string().uuid()).min(1).max(10).optional(),
+    leaderStudentId: z.string().uuid().optional(),
+  })
+  .refine((d) => !d.memberStudentIds || !!d.leaderStudentId, {
+    message: "leaderStudentId مطلوب عند تعديل الطلبة",
+    path: ["leaderStudentId"],
+  })
+  .refine(
+    (d) =>
+      !d.memberStudentIds || d.memberStudentIds.includes(d.leaderStudentId!),
+    { message: "القائد يجب أن يكون ضمن الطلبة", path: ["leaderStudentId"] },
+  )
+  .refine(
+    (d) =>
+      !d.memberStudentIds ||
+      new Set(d.memberStudentIds).size === d.memberStudentIds.length,
+    { message: "يوجد طالب مكرّر في القائمة", path: ["memberStudentIds"] },
+  );
+export type UpdateAssignedTopicDTO = z.infer<typeof updateAssignedTopicSchema>;
 
 //
 // ─── PROJECT ASSIGNMENT ───────────────────────────────────────
