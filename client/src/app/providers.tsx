@@ -5,17 +5,27 @@ import { queryClient } from "./query-client";
 import { Toaster } from "../components/ui/toaster";
 import { AuthBootstrap } from "./auth-bootstrap";
 import { NetworkToast } from "../components/network-toast";
+import { SocketProvider } from "./socket-provider";
+import { useRealtimeSync } from "../hooks/use-realtime-sync";
 
-// SocketProvider gets added here in a later step.
+/** Invisible: subscribes to server change events and refreshes what is open. */
+function RealtimeSync() {
+  useRealtimeSync();
+  return null;
+}
+
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthBootstrap />
-        {children}
-        <Toaster />
-        <NetworkToast />
-      </BrowserRouter>
+      <SocketProvider>
+        <BrowserRouter>
+          <AuthBootstrap />
+          <RealtimeSync />
+          {children}
+          <Toaster />
+          <NetworkToast />
+        </BrowserRouter>
+      </SocketProvider>
     </QueryClientProvider>
   );
 }

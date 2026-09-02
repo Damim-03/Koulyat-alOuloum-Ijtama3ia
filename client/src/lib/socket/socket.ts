@@ -11,16 +11,24 @@ export interface NotificationPayload {
   createdAt: string;
 }
 
+/** What the server says changed. Carries no rows — the client refetches. */
+export interface ChangePayload {
+  resource: string;
+  action?: "created" | "updated" | "deleted";
+  id?: string;
+  at: string;
+}
+
 // Events the server sends to the client.
 export interface ServerToClientEvents {
+  "data:changed": (payload: ChangePayload) => void;
   notification: (payload: NotificationPayload) => void;
-  "application:new": (payload: NotificationPayload) => void;
-  "milestone:updated": (payload: NotificationPayload) => void;
 }
 
 // Events the client sends to the server.
 export interface ClientToServerEvents {
   "join-room": (userId: string) => void;
+  join: (payload: { userId: string; role?: string }) => void;
 }
 
 export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

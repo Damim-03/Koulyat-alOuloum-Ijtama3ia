@@ -14,6 +14,8 @@ export interface Filiere {
   code?: string;
   departmentId: string;
   domainId?: string | null;
+  /** Optional cover image shown behind this entry's card. */
+  coverUrl?: string | null;
   department?: Department;
   _count?: { specializations?: number };
 }
@@ -23,6 +25,8 @@ export interface Domain {
   name: string;
   code: string;
   departmentId: string;
+  /** Optional cover image shown behind this entry's card. */
+  coverUrl?: string | null;
   department?: Department;
   _count?: { filieres?: number };
 }
@@ -95,6 +99,8 @@ export interface Faculty {
   id: string;
   name: string;
   code: string;
+  /** Optional cover image shown behind this entry's card. */
+  coverUrl?: string | null;
   _count?: { departments: number };
 }
 
@@ -103,9 +109,17 @@ export interface Department {
   name: string;
   code: string;
   facultyId: string;
+  /** Optional cover image shown behind this entry's card. */
+  coverUrl?: string | null;
   faculty?: Faculty;
   filieres?: Filiere[]; // ← included for the professors table ("الشعبة")
-  _count?: { specializations: number; professors: number };
+  /** `specializations` is summed across the department's filieres server-side. */
+  _count?: {
+    specializations: number;
+    professors: number;
+    filieres?: number;
+    domains?: number;
+  };
 }
 
 export interface Filiere {
@@ -120,6 +134,8 @@ export interface Specialization {
   id: string;
   name: string;
   level: "licence" | "master" | "doctorate";
+  /** Optional cover image shown behind this entry's card. */
+  coverUrl?: string | null;
   filiereId?: string;
   filiere?: Filiere;
   // kept for back-compat with places that still get a flat department
@@ -382,4 +398,60 @@ export interface AdminDashboard {
   studentsPerSpecialization: StudentsPerSpecializationItem[];
   monthlyGrowth: MonthlyGrowthItem[];
   systemHealth: SystemHealth;
+}
+
+/** An email domain the platform accepts for professor accounts. */
+export interface UniversityDomain {
+  id: string;
+  domain: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+//
+// ─── ACADEMIC STRUCTURE WIZARD ────────────────────────────────
+//
+
+/** Points at a row created in this same payload, or an existing one. */
+export interface StructureRef {
+  kind: "new" | "existing";
+  /** Temp key when kind is "new", real id when "existing". */
+  value: string;
+}
+
+export interface StructureSpecialization {
+  name: string;
+  level: "licence" | "master" | "doctorate";
+}
+
+export interface AcademicStructurePayload {
+  faculty:
+    | { kind: "new"; name: string; code: string }
+    | { kind: "existing"; id: string };
+  departments: { key: string; name: string; code: string }[];
+  domains: {
+    key: string;
+    name: string;
+    code: string;
+    department: StructureRef;
+  }[];
+  filieres: {
+    key: string;
+    name: string;
+    code: string;
+    department: StructureRef;
+    domain?: StructureRef | null;
+    specializations: StructureSpecialization[];
+  }[];
+}
+
+export interface AcademicStructureResult {
+  faculty: Faculty;
+  created: {
+    departments: number;
+    domains: number;
+    filieres: number;
+    specializations: number;
+  };
 }

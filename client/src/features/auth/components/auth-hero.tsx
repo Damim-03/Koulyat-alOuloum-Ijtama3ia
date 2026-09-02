@@ -1,7 +1,9 @@
 import { GraduationCap } from "lucide-react";
 import { LanguageSwitcher } from "../../../i18n/locales/components/language-switcher";
+import { useTranslation } from "react-i18next";
 
 export function AuthHero() {
+  const { t } = useTranslation();
   return (
     <section className="forest-glow relative hidden overflow-hidden p-10 text-cream lg:flex lg:flex-col lg:justify-between">
       {/* atmosphere */}
@@ -13,13 +15,9 @@ export function AuthHero() {
       <div className="relative flex items-center justify-between">
         <LanguageSwitcher />
         <div className="flex items-center gap-3">
-          <div className="text-right">
-            <div className="text-[14px] font-bold leading-tight text-cream">
-              جامعة الشهيد حمه لخضر — الوادي
-            </div>
-            <div className="mt-0.5 text-[11.5px] text-cream/55">
-              نظام إدارة مشاريع التخرج
-            </div>
+          <div className="text-start">
+            <div className="text-[14px] font-bold leading-tight text-cream">{t("hero.subtitle")}</div>
+            <div className="mt-0.5 text-[11.5px] text-cream/55">{t("auth.heroSystem")}</div>
           </div>
           <div className="relative grid size-11 place-items-center">
             <div className="seal-ring pointer-events-none absolute -inset-2 rounded-full" />
@@ -32,28 +30,19 @@ export function AuthHero() {
 
       {/* center: headline */}
       <div className="relative">
-        <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-gold/25 bg-gold/10 px-3 py-1 text-[11.5px] font-semibold tracking-wide text-gold-soft animate-[fadeUp_0.6s_both]">
-          منصّة مذكّرتي
-        </span>
+        <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-gold/25 bg-gold/10 px-3 py-1 text-[11.5px] font-semibold tracking-wide text-gold-soft animate-[fadeUp_0.6s_both]">{t("auth.heroBrand")}</span>
 
-        <h1 className="mb-5 font-display text-[3.2rem] font-extrabold leading-[1.3] tracking-[-0.5px] animate-[fadeUp_0.6s_0.05s_both]">
-          مرحباً بعودتك إلى
-          <br />
-          <span className="bg-linear-to-l from-gold-soft to-gold bg-clip-text text-transparent">
-            رحلة التخرّج
-          </span>
+        <h1 className="mb-5 font-display text-[3.2rem] font-extrabold leading-[1.3] tracking-[-0.5px] animate-[fadeUp_0.6s_0.05s_both]">{t("auth.heroWelcomeBack")}<br />
+          <span className="bg-linear-to-l from-gold-soft to-gold bg-clip-text text-transparent">{t("auth.heroJourney")}</span>
         </h1>
 
         <p className="mb-7 max-w-110 text-[15px] leading-[1.95] text-cream/70 animate-[fadeUp_0.6s_0.1s_both]">
-          نظام متكامل لإدارة ومتابعة مشاريع التخرّج. سجّل دخولك للوصول إلى
-          بياناتك والتواصل مع مشرفيك في كل مرحلة.
+          {t("auth.heroBody")}
         </p>
       </div>
 
       {/* bottom: support note */}
-      <div className="relative text-[12px] text-cream/45 animate-[fadeUp_0.6s_0.2s_both]">
-        تُمنح بيانات الدخول من إدارة الكلية. لأي مشكلة، تواصل مع الإدارة.
-      </div>
+      <div className="relative text-[12px] text-cream/45 animate-[fadeUp_0.6s_0.2s_both]">{t("auth.heroCredentialsNote")}</div>
     </section>
   );
 }

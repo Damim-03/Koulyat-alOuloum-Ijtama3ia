@@ -4,6 +4,7 @@ import { Menu, User, ChevronDown, LogOut } from "lucide-react";
 import { useAuth } from "../../../hooks/use-auth";
 import { useLanguage } from "../../../hooks/use-language";
 import { LanguageSwitcher } from "../../../i18n/locales/components/language-switcher";
+import { ThemeToggle } from "../../theme-toggle";
 
 interface Props {
   onMenuClick: () => void;
@@ -50,6 +51,7 @@ export function DashboardHeader({ onMenuClick, titleKey }: Props) {
       </div>
 
       <div className="flex items-center gap-3">
+        <ThemeToggle />
         <LanguageSwitcher className="text-forest" />
 
         <div className="relative" ref={ref}>
@@ -87,7 +89,7 @@ export function DashboardHeader({ onMenuClick, titleKey }: Props) {
                     setOpen(false);
                     logout();
                   }}
-                  className="flex w-full items-center gap-2.5 px-4 py-2 text-[13px] text-red-500/80 transition hover:bg-red-500/5 hover:text-red-500"
+                  className="flex w-full items-center gap-2.5 px-4 py-2 text-[13px] text-red-600 transition hover:bg-red-500/10 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                 >
                   <LogOut size={15} />
                   {t("common.logout")}

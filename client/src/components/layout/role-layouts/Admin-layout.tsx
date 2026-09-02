@@ -11,7 +11,7 @@ import {
   FileText,
   ClipboardList,
   FolderKanban,
-  MessagesSquare,
+  MessagesSquare, Mail,
 } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { PATHS } from "../../../routes/paths";
@@ -53,6 +53,7 @@ const NAV: NavItem[] = [
     icon: ClipboardList,
   },
   { to: `${R}/projects`, labelKey: "admin.projects", icon: FolderKanban },
+  { to: `${R}/messages`, labelKey: "admin.messagesTitle", icon: Mail },
   { to: `${R}/defenses`, labelKey: "dash.defense", icon: MessagesSquare },
 ];
 

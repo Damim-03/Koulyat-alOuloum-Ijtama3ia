@@ -1,6 +1,7 @@
 import type { LoginRole } from "../../../types/enums";
 import { ROLES } from "../../../config/roles.config";
 import { cn } from "../../../lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   value: LoginRole;
@@ -10,10 +11,11 @@ interface Props {
 const ORDER: LoginRole[] = ["student", "professor", "admin"];
 
 export function RoleSwitcher({ value, onChange }: Props) {
+  const { t } = useTranslation();
   return (
     <div className="mb-6 grid grid-cols-3 gap-1 rounded-2xl border border-forest/10 bg-cream-card/70 p-1">
       {ORDER.map((key) => {
-        const { label, Icon } = ROLES[key];
+        const { labelKey, Icon } = ROLES[key];
         const active = value === key;
         return (
           <button
@@ -28,7 +30,7 @@ export function RoleSwitcher({ value, onChange }: Props) {
             )}
           >
             <Icon size={16} />
-            {label}
+            {t(labelKey)}
           </button>
         );
       })}

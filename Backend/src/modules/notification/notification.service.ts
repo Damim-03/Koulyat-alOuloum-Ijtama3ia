@@ -1,5 +1,6 @@
 import { prisma } from "../../core/prisma/client";
 import { Prisma, NotificationType, Role } from "../../generated/prisma";
+import { pushNotification, emitToUsers } from "../../core/realtime/realtime";
 
 /**
  * Reusable notification layer.
@@ -26,7 +27,7 @@ export const createNotification = async (
   input: NotifyInput,
   db: Db = prisma,
 ) => {
-  return db.notification.create({
+  const notification = await db.notification.create({
     data: {
       userId: input.userId,
       type: input.type ?? "general",
@@ -35,6 +36,10 @@ export const createNotification = async (
       link: input.link,
     },
   });
+  // Straight to the recipient's bell — no poll, no refresh.
+  pushNotification(input.userId, notification);
+  emitToUsers([input.userId], "notifications", "created", notification.id);
+  return notification;
 };
 
 // Create many notifications at once (e.g. notify every group member).
@@ -43,7 +48,7 @@ export const createNotifications = async (
   db: Db = prisma,
 ) => {
   if (inputs.length === 0) return { count: 0 };
-  return db.notification.createMany({
+  const result = await db.notification.createMany({
     data: inputs.map((i) => ({
       userId: i.userId,
       type: i.type ?? "general",
@@ -52,6 +57,9 @@ export const createNotifications = async (
       link: i.link,
     })),
   });
+  // createMany returns no rows, so nudge each recipient to refetch the bell.
+  emitToUsers([...new Set(inputs.map((i) => i.userId))], "notifications", "created");
+  return result;
 };
 
 // Notify every ACTIVE user that has one of the given roles.

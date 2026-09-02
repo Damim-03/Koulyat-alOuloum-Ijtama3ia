@@ -139,7 +139,7 @@ export function ProfessorTopicsPage() {
                 className="mt-auto flex items-center justify-center gap-1 rounded-xl bg-forest px-4 py-2 text-xs font-semibold text-cream transition hover:bg-forest-deep"
               >
                 {t("pro.viewDetails")}
-                <ChevronLeft size={14} />
+                <ChevronLeft size={14} className="ltr:rotate-180" />
               </Link>
             </div>
           ))}

@@ -14,6 +14,7 @@ import { errorHandler } from "./core/middleware/errorHandler.middleware";
 import { asyncHandler } from "./core/middleware/asyncHandler.middleware";
 import { HTTPSTATUS } from "./core/config/http/http.config";
 import mainRoute from "./routes/mainRoutes";
+import { setRealtimeServer, room } from "./core/realtime/realtime";
 
 //
 // ======================================================
@@ -49,15 +50,23 @@ export const io = new Server(server, {
   },
 });
 
+setRealtimeServer(io);
+
 io.on("connection", (socket) => {
   console.log(`🔌 User connected: ${socket.id}`);
 
   //
-  // Join personal room
+  // Join personal + role rooms
   //
 
   socket.on("join-room", (userId: string) => {
-    socket.join(userId);
+    socket.join(room.user(userId));
+    socket.join(userId); // legacy room name, kept for older clients
+  });
+
+  socket.on("join", (payload: { userId?: string; role?: string }) => {
+    if (payload?.userId) socket.join(room.user(payload.userId));
+    if (payload?.role) socket.join(room.role(payload.role));
   });
 
   //

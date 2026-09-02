@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Role } from "../types/enums";
-import { DEFAULT_LANG } from "../i18n/i18n";
+import { DEFAULT_LANG, SUPPORTED_LANGS, type LangCode } from "../i18n/i18n";
 import { LanguageLayout } from "../i18n/locales/components/language-layout";
 import PublicLayout from "../components/layout/public-layout";
 import { ProtectedRoute } from "./guards/protected-route";
@@ -29,35 +29,37 @@ import { StudentDashboardPage } from "../features/student/pages/dashboard.page";
 import { StudentBrowseTopicsPage } from "../features/student/pages/browse-topics.page";
 
 // Admin pages
-import { AdminDashboardPage } from "../features/admin/pages/dashboard.page";
-import { AdminStudentsPage } from "../features/admin/pages/Student.page";
-import { AdminUsersPage } from "../features/admin/pages/Users.page";
-import { AdminProfessorsPage } from "../features/admin/pages/professors.page";
-import { AdminAcademicStructurePage } from "../features/admin/pages/academic.page";
-import { AdminTopicsPage } from "../features/admin/pages/topics.page";
-import { AdminDefensesPage } from "../features/admin/pages/defenses.page";
-import { AdminApplicationsPage } from "../features/admin/pages/applications.page";
-import { AdminFacultiesPage } from "../features/admin/pages/faculties.page";
-import { AdminProjectsPage } from "../features/admin/pages/projects.page";
+import { AdminStudentsPage } from "../features/admin/pages/students/student.page";
+import { AdminUsersPage } from "../features/admin/pages/users/Users.page";
+import { AdminProfessorsPage } from "../features/admin/pages/professors/professors.page";
+import { AdminAcademicStructurePage } from "../features/admin/pages/academic/academic.page";
+import { AdminTopicsPage } from "../features/admin/pages/topics/topics.page";
+import { AdminDefensesPage } from "../features/admin/pages/defenses/defenses.page";
+import { AdminFacultiesPage } from "../features/admin/pages/faculties/faculties.page";
 import { ProfessorMilestonesPage } from "../features/professor/pages/Professor-milestones.page";
 import { StudentMyRequestsPage } from "../features/student/pages/my-requests.page";
 import { StudentMyProjectPage } from "../features/student/pages/my-project.page";
 import { StudentTopicDetailPage } from "../features/student/pages/topic-detail.page";
-import { AdminTopicDetailPage } from "../features/admin/pages/topic-detail.page";
-import { AdminGroupRequestsPage } from "../features/admin/pages/group-requests.page";
+import { AdminTopicDetailPage } from "../features/admin/pages/topics/topic-detail.page";
 import { PublicTopicDetailPage } from "../features/public/pages/public-topic-detail.page";
 import { PublicTopicsPage } from "../features/public/pages/public-topics.page";
-import { AdminUserDetailPage } from "../features/admin/pages/user-detail.page";
-import { AdminStudentDetailPage } from "../features/admin/pages/student-detail.page";
-import { AdminProfessorDetailPage } from "../features/admin/pages/professor-detail-page";
-import { FacultyDetailPage } from "../features/admin/pages/FacultyDetailPage";
-import { DomainDetailPage } from "../features/admin/pages/DomainDetailPage";
+import { AdminUserDetailPage } from "../features/admin/pages/users/user-detail.page";
+import { AdminStudentDetailPage } from "../features/admin/pages/students/student-detail.page";
+import { FacultyDetailPage } from "../features/admin/pages/faculties/faculty-detail.page";
+import { DomainDetailPage } from "../features/admin/pages/domain/domain-detail.page";
 //import { DepartmentDetailPage } from "../features/admin/pages/DepartmentDetailPage";
-import { FiliereDetailPage } from "../features/admin/pages/FiliereDetailPage";
-import { DepartmentDetailPage } from "../features/admin/pages/DepartmentDetailPage";
-import { SpecializationDetailPage } from "../features/admin/pages/SpecializationDetailPage";
-import { AdminArchivePage } from "../features/admin/pages/AdminArchivePage";
-import { AdminUnassignedStudentsPage } from "../features/admin/pages/unassigned-students.page";
+import { FiliereDetailPage } from "../features/admin/pages/filters/filter-detail.page";
+import { DepartmentDetailPage } from "../features/admin/pages/departments/department-detail.page";
+import { AdminUnassignedStudentsPage } from "../features/admin/pages/filters/unassigned-students.page";
+import { AdminApplicationsPage } from "../features/admin/pages/application/applications.page";
+import { AdminArchivePage } from "../features/admin/pages/archive/archive.Page";
+import { AdminDashboardPage } from "../features/admin/pages/dashboard/dashboard.page";
+import { SpecializationDetailPage } from "../features/admin/pages/filters/specialization-detail.Page";
+import { AdminGroupRequestDetailPage } from "../features/admin/pages/groups/group-requests-details.page";
+import { AdminGroupRequestsPage } from "../features/admin/pages/groups/group-requests.page";
+import { AdminProfessorDetailPage } from "../features/admin/pages/professors/professor-detail-page";
+import { AdminProjectsPage } from "../features/admin/pages/projects/projects.page";
+import {AdminMessagesPage} from "../features/admin/pages/messages/messages.page.tsx";
 
 export function AppRouter() {
   return (
@@ -161,6 +163,10 @@ export function AppRouter() {
           <Route path="topics" element={<AdminTopicsPage />} />
           <Route path="topics/:id" element={<AdminTopicDetailPage />} />
           <Route path="group-requests" element={<AdminGroupRequestsPage />} />
+          <Route
+            path="group-requests/:id"
+            element={<AdminGroupRequestDetailPage />}
+          />
           <Route path="defenses" element={<AdminDefensesPage />} />
           <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="projects" element={<AdminProjectsPage />} />
@@ -187,11 +193,25 @@ export function AppRouter() {
             path="students/unassigned"
             element={<AdminUnassignedStudentsPage />}
           />
+          <Route path="messages" element={<AdminMessagesPage />} />
         </Route>
       </Route>
 
-      {/* أي رابط بدون لغة → اللغة الافتراضية */}
-      <Route path="*" element={<Navigate to={`/${DEFAULT_LANG}`} replace />} />
+      {/* Unknown link → home, in the language the visitor was already using. */}
+      <Route path="*" element={<UnknownRouteRedirect />} />
     </Routes>
   );
+}
+
+/**
+ * Sends an unmatched URL to the home page — keeping the language prefix when
+ * the URL carries a supported one, so a wrong link never switches the visitor
+ * back to the default language.
+ */
+function UnknownRouteRedirect() {
+  const first = window.location.pathname.split("/").filter(Boolean)[0];
+  const lang = SUPPORTED_LANGS.includes(first as LangCode)
+    ? (first as LangCode)
+    : DEFAULT_LANG;
+  return <Navigate to={`/${lang}`} replace />;
 }

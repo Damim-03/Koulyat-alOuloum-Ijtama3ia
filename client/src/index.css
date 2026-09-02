@@ -137,21 +137,263 @@
   /* fonts */
   --font-serif: "IBM Plex Serif", Georgia, serif;
   --font-body: "Work Sans", ui-sans-serif, system-ui, sans-serif;
+}
 
-  /* home palette */
-  --color-forest: #26423d; /* primary  */
-  --color-forest-deep: #1a312d;
-  --color-forest-soft: #2f5249; /* ← NEW: lighter green for button gradients */
-  --color-gold: #c1965a; /* secondary */
-  --color-gold-soft: #d4af75;
-  --color-sage: #4a7066; /* tertiary */
-  --color-soft-sage: #8eb29e; /* neutral  */
+/* ============================================================
+   THEME TOKENS
+   The palette lives in plain custom properties so it can be
+   swapped per theme, and `@theme inline` binds Tailwind's color
+   utilities to them. Every existing class (bg-cream-card,
+   text-forest, text-clay …) keeps working — only the values move.
 
-  --color-cream: #f5edda; /* page bg   */
-  --color-cream-2: #fbf6ea;
-  --color-cream-card: #fffaf2; /* card bg   */
-  --color-clay: #6b6357; /* muted text on cream */
-  --color-brick: #a8442d; /* ← NEW: warm error/validation color */
+   Roles behind the historical names:
+     forest       → primary text / strong ink
+     forest-deep  → strongest ink
+     cream        → page background
+     cream-2      → recessed surface (inputs, wells)
+     cream-card   → raised surface (cards, dialogs)
+     clay         → muted secondary text
+     gold / sage  → accents (tuned, not inverted)
+     brick        → error
+   ============================================================ */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --t-forest: #26423d;
+  --t-forest-deep: #1a312d;
+  --t-forest-soft: #2f5249;
+  --t-gold: #c1965a;
+  --t-gold-soft: #d4af75;
+  --t-sage: #4a7066;
+  --t-soft-sage: #8eb29e;
+  --t-cream: #f5edda;
+  --t-cream-2: #fbf6ea;
+  --t-cream-card: #fffaf2;
+  --t-clay: #6b6357;
+  --t-brick: #a8442d;
+
+  /* Brand chrome — the sidebar and dialog headers keep the brand
+     green in both themes, so these never invert. */
+  --t-brand: #26423d;
+  --t-brand-deep: #1a312d;
+  --t-on-brand: #f5edda;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Deep charcoal-green rather than pure black; surfaces sit a step
+     above the page so cards read as raised. */
+  --t-cream: #0e1614; /* page      */
+  --t-cream-2: #17211f; /* recessed  */
+  --t-cream-card: #1b2724; /* raised    */
+
+  /* Ink inverts to a soft off-white — never pure #fff. */
+  --t-forest: #e4ede9;
+  --t-forest-deep: #f1f6f4;
+  --t-forest-soft: #b9cec7;
+  --t-clay: #97a6a0; /* muted, still ~5:1 on the page */
+
+  /* Accents lifted for contrast against the dark ground. */
+  --t-gold: #d9ae72;
+  --t-gold-soft: #e6c496;
+  --t-sage: #8fb3a8;
+  --t-soft-sage: #a7c9b7;
+  --t-brick: #e07a5f;
+
+  --t-brand: #16241f;
+  --t-brand-deep: #101c18;
+  --t-on-brand: #e8f1ed;
+}
+
+/* The base layer paints <body> with bg-background/text-foreground (a shadcn
+   leftover). Bind those to the brand tokens so the page behind the app can
+   never disagree with the surfaces drawn on it. */
+:root,
+[data-theme="light"],
+[data-theme="dark"] {
+  --background: var(--t-cream);
+  --foreground: var(--t-forest);
+  --card: var(--t-cream-card);
+  --card-foreground: var(--t-forest);
+  --popover: var(--t-cream-card);
+  --popover-foreground: var(--t-forest);
+  --border: color-mix(in oklab, var(--t-forest) 12%, transparent);
+  --input: color-mix(in oklab, var(--t-forest) 16%, transparent);
+  --muted-foreground: var(--t-clay);
+  --ring: var(--t-gold);
+}
+
+@theme inline {
+  --color-forest: var(--t-forest);
+  --color-forest-deep: var(--t-forest-deep);
+  --color-forest-soft: var(--t-forest-soft);
+  --color-gold: var(--t-gold);
+  --color-gold-soft: var(--t-gold-soft);
+  --color-sage: var(--t-sage);
+  --color-soft-sage: var(--t-soft-sage);
+  --color-cream: var(--t-cream);
+  --color-cream-2: var(--t-cream-2);
+  --color-cream-card: var(--t-cream-card);
+  --color-clay: var(--t-clay);
+  --color-brick: var(--t-brick);
+}
+
+/* The base layer paints <body> through the shadcn `text-foreground` chain,
+   which the theme cannot reach reliably. Pin the page's inherited colours to
+   the theme tokens directly so anything without an explicit text class still
+   flips — table cells being the case that exposed this. */
+html,
+body {
+  background-color: var(--t-cream);
+  color: var(--t-forest);
+}
+
+/* ── Brand chrome in dark mode ────────────────────────────────
+   `forest` doubles as ink and as the dark chrome surface. Once it
+   inverts for text, the opaque surface utilities must be pinned
+   back to the brand green. Alpha variants (bg-forest/10 …) are
+   separate class names, so they correctly follow the inverted ink.
+   ============================================================ */
+[data-theme="dark"] .bg-forest {
+  background-color: var(--t-brand);
+}
+[data-theme="dark"] .bg-forest-deep {
+  background-color: var(--t-brand-deep);
+}
+[data-theme="dark"] .text-cream {
+  color: var(--t-on-brand);
+}
+[data-theme="dark"] .from-forest {
+  --tw-gradient-from: var(--t-brand);
+}
+[data-theme="dark"] .from-forest-deep {
+  --tw-gradient-from: var(--t-brand-deep);
+}
+[data-theme="dark"] .to-forest {
+  --tw-gradient-to: var(--t-brand);
+}
+[data-theme="dark"] .to-forest-deep {
+  --tw-gradient-to: var(--t-brand-deep);
+}
+/* Translucent paint layered on the chrome. `cream` inverts to the dark page
+   colour, so these must be re-pointed at the on-brand tint at the very same
+   alpha — flattening them all to one value would lose the depth. */
+[data-theme="dark"] .bg-cream\/30 {
+  background-color: color-mix(in oklab, var(--t-on-brand) 30%, transparent);
+}
+[data-theme="dark"] .bg-cream\/20 {
+  background-color: color-mix(in oklab, var(--t-on-brand) 20%, transparent);
+}
+[data-theme="dark"] .bg-cream\/15 {
+  background-color: color-mix(in oklab, var(--t-on-brand) 15%, transparent);
+}
+[data-theme="dark"] .bg-cream\/10 {
+  background-color: color-mix(in oklab, var(--t-on-brand) 10%, transparent);
+}
+[data-theme="dark"] .bg-cream\/5 {
+  background-color: color-mix(in oklab, var(--t-on-brand) 5%, transparent);
+}
+
+/* Scrims and chrome gradients carry the brand green at partial alpha. Their
+   class names are separate from `.bg-forest-deep`, so without these they
+   follow the inverted ink and a modal backdrop turns into a *light* wash —
+   lightening the page instead of dimming it. The low-alpha tints
+   (bg-forest/5 …) are deliberately left alone: those are ink on a surface,
+   and inverting is right for them. */
+[data-theme="dark"] .bg-forest-deep\/40 {
+  background-color: color-mix(in oklab, var(--t-brand-deep) 40%, transparent);
+}
+[data-theme="dark"] .bg-forest-deep\/50 {
+  background-color: color-mix(in oklab, var(--t-brand-deep) 50%, transparent);
+}
+[data-theme="dark"] .bg-forest-deep\/60 {
+  background-color: color-mix(in oklab, var(--t-brand-deep) 60%, transparent);
+}
+[data-theme="dark"] .bg-forest-deep\/80 {
+  background-color: color-mix(in oklab, var(--t-brand-deep) 80%, transparent);
+}
+[data-theme="dark"] .bg-forest-deep\/90 {
+  background-color: color-mix(in oklab, var(--t-brand-deep) 90%, transparent);
+}
+[data-theme="dark"] .from-forest-deep\/70 {
+  --tw-gradient-from: color-mix(in oklab, var(--t-brand-deep) 70%, transparent);
+}
+[data-theme="dark"] .from-forest-deep\/80 {
+  --tw-gradient-from: color-mix(in oklab, var(--t-brand-deep) 80%, transparent);
+}
+[data-theme="dark"] .from-forest-deep\/95 {
+  --tw-gradient-from: color-mix(in oklab, var(--t-brand-deep) 95%, transparent);
+}
+[data-theme="dark"] .from-forest\/85 {
+  --tw-gradient-from: color-mix(in oklab, var(--t-brand) 85%, transparent);
+}
+[data-theme="dark"] .to-forest-deep\/45 {
+  --tw-gradient-to: color-mix(in oklab, var(--t-brand-deep) 45%, transparent);
+}
+[data-theme="dark"] .to-forest\/25 {
+  --tw-gradient-to: color-mix(in oklab, var(--t-brand) 25%, transparent);
+}
+[data-theme="dark"] .to-forest\/10 {
+  --tw-gradient-to: color-mix(in oklab, var(--t-brand) 10%, transparent);
+}
+
+/* The seam between a chrome block and the page: it has to be the *page*
+   colour, which `text-cream` is not once that class is pinned for chrome. */
+.page-fill {
+  color: var(--t-cream);
+}
+.page-fill-2 {
+  color: var(--t-cream-2);
+}
+
+[data-theme="dark"] .text-cream\/90 {
+  color: color-mix(in oklab, var(--t-on-brand) 90%, transparent);
+}
+[data-theme="dark"] .text-cream\/80 {
+  color: color-mix(in oklab, var(--t-on-brand) 80%, transparent);
+}
+[data-theme="dark"] .text-cream\/75 {
+  color: color-mix(in oklab, var(--t-on-brand) 75%, transparent);
+}
+[data-theme="dark"] .text-cream\/70 {
+  color: color-mix(in oklab, var(--t-on-brand) 70%, transparent);
+}
+[data-theme="dark"] .text-cream\/65 {
+  color: color-mix(in oklab, var(--t-on-brand) 65%, transparent);
+}
+[data-theme="dark"] .text-cream\/60 {
+  color: color-mix(in oklab, var(--t-on-brand) 60%, transparent);
+}
+[data-theme="dark"] .text-cream\/55 {
+  color: color-mix(in oklab, var(--t-on-brand) 55%, transparent);
+}
+[data-theme="dark"] .text-cream\/50 {
+  color: color-mix(in oklab, var(--t-on-brand) 50%, transparent);
+}
+[data-theme="dark"] .text-cream\/45 {
+  color: color-mix(in oklab, var(--t-on-brand) 45%, transparent);
+}
+[data-theme="dark"] .text-cream\/40 {
+  color: color-mix(in oklab, var(--t-on-brand) 40%, transparent);
+}
+[data-theme="dark"] .text-cream\/35 {
+  color: color-mix(in oklab, var(--t-on-brand) 35%, transparent);
+}
+[data-theme="dark"] .text-cream\/10 {
+  color: color-mix(in oklab, var(--t-on-brand) 10%, transparent);
+}
+
+/* `gold` stays light in both themes, so a label sitting on it must stay dark.
+   Both classes live on the same element, so this targets exactly those. */
+[data-theme="dark"] .bg-gold.text-forest-deep,
+[data-theme="dark"] .bg-gold.text-forest,
+[data-theme="dark"] .bg-gold-soft.text-forest-deep,
+[data-theme="dark"] .bg-gold-soft.text-forest,
+[data-theme="dark"] .hover\:bg-gold-soft.text-forest-deep:hover {
+  color: var(--t-brand-deep);
 }
 
 @layer utilities {
@@ -164,8 +406,10 @@
     background-size: 22px 22px;
   }
   /* warm radial atmosphere for the hero */
+  /* A brand-dark panel. `forest` doubles as ink and inverts for text, so this
+     pins to the chrome token instead and stays dark in both themes. */
   .forest-glow {
-    background-color: var(--color-forest);
+    background-color: var(--t-brand);
     background-image:
       radial-gradient(
         circle at 12% 18%,
@@ -181,20 +425,28 @@
 
   /* ← Auth page background is now WARM CREAM (was a dark radial glow).
      The old dark version is kept commented below in case you want it back. */
+  /* The warm wash on the auth pages. The base gradient is built from theme
+     tokens — a hard-coded cream here used to paint straight over the dark
+     palette, leaving light-on-light text. The two radial accents are alpha,
+     so they read correctly on either ground. */
   .auth-bg {
-    background-color: var(--color-cream);
+    background-color: var(--t-cream);
     background-image:
       radial-gradient(
         1100px 520px at 86% -8%,
-        rgba(193, 150, 90, 0.16),
+        color-mix(in oklab, var(--t-gold) 16%, transparent),
         transparent 60%
       ),
       radial-gradient(
         900px 600px at 6% 110%,
-        rgba(74, 112, 102, 0.12),
+        color-mix(in oklab, var(--t-sage) 14%, transparent),
         transparent 60%
       ),
-      linear-gradient(180deg, #f6ecdb 0%, #f1e4cf 100%);
+      linear-gradient(
+        180deg,
+        var(--t-cream-2) 0%,
+        var(--t-cream) 100%
+      );
   }
 
   /* concentric "seal" ring behind the auth brand mark (hero signature) */
@@ -229,4 +481,314 @@
     opacity: 1;
     transform: none;
   }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ================================================================
+   حركات وتأثيرات عامّة — أضِف هذا إلى ملفّ CSS العام لديك
+   (نفس الملف الذي فيه fadeIn المستعملة في النوافذ)
+   ================================================================ */
+
+/* ── Keyframes ── */
+@keyframes fadeIn {
+  from { opacity: 0 }
+  to   { opacity: 1 }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(14px) }
+  to   { opacity: 1; transform: translateY(0) }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-14px) }
+  to   { opacity: 1; transform: translateY(0) }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(.95) }
+  to   { opacity: 1; transform: scale(1) }
+}
+@keyframes floatY {
+  0%, 100% { transform: translateY(0) }
+  50%      { transform: translateY(-6px) }
+}
+@keyframes pulseSoft {
+  0%, 100% { opacity: 1 }
+  50%      { opacity: .6 }
+}
+@keyframes shimmer {
+  100% { transform: translateX(100%) }
+}
+
+/* ── Utility classes (used by dashboard cards) ── */
+.animate-slide-up   { animation: slideUp   .45s cubic-bezier(.22,.61,.36,1) both }
+.animate-slide-down { animation: slideDown .45s cubic-bezier(.22,.61,.36,1) both }
+.animate-scale-in   { animation: scaleIn   .3s  cubic-bezier(.22,.61,.36,1) both }
+.animate-float      { animation: floatY    3s   ease-in-out infinite }
+.animate-pulse-soft { animation: pulseSoft 2s   ease-in-out infinite }
+
+/* ── Staggered entrance ──
+   ضع className="stagger" على أي حاوية (grid/flex) لتظهر أبناؤها تِباعاً.
+   ملاحظة: لا تجمع هذه مع animate-* على الأبناء أنفسهم (تتعارض). */
+.stagger > * { opacity: 0; animation: slideUp .5s cubic-bezier(.22,.61,.36,1) forwards }
+.stagger > *:nth-child(1)  { animation-delay: .04s }
+.stagger > *:nth-child(2)  { animation-delay: .09s }
+.stagger > *:nth-child(3)  { animation-delay: .14s }
+.stagger > *:nth-child(4)  { animation-delay: .19s }
+.stagger > *:nth-child(5)  { animation-delay: .24s }
+.stagger > *:nth-child(6)  { animation-delay: .29s }
+.stagger > *:nth-child(7)  { animation-delay: .34s }
+.stagger > *:nth-child(8)  { animation-delay: .39s }
+.stagger > *:nth-child(9)  { animation-delay: .44s }
+.stagger > *:nth-child(10) { animation-delay: .49s }
+
+/* ── Skeleton shimmer (لبطاقات التحميل) ── */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-forest) 8%, transparent);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+          90deg,
+          transparent,
+          color-mix(in srgb, var(--color-cream) 40%, transparent),
+          transparent
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+/* ── احترام تفضيل تقليل الحركة ── */
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up,
+  .animate-slide-down,
+  .animate-scale-in,
+  .animate-float,
+  .animate-pulse-soft,
+  .stagger > * {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+/* ============================================================
+   THEME TRANSITION — Telegram-style circular reveal
+   The new theme is painted on a full-screen snapshot that is
+   clipped to a circle growing from the toggle button. Because the
+   old frame stays underneath, nothing flashes and no layout moves.
+   ============================================================ */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  /* the two frames must not cross-fade — the clip does the work */
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* the outgoing frame stays put; the incoming one is revealed over it */
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 2;
+}
+
+html.theme-reveal::view-transition-new(root) {
+  animation: theme-reveal var(--reveal-ms, 280ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes theme-reveal {
+  from {
+    clip-path: circle(0 at var(--reveal-x, 50%) var(--reveal-y, 50%));
+  }
+  to {
+    clip-path: circle(var(--reveal-r, 150vmax) at var(--reveal-x, 50%) var(--reveal-y, 50%));
+  }
+}
+
+/* Fallback for browsers without the View Transition API: an overlay
+   in the incoming page colour expands from the same point, then the
+   theme is applied underneath it and the overlay fades out. */
+.theme-reveal-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: var(--reveal-color, var(--t-cream));
+  clip-path: circle(0 at var(--reveal-x, 50%) var(--reveal-y, 50%));
+  animation: theme-reveal-grow var(--reveal-ms, 280ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes theme-reveal-grow {
+  to {
+    clip-path: circle(var(--reveal-r, 150vmax) at var(--reveal-x, 50%) var(--reveal-y, 50%));
+  }
+}
+
+/* The toggle gets its own transition name, so it is captured apart from the
+   page. Without this the whole document is one static snapshot and the icon
+   swap is never seen — it simply appears already flipped inside the circle.
+   As its own layer it can cross-fade and rotate across the full reveal. */
+.theme-toggle-vt {
+  view-transition-name: theme-toggle;
+}
+
+::view-transition-group(theme-toggle) {
+  z-index: 3; /* rides above both page frames */
+}
+::view-transition-old(theme-toggle),
+::view-transition-new(theme-toggle) {
+  animation-duration: var(--reveal-ms, 280ms);
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-old(theme-toggle) {
+  animation-name: toggle-icon-out;
+}
+::view-transition-new(theme-toggle) {
+  animation-name: toggle-icon-in;
+}
+
+@keyframes toggle-icon-out {
+  to {
+    opacity: 0;
+    transform: rotate(70deg) scale(0.55);
+  }
+}
+@keyframes toggle-icon-in {
+  from {
+    opacity: 0;
+    transform: rotate(-70deg) scale(0.55);
+  }
+}
+
+/* Colours ease on their own for anything the snapshot misses
+   (portals opened mid-transition, canvas, etc.). */
+html[data-theme] body {
+  transition:
+    background-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(theme-toggle),
+  ::view-transition-new(theme-toggle) {
+    animation: none;
+  }
+  html.theme-reveal::view-transition-new(root),
+  .theme-reveal-fallback {
+    animation: none;
+    clip-path: none;
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+  html[data-theme] body {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   ERROR TOAST — console-style, top-left
+   Entry is a CSS animation, not a JS-driven transition: it plays
+   the moment the node mounts, so a notification raised while the
+   tab is backgrounded can never be left stranded off-screen
+   (requestAnimationFrame does not run in a hidden tab).
+   ============================================================ */
+
+@keyframes toast-in {
+  from {
+    transform: translateX(calc(-100% - 1.5rem)) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-out {
+  from {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(calc(-100% - 1.5rem)) scale(0.96);
+    opacity: 0;
+  }
+}
+
+.toast-enter {
+  animation: toast-in 340ms cubic-bezier(0.16, 1.16, 0.3, 1) both;
+}
+.toast-leave {
+  animation: toast-out 220ms cubic-bezier(0.4, 0, 0.9, 0.3) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-enter,
+  .toast-leave {
+    animation-duration: 1ms;
+  }
+}
+
+/* ============================================================
+   FORM FIELDS — keep them readable in both themes
+   ============================================================ */
+
+/* Browsers repaint autofilled fields with their own opaque colour, which
+   overrides the theme entirely — in dark mode that lands as a white field
+   under light text, so the value becomes invisible.
+
+   `background-clip: text` confines the browser's paint to the glyphs
+   themselves, so the element's real background shows through. It is the only
+   fix that works no matter what surface the input sits on — an inset shadow
+   would have to guess the colour behind a `bg-transparent` input. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: var(--t-forest);
+  caret-color: var(--t-forest);
+  /* The paint is applied on a delay; pushing the transition out of reach
+     stops the yellow flash on load and on theme change. */
+  transition: background-color 100000s ease-in-out 0s;
+}
+
+/* The caret inherits `color`, which several inputs override — pin it to the
+   ink token so it is never a light cursor on a light field. */
+input,
+textarea,
+select {
+  caret-color: var(--t-forest);
+}
+
+/* Native pickers (date, time, colour swatch) render with the OS palette;
+   `color-scheme` on :root already tells them which way to go, and this keeps
+   the calendar/clock glyphs visible on a dark field. */
+[data-theme="dark"] input::-webkit-calendar-picker-indicator {
+  filter: invert(1) opacity(0.75);
+}
+
+/* Selection stays legible whatever the surface. */
+::selection {
+  background-color: color-mix(in oklab, var(--t-gold) 45%, transparent);
+  color: var(--t-forest);
 }

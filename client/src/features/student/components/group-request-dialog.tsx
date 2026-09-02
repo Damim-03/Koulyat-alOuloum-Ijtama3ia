@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -19,9 +19,13 @@ import {
 import {
   createGroupRequestSchema,
   type CreateGroupRequestInput,
+  type CreateGroupRequestFormValues,
 } from "../validation/student.schema";
-import { useCreateGroupRequest } from "../hooks/Student-hook";
-import { studentApi } from "../api/Student-api";
+import {
+  useCreateGroupRequest,
+  useStudentLookup,
+} from "../hooks/Student-hook";
+import { useDebouncedValue } from "../../../hooks/use-debounced-value";
 import type { BrowseTopic, LookupStudent } from "../../../types/student.types";
 
 interface Props {
@@ -58,10 +62,7 @@ export function GroupRequestDialog({
   const [memberInput, setMemberInput] = useState("");
 
   // ── live lookup state ──
-  const [status, setStatus] = useState<LookupStatus>("idle");
-  const [found, setFound] = useState<LookupStudent | null>(null);
   const [meta, setMeta] = useState<Record<string, MemberMeta>>({});
-  const reqId = useRef(0);
 
   const {
     register,
@@ -71,7 +72,11 @@ export function GroupRequestDialog({
     setValue,
     watch,
     formState: { errors },
-  } = useForm<CreateGroupRequestInput>({
+  } = useForm<
+    CreateGroupRequestFormValues,
+    unknown,
+    CreateGroupRequestInput
+  >({
     resolver: zodResolver(createGroupRequestSchema),
     defaultValues: {
       topicId: topic?.id ?? "",
@@ -86,8 +91,6 @@ export function GroupRequestDialog({
   });
 
   const members = (watch("memberRegistrationNumbers") as string[]) ?? [];
-  const membersRef = useRef(members);
-  membersRef.current = members;
 
   // keep topicId synced when the topic changes
   if (topic && watch("topicId") !== topic.id) {
@@ -100,37 +103,37 @@ export function GroupRequestDialog({
   const overCapacity = !!topic && totalCount > topic.maxStudents;
   const atCapacity = !!topic && totalCount >= topic.maxStudents;
 
-  // ── live search with debounce ──
-  useEffect(() => {
-    const reg = memberInput.trim();
-    setFound(null);
-    if (!reg) return setStatus("idle");
-    if (membersRef.current.includes(reg)) return setStatus("dupe");
-    setStatus("loading");
-    const myId = ++reqId.current;
-    const handle = setTimeout(async () => {
-      try {
-        const s = await studentApi.lookupStudent(reg);
-        if (myId !== reqId.current) return; // stale
-        if (s) {
-          setFound(s);
-          setStatus("found");
-        } else setStatus("notfound");
-      } catch {
-        if (myId === reqId.current) setStatus("notfound");
-      }
-    }, 350);
-    return () => clearTimeout(handle);
-  }, [memberInput]);
+  // ── live teammate search ──
+  // The query is keyed by the settled registration number, so a slow earlier
+  // response can no longer land after a newer one (what the old reqId counter
+  // guarded manually), and re-typing a number is served from cache.
+  const reg = memberInput.trim();
+  const debouncedReg = useDebouncedValue(reg, 350);
+  const isDupe = reg.length > 0 && members.includes(reg);
+  // Passing "" disables the query — nothing to look up while typing or on dupes.
+  const searchTerm = reg.length > 0 && !isDupe && debouncedReg === reg ? reg : "";
+  const lookup = useStudentLookup(searchTerm);
+
+  const status: LookupStatus = !reg
+    ? "idle"
+    : isDupe
+      ? "dupe"
+      : !searchTerm || lookup.isFetching
+        ? "loading"
+        : lookup.isSuccess
+          ? lookup.data
+            ? "found"
+            : "notfound"
+          : lookup.isError
+            ? "notfound"
+            : "loading";
+
+  const found = status === "found" ? (lookup.data ?? null) : null;
 
   const canAdd =
-    !!memberInput.trim() &&
-    status === "found" &&
-    !atCapacity &&
-    !createReq.isPending;
+    !!reg && status === "found" && !atCapacity && !createReq.isPending;
 
   function addMember() {
-    const reg = memberInput.trim();
     if (!reg || !canAdd) return;
     if (found)
       setMeta((m) => ({
@@ -138,9 +141,8 @@ export function GroupRequestDialog({
         [reg]: { name: nameOf(found), spec: specOf(found) },
       }));
     append(reg as never);
+    // Clearing the input drives `status` back to "idle" — it is derived now.
     setMemberInput("");
-    setStatus("idle");
-    setFound(null);
   }
 
   function submit(data: CreateGroupRequestInput) {
@@ -375,7 +377,7 @@ export function GroupRequestDialog({
             </div>
           </div>
           {errors.priority && (
-            <p className="-mt-3 text-right text-[11px] text-red-500">
+            <p className="-mt-3 text-start text-[11px] text-red-500">
               {errors.priority.message}
             </p>
           )}

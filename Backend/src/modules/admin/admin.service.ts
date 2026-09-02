@@ -16,6 +16,8 @@ import {
   UpdateStudentDTO,
   ListQueryDTO,
   CreateProfessorDTO,
+  CreateUniversityDomainDTO,
+  AcademicStructureDTO,
   UpdateProfessorDTO,
   CreateFacultyDTO,
   UpdateFacultyDTO,
@@ -691,18 +693,69 @@ export const updateAssignedTopicService = async (
 //
 // ════════ USERS ════════
 //
+/**
+ * Name search, one word at a time.
+ *
+ * Each word must appear in the first name or the last name, and the caller
+ * does not have to know which is which: "خالد مرابط" and "مرابط خالد" both find the same
+ * person, and two letters of each ("خا مر") are enough. Matching every word
+ * rather than any of them keeps a two-word query from widening the results.
+ */
+const nameSearchFilter = (
+  search: string,
+  /** Places the name fields where the model keeps them: at the top level for
+   *  User, under `user` for the records that point at one. */
+  wrap: (f: Record<string, unknown>) => Record<string, unknown> = (f) => f,
+) => {
+  const words = search.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return null;
+  return {
+    AND: words.map((word) => ({
+      OR: [
+        wrap({ firstName: { contains: word } }),
+        wrap({ lastName: { contains: word } }),
+      ],
+    })),
+  };
+};
+
 export const listUsersService = async (q: ListUsersDTO) => {
   const where: Record<string, unknown> = {};
   if (q.role) where.role = q.role;
   if (q.status) where.status = q.status;
-  if (q.search) {
-    where.OR = [
-      { firstName: { contains: q.search, mode: "insensitive" } },
-      { lastName: { contains: q.search, mode: "insensitive" } },
-      { email: { contains: q.search, mode: "insensitive" } },
-      { username: { contains: q.search, mode: "insensitive" } },
-    ];
+
+  // Filters are combined with AND: each one narrows what the others left.
+  const and: Record<string, unknown>[] = [];
+
+  const byName = q.search ? nameSearchFilter(q.search) : null;
+  if (byName) and.push(byName);
+
+  // The account address, or the professor's separate university address.
+  if (q.email) {
+    and.push({
+      OR: [
+        { email: { contains: q.email } },
+        {
+          professor: {
+            universityEmail: { contains: q.email },
+          },
+        },
+      ],
+    });
   }
+
+  // Only students carry a registration number, so this narrows to them.
+  if (q.registrationNumber) {
+    and.push({
+      student: {
+        registrationNumber: {
+          contains: q.registrationNumber,
+        },
+      },
+    });
+  }
+
+  if (and.length > 0) where.AND = and;
 
   const [items, total] = await Promise.all([
     prisma.user.findMany({
@@ -890,13 +943,19 @@ export const listStudentsService = async (q: ListStudentsDTO) => {
     };
   }
 
-  if (q.search) {
-    where.OR = [
-      { registrationNumber: { contains: q.search, mode: "insensitive" } },
-      { user: { firstName: { contains: q.search, mode: "insensitive" } } },
-      { user: { lastName: { contains: q.search, mode: "insensitive" } } },
-    ];
+  // Filters are combined with AND: each one narrows what the others left.
+  const and: Record<string, unknown>[] = [];
+
+  const byName = q.search
+    ? nameSearchFilter(q.search, (f) => ({ user: f }))
+    : null;
+  if (byName) and.push(byName);
+
+  if (q.registrationNumber) {
+    and.push({ registrationNumber: { contains: q.registrationNumber } });
   }
+
+  if (and.length > 0) where.AND = and;
 
   const [items, total] = await Promise.all([
     prisma.student.findMany({
@@ -1129,14 +1188,29 @@ export const deleteStudentService = async (id: string) => {
 export const listProfessorsService = async (q: ListProfessorsDTO) => {
   const where: Record<string, unknown> = {};
 
-  if (q.search) {
-    where.OR = [
-      { employeeNumber: { contains: q.search, mode: "insensitive" } },
-      { universityEmail: { contains: q.search, mode: "insensitive" } },
-      { user: { firstName: { contains: q.search, mode: "insensitive" } } },
-      { user: { lastName: { contains: q.search, mode: "insensitive" } } },
-    ];
+  // Filters are combined with AND: each one narrows what the others left.
+  const and: Record<string, unknown>[] = [];
+
+  const byName = q.search
+    ? nameSearchFilter(q.search, (f) => ({ user: f }))
+    : null;
+  if (byName) and.push(byName);
+
+  if (q.employeeNumber) {
+    and.push({ employeeNumber: { contains: q.employeeNumber } });
   }
+
+  // The university address, or the address on the underlying account.
+  if (q.email) {
+    and.push({
+      OR: [
+        { universityEmail: { contains: q.email } },
+        { user: { email: { contains: q.email } } },
+      ],
+    });
+  }
+
+  if (and.length > 0) where.AND = and;
 
   // Most specific wins: department > filiere > faculty.
   if (q.departmentId) {
@@ -1191,13 +1265,335 @@ export const getProfessorByIdService = async (id: string) => {
   return professor;
 };
 
+//
+// ─── ACADEMIC STRUCTURE (معالج الهيكل الأكاديمي) ──────────────
+//
+
+/**
+ * ينشئ شجرة أكاديمية كاملة في معاملة واحدة: كلية ← أقسام ← ميادين ← شعب ←
+ * تخصّصات. الكلّ أو لا شيء — لا يبقى هيكل نصفه محفوظ إن فشلت خطوة.
+ *
+ * الرموز (code) فريدة في القاعدة، لذا تُفحص كلّها مسبقاً — داخل الحمولة نفسها
+ * ومقابل الصفوف الموجودة — لنعيد رسالة مفهومة بدل خطأ قيد فريد خام.
+ */
+export const createAcademicStructureService = async (
+  data: AcademicStructureDTO,
+) => {
+  // ── 1. الرموز المطلوبة في هذه العملية ──
+  const newCodes: { code: string; label: string }[] = [];
+  if (data.faculty.kind === "new")
+    newCodes.push({ code: data.faculty.code, label: "الكلية" });
+  for (const d of data.departments)
+    newCodes.push({ code: d.code, label: `القسم «${d.name}»` });
+  for (const d of data.domains)
+    newCodes.push({ code: d.code, label: `الميدان «${d.name}»` });
+  for (const f of data.filieres)
+    newCodes.push({ code: f.code, label: `الشعبة «${f.name}»` });
+
+  // تكرار داخل الحمولة نفسها
+  const seen = new Set<string>();
+  for (const { code, label } of newCodes) {
+    if (seen.has(code))
+      throw new BadRequestException(
+        `الرمز «${code}» مكرّر أكثر من مرّة في النموذج (${label})`,
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+    seen.add(code);
+  }
+
+  // تعارض مع رموز موجودة (الرمز فريد في كل جدول على حدة)
+  const codes = [...seen];
+  if (codes.length) {
+    const [faculties, departments, domains, filieres] = await Promise.all([
+      prisma.faculty.findMany({
+        where: { code: { in: codes } },
+        select: { code: true },
+      }),
+      prisma.department.findMany({
+        where: { code: { in: codes } },
+        select: { code: true },
+      }),
+      prisma.domain.findMany({
+        where: { code: { in: codes } },
+        select: { code: true },
+      }),
+      prisma.filiere.findMany({
+        where: { code: { in: codes } },
+        select: { code: true },
+      }),
+    ]);
+    const taken = [...faculties, ...departments, ...domains, ...filieres].map(
+      (r) => r.code,
+    );
+    if (taken.length)
+      throw new BadRequestException(
+        `رموز مستعملة بالفعل: ${[...new Set(taken)].join("، ")}`,
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+  }
+
+  // ── 2. الإنشاء داخل معاملة ──
+  return prisma.$transaction(async (tx) => {
+    // الكلية: جديدة أو قائمة
+    const faculty =
+      data.faculty.kind === "new"
+        ? await tx.faculty.create({
+            data: { name: data.faculty.name, code: data.faculty.code },
+          })
+        : await tx.faculty.findUnique({ where: { id: data.faculty.id } });
+
+    if (!faculty)
+      throw new NotFoundException(
+        "الكلية غير موجودة",
+        ErrorCodeEnum.RESOURCE_NOT_FOUND,
+      );
+
+    const departmentIds = new Map<string, string>();
+    for (const d of data.departments) {
+      const created = await tx.department.create({
+        data: { name: d.name, code: d.code, facultyId: faculty.id },
+      });
+      departmentIds.set(d.key, created.id);
+    }
+
+    // يحوّل إشارة (مفتاح مؤقّت أو معرّف قائم) إلى معرّف حقيقي.
+    const resolve = (
+      ref: { kind: "new" | "existing"; value: string },
+      created: Map<string, string>,
+      what: string,
+    ): string => {
+      if (ref.kind === "existing") return ref.value;
+      const id = created.get(ref.value);
+      if (!id)
+        throw new BadRequestException(
+          `${what} يشير إلى عنصر غير موجود في النموذج`,
+          ErrorCodeEnum.VALIDATION_ERROR,
+        );
+      return id;
+    };
+
+    const domainIds = new Map<string, string>();
+    for (const d of data.domains) {
+      const created = await tx.domain.create({
+        data: {
+          name: d.name,
+          code: d.code,
+          departmentId: resolve(
+            d.department,
+            departmentIds,
+            `الميدان «${d.name}»`,
+          ),
+        },
+      });
+      domainIds.set(d.key, created.id);
+    }
+
+    let specializationCount = 0;
+    for (const f of data.filieres) {
+      const filiere = await tx.filiere.create({
+        data: {
+          name: f.name,
+          code: f.code,
+          departmentId: resolve(
+            f.department,
+            departmentIds,
+            `الشعبة «${f.name}»`,
+          ),
+          domainId: f.domain
+            ? resolve(f.domain, domainIds, `الشعبة «${f.name}»`)
+            : null,
+        },
+      });
+      for (const s of f.specializations) {
+        await tx.specialization.create({
+          data: { name: s.name, level: s.level, filiereId: filiere.id },
+        });
+        specializationCount++;
+      }
+    }
+
+    return {
+      faculty,
+      created: {
+        departments: data.departments.length,
+        domains: data.domains.length,
+        filieres: data.filieres.length,
+        specializations: specializationCount,
+      },
+    };
+  });
+};
+
+//
+// ─── UNIVERSITY DOMAINS ───────────────────────────────────────
+//
+
+export const listUniversityDomainsService = () =>
+  prisma.universityDomain.findMany({
+    orderBy: [{ isDefault: "desc" }, { domain: "asc" }],
+  });
+
+export const createUniversityDomainService = async (
+  data: CreateUniversityDomainDTO,
+) => {
+  const exists = await prisma.universityDomain.findUnique({
+    where: { domain: data.domain },
+  });
+  if (exists)
+    throw new BadRequestException(
+      "هذا النطاق مضاف بالفعل",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  // نطاق افتراضي واحد فقط.
+  if (data.isDefault) {
+    await prisma.universityDomain.updateMany({
+      where: { isDefault: true },
+      data: { isDefault: false },
+    });
+  }
+
+  return prisma.universityDomain.create({
+    data: { domain: data.domain, isDefault: data.isDefault ?? false },
+  });
+};
+
+export const setDefaultUniversityDomainService = async (id: string) => {
+  const domain = await prisma.universityDomain.findUnique({ where: { id } });
+  if (!domain)
+    throw new NotFoundException(
+      "النطاق غير موجود",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+
+  await prisma.$transaction([
+    prisma.universityDomain.updateMany({
+      where: { isDefault: true },
+      data: { isDefault: false },
+    }),
+    prisma.universityDomain.update({
+      where: { id },
+      data: { isDefault: true },
+    }),
+  ]);
+
+  return { message: "تم تعيين النطاق الافتراضي" };
+};
+
+export const deleteUniversityDomainService = async (id: string) => {
+  const domain = await prisma.universityDomain.findUnique({ where: { id } });
+  if (!domain)
+    throw new NotFoundException(
+      "النطاق غير موجود",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+
+  // لا يجوز ترك النظام بلا نطاق — لن يستطيع أحد إنشاء أستاذ بعدها.
+  const total = await prisma.universityDomain.count();
+  if (total <= 1)
+    throw new BadRequestException(
+      "لا يمكن حذف النطاق الوحيد المتبقّي",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  // ولا حذف نطاق يستعمله أساتذة، وإلّا صارت بياناتهم غير صالحة.
+  const inUse = await prisma.professor.count({
+    where: { universityEmail: { endsWith: `@${domain.domain}` } },
+  });
+  if (inUse > 0)
+    throw new BadRequestException(
+      `لا يمكن حذف النطاق: يستعمله ${inUse} أستاذ/أساتذة`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  await prisma.universityDomain.delete({ where: { id } });
+  return { message: "تم حذف النطاق" };
+};
+
+/**
+ * يتحقّق أنّ نطاق البريد الجامعي مسجَّل في UniversityDomain.
+ * هذا هو الفرض الحقيقي — انتقل من regex ثابت في مخطّطات zod إلى القاعدة
+ * حتى تستطيع الإدارة إضافة نطاقات من الواجهة.
+ */
+const assertAllowedUniversityDomain = async (email: string) => {
+  const domain = email.split("@")[1]?.toLowerCase() ?? "";
+  const allowed = await prisma.universityDomain.findUnique({
+    where: { domain },
+  });
+  if (allowed) return;
+
+  const all = await prisma.universityDomain.findMany({
+    select: { domain: true },
+    orderBy: { domain: "asc" },
+  });
+  throw new BadRequestException(
+    all.length
+      ? `نطاق البريد غير مسموح به. النطاقات المسموح بها: ${all
+          .map((d) => `@${d.domain}`)
+          .join("، ")}`
+      : "لا توجد نطاقات جامعية مسجّلة — أضِف نطاقاً أوّلاً",
+    ErrorCodeEnum.VALIDATION_ERROR,
+  );
+};
+
+/**
+ * رقم وظيفي بصيغة باركود EAN-13 قياسي — قابل للطباعة والمسح الضوئي:
+ *
+ *   613 | 01 | 7 أرقام عشوائية | رقم تحقّق
+ *   └┬┘   └┬┘                    └────┬───┘
+ *    │     │                          └── يُحسب بخوارزمية EAN-13
+ *    │     └── رمز الفئة: 01 = أستاذ
+ *    └── بادئة GS1 للجزائر
+ *
+ * البدء بـ 613 يميّزه فوراً عن رقم تسجيل الطالب الذي يبدأ بسنة التسجيل،
+ * فلا يلتبس الرقمان بصرياً ولا يتقاطع مداهما أبداً.
+ */
+const EMPLOYEE_NUMBER_PREFIX = "61301";
+
+/** رقم التحقّق القياسي في EAN-13: أوزان 1 و3 بالتناوب على الخانات الاثنتي عشرة. */
+const ean13CheckDigit = (twelveDigits: string): number => {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += Number(twelveDigits[i]) * (i % 2 === 0 ? 1 : 3);
+  }
+  return (10 - (sum % 10)) % 10;
+};
+
+const randomEmployeeNumber = (): string => {
+  let body = "";
+  for (let i = 0; i < 7; i++) {
+    body += Math.floor(Math.random() * 10).toString();
+  }
+  const twelve = `${EMPLOYEE_NUMBER_PREFIX}${body}`;
+  return `${twelve}${ean13CheckDigit(twelve)}`;
+};
+
+/** يعيد رقماً وظيفياً غير مستعمل. الفهرس الفريد في القاعدة هو الضامن الأخير. */
+const generateUniqueEmployeeNumber = async (attempts = 10): Promise<string> => {
+  for (let i = 0; i < attempts; i++) {
+    const candidate = randomEmployeeNumber();
+    const taken = await prisma.professor.findUnique({
+      where: { employeeNumber: candidate },
+      select: { id: true },
+    });
+    if (!taken) return candidate;
+  }
+  throw new BadRequestException(
+    "تعذّر توليد رقم وظيفي فريد، أعد المحاولة",
+    ErrorCodeEnum.VALIDATION_ERROR,
+  );
+};
+
 export const createProfessorService = async (data: CreateProfessorDTO) => {
+  await assertAllowedUniversityDomain(data.universityEmail);
+
+  // الإدارة لم تعد تُدخل الرقم يدوياً — يُولَّد هنا ما لم يُرسَل صراحةً.
+  const employeeNumber =
+    data.employeeNumber ?? (await generateUniqueEmployeeNumber());
+
   const exists = await prisma.professor.findFirst({
     where: {
-      OR: [
-        { employeeNumber: data.employeeNumber },
-        { universityEmail: data.universityEmail },
-      ],
+      OR: [{ employeeNumber }, { universityEmail: data.universityEmail }],
     },
   });
   if (exists)
@@ -1210,7 +1606,7 @@ export const createProfessorService = async (data: CreateProfessorDTO) => {
 
   const professor = await prisma.professor.create({
     data: {
-      employeeNumber: data.employeeNumber,
+      employeeNumber,
       universityEmail: data.universityEmail,
       grade: data.grade ?? [], // ← الرتبة (tags)
       tags: data.tags ?? [], // ← الصفة (tags)
@@ -1237,8 +1633,10 @@ export const updateProfessorService = async (
   await getProfessorByIdService(id);
 
   const updateData: Record<string, unknown> = {};
-  if (data.universityEmail !== undefined)
+  if (data.universityEmail !== undefined) {
+    await assertAllowedUniversityDomain(data.universityEmail);
     updateData.universityEmail = data.universityEmail;
+  }
   if (data.departmentId !== undefined)
     updateData.department = { connect: { id: data.departmentId } }; // ← الإصلاح
   if (data.grade !== undefined) updateData.grade = data.grade; // full replace
@@ -1384,7 +1782,8 @@ export const deleteFacultyService = async (id: string) => {
 export const listDomainsService = async (departmentId?: string) => {
   return prisma.domain.findMany({
     where: departmentId ? { departmentId } : undefined,
-    include: { department: true },
+    // بطاقة الميدان في صفحة القسم تعرض عدد شُعبه.
+    include: { department: true, _count: { select: { filieres: true } } },
     orderBy: { createdAt: "desc" },
   });
 };
@@ -1432,13 +1831,27 @@ export const deleteDomainService = async (id: string) => {
 // ════════ DEPARTMENTS ════════
 //
 export const listDepartmentsService = async () => {
-  return prisma.department.findMany({
+  const departments = await prisma.department.findMany({
     include: {
       faculty: true,
       _count: { select: { filieres: true, professors: true, domains: true } },
+      // التخصّص يتبع الشعبة لا القسم، فلا وجود لعلاقة مباشرة يعدّها Prisma —
+      // نجمعها عبر الشعب ونضيفها إلى _count ليقرأها العميل كبقيّة العدّادات.
+      filieres: { select: { _count: { select: { specializations: true } } } },
     },
     orderBy: { createdAt: "desc" },
   });
+
+  return departments.map(({ filieres, ...department }) => ({
+    ...department,
+    _count: {
+      ...department._count,
+      specializations: filieres.reduce(
+        (total, f) => total + f._count.specializations,
+        0,
+      ),
+    },
+  }));
 };
 
 export const createDepartmentService = async (data: CreateDepartmentDTO) => {
@@ -1551,6 +1964,7 @@ export const createFiliereService = async (data: CreateFiliereDTO) => {
     data: {
       name: data.name,
       code: data.code,
+      coverUrl: data.coverUrl ?? null,
       departmentId,
       domainId: data.domainId ?? null,
     },
@@ -1589,6 +2003,7 @@ export const updateFiliereService = async (
     data: {
       name: data.name,
       code: data.code,
+      ...(data.coverUrl !== undefined ? { coverUrl: data.coverUrl } : {}),
       ...(data.domainId !== undefined ? { domainId: data.domainId } : {}),
       ...(departmentId !== undefined ? { departmentId } : {}),
     },
@@ -1769,8 +2184,8 @@ export const listTopicsService = async (q: ListTopicsDTO) => {
     };
   if (q.search) {
     where.OR = [
-      { title: { contains: q.search, mode: "insensitive" } },
-      { description: { contains: q.search, mode: "insensitive" } },
+      { title: { contains: q.search } },
+      { description: { contains: q.search } },
     ];
   }
 
@@ -1852,6 +2267,58 @@ export const approveTopicService = async (id: string) => {
 export const archiveTopicService = (id: string) =>
   setTopicStatus(id, "archived");
 
+export const unarchiveTopicService = async (id: string) => {
+  const found = await prisma.graduationTopic.findUnique({
+    where: { id },
+    include: { projectGroup: { select: { id: true } } },
+  });
+  if (!found)
+    throw new NotFoundException(
+      "Topic not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (found.status !== "archived")
+    throw new BadRequestException(
+      "لا يمكن إلغاء الأرشفة إلا لموضوع مؤرشف",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  // إن كان للموضوع مجموعة طلبة فهو مكتمل؛ وإلا يعود «معتمداً».
+  return prisma.graduationTopic.update({
+    where: { id },
+    data: { status: found.projectGroup ? "full" : "approved" },
+  });
+};
+
+export const deleteTopicService = async (id: string) => {
+  const topic = await prisma.graduationTopic.findUnique({
+    where: { id },
+    include: { projectGroup: { select: { id: true } } },
+  });
+  if (!topic)
+    throw new NotFoundException(
+      "Topic not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+
+  // حارس: لا يُحذف موضوع تشكّلت له مجموعة مشروع — يُؤرشَف بدلاً من ذلك.
+  if (topic.projectGroup)
+    throw new BadRequestException(
+      "لا يمكن حذف موضوع تشكّلت له مجموعة مشروع؛ أرشفه بدلاً من ذلك.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  await prisma.$transaction(async (tx) => {
+    // التطبيقات الفردية (لا cascade على علاقة الموضوع).
+    await tx.topicApplication.deleteMany({ where: { topicId: id } });
+    // طلبات الفرق (أعضاؤها يُحذفون تلقائياً عبر cascade على GroupRequestMember).
+    await tx.groupRequest.deleteMany({ where: { topicId: id } });
+    // وأخيراً الموضوع نفسه.
+    await tx.graduationTopic.delete({ where: { id } });
+  });
+
+  return { message: "Topic deleted" };
+};
+
 export const rejectTopicService = async (id: string, data: RejectTopicDTO) => {
   const topic = await setTopicStatus(id, "rejected", data.reason);
   const userId = await getTopicProfessorUserId(topic.id);
@@ -1920,20 +2387,20 @@ export const listApplicationsService = async (q: ListQueryDTO) => {
   if (statusFilter && statusFilter !== "all") where.status = statusFilter;
   if (q.search) {
     where.OR = [
-      { topic: { title: { contains: q.search, mode: "insensitive" } } },
+      { topic: { title: { contains: q.search } } },
       {
         student: {
-          registrationNumber: { contains: q.search, mode: "insensitive" },
+          registrationNumber: { contains: q.search },
         },
       },
       {
         student: {
-          user: { firstName: { contains: q.search, mode: "insensitive" } },
+          user: { firstName: { contains: q.search } },
         },
       },
       {
         student: {
-          user: { lastName: { contains: q.search, mode: "insensitive" } },
+          user: { lastName: { contains: q.search } },
         },
       },
     ];
@@ -2193,6 +2660,44 @@ export const assignStudentService = async (
   return getProjectByIdService(id);
 };
 
+export const removeProjectMemberService = async (
+  groupId: string,
+  studentId: string,
+) => {
+  const group = await prisma.projectGroup.findUnique({
+    where: { id: groupId },
+    include: { members: { select: { studentId: true } } },
+  });
+  if (!group)
+    throw new NotFoundException(
+      "Project not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (!group.members.some((m) => m.studentId === studentId))
+    throw new BadRequestException(
+      "الطالب ليس عضواً في هذا المشروع",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  const remaining = group.members.length - 1;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.projectMember.delete({
+      where: { groupId_studentId: { groupId, studentId } },
+    });
+    if (remaining === 0) {
+      // آخر طالب → فُكّ المجموعة وأعِد الموضوع «معتمداً» ليصبح قابلاً للحذف/الأرشفة.
+      await tx.projectGroup.delete({ where: { id: groupId } });
+      await tx.graduationTopic.update({
+        where: { id: group.topicId },
+        data: { status: "approved" },
+      });
+    }
+  });
+
+  return { remaining, dissolved: remaining === 0, topicId: group.topicId };
+};
+
 //
 // ════════ MILESTONES (read-only) ════════
 //
@@ -2343,29 +2848,140 @@ export const deleteDefenseService = async (id: string) => {
 //
 // ════════ GROUP REQUESTS (admin decision — the heart of the flow) ════════
 //
+
+export const removeGroupRequestMemberService = async (
+  requestId: string,
+  studentId: string,
+) => {
+  const request = await prisma.groupRequest.findUnique({
+    where: { id: requestId },
+    include: { members: true },
+  });
+  if (!request)
+    throw new NotFoundException(
+      "Group request not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (request.status === "accepted")
+    throw new BadRequestException(
+      "لا يمكن تعديل الأعضاء بعد الموافقة",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  if (request.leaderStudentId === studentId)
+    throw new BadRequestException(
+      "لا يمكن إزالة القائد؛ غيّر القائد أولاً",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  const member = request.members.find((m) => m.studentId === studentId);
+  if (!member)
+    throw new BadRequestException(
+      "الطالب ليس عضواً في هذا الطلب",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  if (request.members.length <= 1)
+    throw new BadRequestException(
+      "لا يمكن ترك الطلب بلا أعضاء",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  await prisma.groupRequestMember.delete({ where: { id: member.id } });
+  return getGroupRequestService(requestId);
+};
+
+export const setGroupRequestLeaderService = async (
+  requestId: string,
+  studentId: string,
+) => {
+  const request = await prisma.groupRequest.findUnique({
+    where: { id: requestId },
+    include: { members: true },
+  });
+  if (!request)
+    throw new NotFoundException(
+      "Group request not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (request.status === "accepted")
+    throw new BadRequestException(
+      "لا يمكن تغيير القائد بعد الموافقة",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  if (!request.members.some((m) => m.studentId === studentId))
+    throw new BadRequestException(
+      "القائد يجب أن يكون أحد الأعضاء",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  await prisma.groupRequest.update({
+    where: { id: requestId },
+    data: { leaderStudentId: studentId },
+  });
+  return getGroupRequestService(requestId);
+};
+
 export const listGroupRequestsService = async (q: ListQueryDTO) => {
-  const statusFilter = (q as { status?: string }).status;
+  const {
+    status: statusFilter,
+    professorId,
+    facultyId,
+    departmentId,
+    filiereId,
+    specializationId,
+    dateFrom,
+    dateTo,
+  } = q as {
+    status?: string;
+    professorId?: string;
+    facultyId?: string;
+    departmentId?: string;
+    filiereId?: string;
+    specializationId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  };
+
   const where: Record<string, unknown> = {};
+
   if (statusFilter && statusFilter !== "all") where.status = statusFilter;
+
   if (q.search) {
     where.OR = [
-      { topic: { title: { contains: q.search, mode: "insensitive" } } },
+      { topic: { title: { contains: q.search } } },
       {
         leader: {
-          registrationNumber: { contains: q.search, mode: "insensitive" },
+          registrationNumber: { contains: q.search },
         },
       },
       {
         leader: {
-          user: { firstName: { contains: q.search, mode: "insensitive" } },
+          user: { firstName: { contains: q.search } },
         },
       },
       {
         leader: {
-          user: { lastName: { contains: q.search, mode: "insensitive" } },
+          user: { lastName: { contains: q.search } },
         },
       },
     ];
+  }
+
+  // فلاتر تمرّ عبر علاقة الموضوع (أستاذ / تخصّص / السلسلة الأكاديمية)
+  const topicWhere: Record<string, unknown> = {};
+  if (professorId) topicWhere.professorId = professorId;
+  if (specializationId) topicWhere.specializationId = specializationId;
+  else if (filiereId) topicWhere.specialization = { filiereId };
+  else if (departmentId)
+    topicWhere.specialization = { filiere: { departmentId } };
+  else if (facultyId)
+    topicWhere.specialization = { filiere: { department: { facultyId } } };
+  if (Object.keys(topicWhere).length > 0) where.topic = topicWhere;
+
+  // مدى التاريخ
+  if (dateFrom || dateTo) {
+    where.createdAt = {
+      ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+      ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999`) } : {}),
+    };
   }
 
   const [items, total] = await Promise.all([

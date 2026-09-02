@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 
 import jwt, { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
 
-import { prisma } from "../../prisma/client";
+import { prisma } from "../prisma/client";
 
 import { config } from "../config/app.config";
 

@@ -6,12 +6,10 @@ export const studentLoginSchema = z.object({
 });
 
 export const professorLoginSchema = z.object({
-  universityEmail: z
-    .string()
-    .regex(
-      /^[a-zA-Z0-9._%+-]+@univ-eloued\.dz$/,
-      "Email must be a valid university email (@univ-eloued.dz)",
-    ),
+  // الصيغة فقط. النطاقات المسموح بها صارت في جدول UniversityDomain، ولا يمكن
+  // الاستعلام عنه هنا (التحقّق يسبق المصادقة). لا حاجة أصلاً: بريد بنطاق غير
+  // مسموح به لن يطابق أي أستاذ، فيُردّ بـ "بيانات اعتماد غير صحيحة".
+  universityEmail: z.string().email("Invalid email"),
   password: z.string().min(1, "Password is required"),
 });
 

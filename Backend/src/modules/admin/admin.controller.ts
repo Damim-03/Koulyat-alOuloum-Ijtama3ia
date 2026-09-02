@@ -15,6 +15,8 @@ import {
   updateProfessorSchema,
   listQuerySchema,
   createFacultySchema,
+  createUniversityDomainSchema,
+  academicStructureSchema,
   updateFacultySchema,
   createDepartmentSchema,
   updateDepartmentSchema,
@@ -390,6 +392,89 @@ export const listFacultiesController = async (
   try {
     const faculties = await svc.listFacultiesService();
     return res.status(HTTPSTATUS.OK).json({ faculties });
+  } catch (e) {
+    next(e);
+  }
+};
+
+//
+// ─── ACADEMIC STRUCTURE ─────────────────────────────────
+//
+
+export const createAcademicStructureController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(academicStructureSchema, req.body);
+    const result = await svc.createAcademicStructureService(data as never);
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Academic structure created", ...result });
+  } catch (e) {
+    next(e);
+  }
+};
+
+//
+// ─── UNIVERSITY DOMAINS ─────────────────────────────────
+//
+
+export const listUniversityDomainsController = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const domains = await svc.listUniversityDomainsService();
+    return res.status(HTTPSTATUS.OK).json({ domains });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const createUniversityDomainController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(createUniversityDomainSchema, req.body);
+    const domain = await svc.createUniversityDomainService(data as never);
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Domain created", domain });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const setDefaultUniversityDomainController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await svc.setDefaultUniversityDomainService(
+      req.params.id as string,
+    );
+    return res.status(HTTPSTATUS.OK).json(result);
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const deleteUniversityDomainController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await svc.deleteUniversityDomainService(
+      req.params.id as string,
+    );
+    return res.status(HTTPSTATUS.OK).json(result);
   } catch (e) {
     next(e);
   }
@@ -862,6 +947,34 @@ export const archiveTopicController = async (
   }
 };
 
+export const unarchiveTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const topic = await svc.unarchiveTopicService(req.params.id as string);
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Topic unarchived", topic });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const deleteTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await svc.deleteTopicService(req.params.id as string);
+    return res.status(HTTPSTATUS.OK).json(result);
+  } catch (e) {
+    next(e);
+  }
+};
+
 export const publishTopicController = async (
   req: Request,
   res: Response,
@@ -1014,6 +1127,22 @@ export const assignStudentController = async (
   }
 };
 
+export const removeProjectMemberController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await svc.removeProjectMemberService(
+      req.params.id as string,
+      req.params.studentId as string,
+    );
+    return res.status(HTTPSTATUS.OK).json(result);
+  } catch (e) {
+    next(e);
+  }
+};
+
 export const listGroupMilestonesController = async (
   req: Request,
   res: Response,
@@ -1097,6 +1226,37 @@ export const deleteDefenseController = async (
 //
 // ─── GROUP REQUESTS ───────────────────────────────────────────
 //
+
+export const removeGroupRequestMemberController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const r = await svc.removeGroupRequestMemberService(
+      req.params.id as string,
+      req.params.studentId as string,
+    );
+    return res.status(HTTPSTATUS.OK).json({ groupRequest: r });
+  } catch (e) {
+    next(e);
+  }
+};
+export const setGroupRequestLeaderController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const r = await svc.setGroupRequestLeaderService(
+      req.params.id as string,
+      req.params.studentId as string,
+    );
+    return res.status(HTTPSTATUS.OK).json({ groupRequest: r });
+  } catch (e) {
+    next(e);
+  }
+};
 
 export const listGroupRequestsController = async (
   req: Request,

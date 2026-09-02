@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { adminApi, type ListParams } from "../api/admin.api";
+import { serverMessage } from "../../../lib/api/error";
+import type { AcademicStructurePayload } from "../../../types/admin";
 import { t } from "i18next";
 
 const KEYS = {
@@ -44,8 +46,8 @@ export function useResetUserPassword() {
   return useMutation({
     mutationFn: ({ id, password }: { id: string; password: string }) =>
       adminApi.resetUserPassword(id, password),
-    onSuccess: () => toast.success("تم تغيير كلمة المرور"),
-    onError: () => toast.error("تعذّر تغيير كلمة المرور"),
+    onSuccess: () => toast.success(t("toast.passwordChanged")),
+    onError: () => toast.error(t("toast.passwordChangeFailed")),
   });
 }
 
@@ -55,9 +57,9 @@ export function useCreateUser() {
     mutationFn: (data: unknown) => adminApi.createUser(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
-      toast.success("تم إنشاء المستخدم");
+      toast.success(t("toast.userCreated"));
     },
-    onError: () => toast.error("تعذّر إنشاء المستخدم"),
+    onError: () => toast.error(t("toast.userCreateFailed")),
   });
 }
 export function useUpdateUser() {
@@ -67,9 +69,9 @@ export function useUpdateUser() {
       adminApi.updateUser(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
-      toast.success("تم تحديث المستخدم");
+      toast.success(t("toast.userUpdated"));
     },
-    onError: () => toast.error("تعذّر التحديث"),
+    onError: () => toast.error(t("toast.updateFailed")),
   });
 }
 export function useSetUserStatus() {
@@ -84,9 +86,9 @@ export function useSetUserStatus() {
     }) => adminApi.setUserStatus(id, status),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
-      toast.success("تم تحديث الحالة");
+      toast.success(t("toast.statusUpdated"));
     },
-    onError: () => toast.error("تعذّر تحديث الحالة"),
+    onError: () => toast.error(t("toast.statusUpdateFailed")),
   });
 }
 
@@ -103,9 +105,9 @@ export function useDeleteUser() {
     mutationFn: (id: string) => adminApi.deleteUser(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
-      toast.success("تم حذف المستخدم");
+      toast.success(t("toast.userDeleted"));
     },
-    onError: () => toast.error("تعذّر الحذف"),
+    onError: () => toast.error(t("toast.deleteFailed")),
   });
 }
 
@@ -123,9 +125,9 @@ export function useCreateDomain() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "domains"] });
       qc.invalidateQueries({ queryKey: ["admin", "departments"] });
-      toast.success("تم إضافة الميدان");
+      toast.success(t("toast.domainAdded"));
     },
-    onError: () => toast.error("تعذّر الإضافة"),
+    onError: () => toast.error(t("toast.addFailed")),
   });
 }
 export function useUpdateDomain() {
@@ -135,9 +137,9 @@ export function useUpdateDomain() {
       adminApi.updateDomain(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "domains"] });
-      toast.success("تم التحديث");
+      toast.success(t("toast.updated"));
     },
-    onError: () => toast.error("تعذّر التحديث"),
+    onError: () => toast.error(t("toast.updateFailed")),
   });
 }
 export function useDeleteDomain() {
@@ -147,9 +149,9 @@ export function useDeleteDomain() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "domains"] });
       qc.invalidateQueries({ queryKey: ["admin", "departments"] });
-      toast.success("تم الحذف");
+      toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error("تعذّر الحذف"),
+    onError: () => toast.error(t("toast.deleteFailed")),
   });
 }
 
@@ -175,9 +177,9 @@ export function useCreateStudent() {
     mutationFn: (data: unknown) => adminApi.createStudent(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "students"] });
-      toast.success("تم إضافة الطالب");
+      toast.success(t("toast.studentAdded"));
     },
-    onError: () => toast.error("تعذّر إضافة الطالب"),
+    onError: () => toast.error(t("toast.studentAddFailed")),
   });
 }
 export function useUpdateStudent() {
@@ -187,9 +189,9 @@ export function useUpdateStudent() {
       adminApi.updateStudent(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "students"] });
-      toast.success("تم تحديث الطالب");
+      toast.success(t("toast.studentUpdated"));
     },
-    onError: () => toast.error("تعذّر التحديث"),
+    onError: () => toast.error(t("toast.updateFailed")),
   });
 }
 export function useDeleteStudent() {
@@ -198,9 +200,9 @@ export function useDeleteStudent() {
     mutationFn: (id: string) => adminApi.deleteStudent(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "students"] });
-      toast.success("تم حذف الطالب");
+      toast.success(t("toast.studentDeleted"));
     },
-    onError: () => toast.error("تعذّر الحذف"),
+    onError: () => toast.error(t("toast.deleteFailed")),
   });
 }
 
@@ -217,7 +219,7 @@ export function useProfessor(id: string | null) {
 export function useUploadImage() {
   return useMutation({
     mutationFn: (file: File) => adminApi.uploadImage(file),
-    onError: () => toast.error("تعذّر رفع الصورة"),
+    onError: () => toast.error(t("toast.imageUploadFailed")),
   });
 }
 
@@ -233,9 +235,9 @@ export function useCreateProfessor() {
     mutationFn: (data: unknown) => adminApi.createProfessor(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "professors"] });
-      toast.success("تم إضافة الأستاذ");
+      toast.success(t("toast.professorAdded"));
     },
-    onError: () => toast.error("تعذّر إضافة الأستاذ"),
+    onError: () => toast.error(t("toast.professorAddFailed")),
   });
 }
 export function useUpdateProfessor() {
@@ -246,9 +248,9 @@ export function useUpdateProfessor() {
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: ["admin", "professors"] });
       qc.invalidateQueries({ queryKey: ["admin", "professor", v.id] });
-      toast.success("تم تحديث الأستاذ");
+      toast.success(t("toast.professorUpdated"));
     },
-    onError: () => toast.error("تعذّر التحديث"),
+    onError: () => toast.error(t("toast.updateFailed")),
   });
 }
 export function useDeleteProfessor() {
@@ -257,9 +259,9 @@ export function useDeleteProfessor() {
     mutationFn: (id: string) => adminApi.deleteProfessor(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "professors"] });
-      toast.success("تم حذف الأستاذ");
+      toast.success(t("toast.professorDeleted"));
     },
-    onError: () => toast.error("تعذّر الحذف"),
+    onError: () => toast.error(t("toast.deleteFailed")),
   });
 }
 
@@ -276,9 +278,9 @@ export function useCreateFaculty() {
     mutationFn: (data: unknown) => adminApi.createFaculty(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.faculties });
-      toast.success("تم إضافة الكلية");
+      toast.success(t("toast.facultyAdded"));
     },
-    onError: () => toast.error("تعذّر الإضافة"),
+    onError: () => toast.error(t("toast.addFailed")),
   });
 }
 export function useUpdateFaculty() {
@@ -288,9 +290,9 @@ export function useUpdateFaculty() {
       adminApi.updateFaculty(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.faculties });
-      toast.success("تم التحديث");
+      toast.success(t("toast.updated"));
     },
-    onError: () => toast.error("تعذّر التحديث"),
+    onError: () => toast.error(t("toast.updateFailed")),
   });
 }
 export function useDeleteFaculty() {
@@ -299,9 +301,9 @@ export function useDeleteFaculty() {
     mutationFn: (id: string) => adminApi.deleteFaculty(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.faculties });
-      toast.success("تم الحذف");
+      toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error("تعذّر الحذف"),
+    onError: () => toast.error(t("toast.deleteFailed")),
   });
 }
 
@@ -318,9 +320,9 @@ export function useCreateDepartment() {
     mutationFn: (data: unknown) => adminApi.createDepartment(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.departments });
-      toast.success("تم إضافة القسم");
+      toast.success(t("toast.departmentAdded"));
     },
-    onError: () => toast.error("تعذّر الإضافة"),
+    onError: () => toast.error(t("toast.addFailed")),
   });
 }
 export function useUpdateDepartment() {
@@ -330,9 +332,9 @@ export function useUpdateDepartment() {
       adminApi.updateDepartment(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.departments });
-      toast.success("تم التحديث");
+      toast.success(t("toast.updated"));
     },
-    onError: () => toast.error("تعذّر التحديث"),
+    onError: () => toast.error(t("toast.updateFailed")),
   });
 }
 export function useDeleteDepartment() {
@@ -341,9 +343,9 @@ export function useDeleteDepartment() {
     mutationFn: (id: string) => adminApi.deleteDepartment(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.departments });
-      toast.success("تم الحذف");
+      toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error("تعذّر الحذف"),
+    onError: () => toast.error(t("toast.deleteFailed")),
   });
 }
 
@@ -369,9 +371,9 @@ export function useCreateFiliere() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "filieres"] });
       qc.invalidateQueries({ queryKey: ["admin", "domains"] });
-      toast.success("تم إضافة الشعبة");
+      toast.success(t("toast.filiereAdded"));
     },
-    onError: () => toast.error("تعذّر الإضافة"),
+    onError: () => toast.error(t("toast.addFailed")),
   });
 }
 export function useUpdateFiliere() {
@@ -381,9 +383,9 @@ export function useUpdateFiliere() {
       adminApi.updateFiliere(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "filieres"] });
-      toast.success("تم التحديث");
+      toast.success(t("toast.updated"));
     },
-    onError: () => toast.error("تعذّر التحديث"),
+    onError: () => toast.error(t("toast.updateFailed")),
   });
 }
 export function useDeleteFiliere() {
@@ -393,9 +395,9 @@ export function useDeleteFiliere() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "filieres"] });
       qc.invalidateQueries({ queryKey: ["admin", "domains"] });
-      toast.success("تم الحذف");
+      toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error("تعذّر الحذف"),
+    onError: () => toast.error(t("toast.deleteFailed")),
   });
 }
 
@@ -412,9 +414,9 @@ export function useCreateSpecialization() {
     mutationFn: (data: unknown) => adminApi.createSpecialization(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.specializations });
-      toast.success("تم إضافة التخصص");
+      toast.success(t("toast.specializationAdded"));
     },
-    onError: () => toast.error("تعذّر الإضافة"),
+    onError: () => toast.error(t("toast.addFailed")),
   });
 }
 export function useUpdateSpecialization() {
@@ -424,9 +426,9 @@ export function useUpdateSpecialization() {
       adminApi.updateSpecialization(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.specializations });
-      toast.success("تم التحديث");
+      toast.success(t("toast.updated"));
     },
-    onError: () => toast.error("تعذّر التحديث"),
+    onError: () => toast.error(t("toast.updateFailed")),
   });
 }
 export function useDeleteSpecialization() {
@@ -435,9 +437,9 @@ export function useDeleteSpecialization() {
     mutationFn: (id: string) => adminApi.deleteSpecialization(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.specializations });
-      toast.success("تم الحذف");
+      toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error("تعذّر الحذف"),
+    onError: () => toast.error(t("toast.deleteFailed")),
   });
 }
 
@@ -454,9 +456,9 @@ export function useCreateAcademicYear() {
     mutationFn: (data: unknown) => adminApi.createAcademicYear(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.academicYears });
-      toast.success("تم إضافة السنة الدراسية");
+      toast.success(t("toast.yearAdded"));
     },
-    onError: () => toast.error("تعذّر الإضافة"),
+    onError: () => toast.error(t("toast.addFailed")),
   });
 }
 export function useUpdateAcademicYear() {
@@ -466,9 +468,9 @@ export function useUpdateAcademicYear() {
       adminApi.updateAcademicYear(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.academicYears });
-      toast.success("تم التحديث");
+      toast.success(t("toast.updated"));
     },
-    onError: () => toast.error("تعذّر التحديث"),
+    onError: () => toast.error(t("toast.updateFailed")),
   });
 }
 export function useActivateAcademicYear() {
@@ -477,9 +479,9 @@ export function useActivateAcademicYear() {
     mutationFn: (id: string) => adminApi.activateAcademicYear(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.academicYears });
-      toast.success("تم تفعيل السنة الدراسية");
+      toast.success(t("toast.yearActivated"));
     },
-    onError: () => toast.error("تعذّر التفعيل"),
+    onError: () => toast.error(t("toast.activateFailed")),
   });
 }
 export function useDeleteAcademicYear() {
@@ -488,9 +490,9 @@ export function useDeleteAcademicYear() {
     mutationFn: (id: string) => adminApi.deleteAcademicYear(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.academicYears });
-      toast.success("تم الحذف");
+      toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error("تعذّر الحذف"),
+    onError: () => toast.error(t("toast.deleteFailed")),
   });
 }
 
@@ -514,9 +516,9 @@ export function useApproveTopic() {
     mutationFn: (id: string) => adminApi.approveTopic(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
-      toast.success("تم اعتماد الموضوع");
+      toast.success(t("toast.topicApproved"));
     },
-    onError: () => toast.error("تعذّر الاعتماد"),
+    onError: () => toast.error(t("toast.approveFailed")),
   });
 }
 export function useRejectTopic() {
@@ -526,9 +528,9 @@ export function useRejectTopic() {
       adminApi.rejectTopic(id, reason),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
-      toast.success("تم رفض الموضوع");
+      toast.success(t("toast.topicRejected"));
     },
-    onError: () => toast.error("تعذّر الرفض"),
+    onError: () => toast.error(t("toast.rejectFailed")),
   });
 }
 export function useArchiveTopic() {
@@ -537,11 +539,36 @@ export function useArchiveTopic() {
     mutationFn: (id: string) => adminApi.archiveTopic(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
-      toast.success("تم أرشفة الموضوع");
+      toast.success(t("toast.topicArchived"));
     },
-    onError: () => toast.error("تعذّر الأرشفة"),
+    onError: () => toast.error(t("toast.archiveFailed")),
   });
 }
+
+export function useUnarchiveTopic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.unarchiveTopic(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      toast.success(t("toast.topicUnarchived"));
+    },
+    onError: () => toast.error(t("toast.unarchiveFailed")),
+  });
+}
+
+export function useDeleteTopic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.deleteTopic(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      toast.success(t("toast.topicDeleted"));
+    },
+    onError: () => toast.error(t("toast.deleteFailed")),
+  });
+}
+
 export function usePublishTopic() {
   const qc = useQueryClient();
   return useMutation({
@@ -549,9 +576,9 @@ export function usePublishTopic() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
       qc.invalidateQueries({ queryKey: ["admin", "topic"] });
-      toast.success("تم نشر الموضوع — أصبح ظاهراً للطلاب");
+      toast.success(t("toast.topicPublished"));
     },
-    onError: () => toast.error("تعذّر النشر"),
+    onError: () => toast.error(t("toast.publishFailed")),
   });
 }
 export function useUnpublishTopic() {
@@ -561,9 +588,9 @@ export function useUnpublishTopic() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
       qc.invalidateQueries({ queryKey: ["admin", "topic"] });
-      toast.success("تم إلغاء نشر الموضوع");
+      toast.success(t("toast.topicUnpublished"));
     },
-    onError: () => toast.error("تعذّر إلغاء النشر"),
+    onError: () => toast.error(t("toast.unpublishFailed")),
   });
 }
 
@@ -578,10 +605,10 @@ export function useCreateAssignedTopic() {
       qc.invalidateQueries({ queryKey: ["admin", "students"] });
       qc.invalidateQueries({ queryKey: ["admin", "projects"] });
       qc.invalidateQueries({ queryKey: ["admin", "dashboard"] });
-      toast.success("تم إنشاء الموضوع وإسناده");
+      toast.success(t("toast.topicCreatedAssigned"));
     },
     onError: (e: any) =>
-      toast.error(e?.response?.data?.message ?? "تعذّر إنشاء الموضوع"),
+      toast.error(e?.response?.data?.message ?? t("toast.topicCreateFailed")),
   });
 }
 
@@ -597,11 +624,11 @@ export function useUpdateAssignedTopic() {
       qc.invalidateQueries({ queryKey: ["admin", "projects"] });
       qc.invalidateQueries({ queryKey: ["admin", "dashboard"] });
       toast.success(
-        t("admin.topicUpdated", { defaultValue: "تم تحديث الموضوع" }),
+        t("admin.topicUpdated", { defaultValue: t("admin.topicUpdated") }),
       );
     },
     onError: (e: any) =>
-      toast.error(e?.response?.data?.message ?? "تعذّر تحديث الموضوع"),
+      toast.error(e?.response?.data?.message ?? t("toast.topicUpdateFailed")),
   });
 }
 
@@ -620,9 +647,9 @@ export function useAcceptApplication() {
       qc.invalidateQueries({ queryKey: ["admin", "applications"] });
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
       qc.invalidateQueries({ queryKey: ["admin", "projects"] });
-      toast.success("تم قبول الطلب");
+      toast.success(t("toast.requestAccepted"));
     },
-    onError: () => toast.error("تعذّر قبول الطلب"),
+    onError: () => toast.error(t("toast.acceptFailed")),
   });
 }
 export function useRejectApplication() {
@@ -632,13 +659,55 @@ export function useRejectApplication() {
       adminApi.rejectApplication(id, reason),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "applications"] });
-      toast.success("تم رفض الطلب");
+      toast.success(t("toast.requestRejected"));
     },
-    onError: () => toast.error("تعذّر رفض الطلب"),
+    onError: () => toast.error(t("toast.rejectRequestFailed")),
   });
 }
 
 // ─── GROUP REQUESTS ───
+
+export function useRemoveGroupRequestMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      studentId,
+    }: {
+      requestId: string;
+      studentId: string;
+    }) => adminApi.removeGroupRequestMember(requestId, studentId),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["admin", "groupRequests"] });
+      qc.invalidateQueries({
+        queryKey: ["admin", "groupRequest", v.requestId],
+      });
+      toast.success(t("toast.studentRemoved"));
+    },
+    onError: () => toast.error(t("toast.removeFailed")),
+  });
+}
+export function useSetGroupRequestLeader() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      studentId,
+    }: {
+      requestId: string;
+      studentId: string;
+    }) => adminApi.setGroupRequestLeader(requestId, studentId),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["admin", "groupRequests"] });
+      qc.invalidateQueries({
+        queryKey: ["admin", "groupRequest", v.requestId],
+      });
+      toast.success(t("toast.leaderChanged"));
+    },
+    onError: () => toast.error(t("toast.leaderChangeFailed")),
+  });
+}
+
 export function useGroupRequests(params?: ListParams) {
   return useQuery({
     queryKey: ["admin", "group-requests", params ?? {}],
@@ -660,9 +729,9 @@ export function useAcceptGroupRequest() {
       qc.invalidateQueries({ queryKey: ["admin", "group-requests"] });
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
       qc.invalidateQueries({ queryKey: ["admin", "projects"] });
-      toast.success("تم قبول الطلب وإنشاء المجموعة");
+      toast.success(t("toast.requestAcceptedGroupCreated"));
     },
-    onError: () => toast.error("تعذّر قبول الطلب"),
+    onError: () => toast.error(t("toast.acceptFailed")),
   });
 }
 export function useRejectGroupRequest() {
@@ -672,13 +741,33 @@ export function useRejectGroupRequest() {
       adminApi.rejectGroupRequest(id, reason),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "group-requests"] });
-      toast.success("تم رفض الطلب");
+      toast.success(t("toast.requestRejected"));
     },
-    onError: () => toast.error("تعذّر رفض الطلب"),
+    onError: () => toast.error(t("toast.rejectRequestFailed")),
   });
 }
 
 // ─── PROJECTS ───
+
+export function useRemoveProjectMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      groupId,
+      studentId,
+    }: {
+      groupId: string;
+      studentId: string;
+    }) => adminApi.removeProjectMember(groupId, studentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      toast.success(t("toast.studentRemovedFromProject"));
+    },
+    onError: () => toast.error(t("toast.removeFailed")),
+  });
+}
+
 export function useAdminProjects(params?: ListParams) {
   return useQuery({
     queryKey: KEYS.projects(params),
@@ -700,9 +789,9 @@ export function useChangeSupervisor() {
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: ["admin", "projects"] });
       qc.invalidateQueries({ queryKey: ["admin", "project", v.id] });
-      toast.success("تم تغيير المشرف");
+      toast.success(t("toast.supervisorChanged"));
     },
-    onError: () => toast.error("تعذّر تغيير المشرف"),
+    onError: () => toast.error(t("toast.supervisorChangeFailed")),
   });
 }
 export function useAssignStudent() {
@@ -713,9 +802,9 @@ export function useAssignStudent() {
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: ["admin", "projects"] });
       qc.invalidateQueries({ queryKey: ["admin", "project", v.id] });
-      toast.success("تم إضافة الطالب");
+      toast.success(t("toast.studentAdded"));
     },
-    onError: () => toast.error("تعذّر إضافة الطالب"),
+    onError: () => toast.error(t("toast.studentAddFailed")),
   });
 }
 
@@ -732,9 +821,9 @@ export function useCreateDefense() {
     mutationFn: (data: unknown) => adminApi.createDefense(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "defenses"] });
-      toast.success("تم جدولة المناقشة");
+      toast.success(t("toast.defenseScheduled"));
     },
-    onError: () => toast.error("تعذّر الجدولة"),
+    onError: () => toast.error(t("toast.scheduleFailed")),
   });
 }
 export function useUpdateDefense() {
@@ -744,9 +833,9 @@ export function useUpdateDefense() {
       adminApi.updateDefense(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "defenses"] });
-      toast.success("تم التحديث");
+      toast.success(t("toast.updated"));
     },
-    onError: () => toast.error("تعذّر التحديث"),
+    onError: () => toast.error(t("toast.updateFailed")),
   });
 }
 export function useDeleteDefense() {
@@ -755,8 +844,79 @@ export function useDeleteDefense() {
     mutationFn: (id: string) => adminApi.deleteDefense(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "defenses"] });
-      toast.success("تم الحذف");
+      toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error("تعذّر الحذف"),
+    onError: () => toast.error(t("toast.deleteFailed")),
+  });
+}
+
+//
+// ─── UNIVERSITY EMAIL DOMAINS ─────────────────────────────────
+//
+
+export function useUniversityDomains() {
+  return useQuery({
+    queryKey: ["admin", "university-domains"],
+    queryFn: () => adminApi.listUniversityDomains(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateUniversityDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (domain: string) => adminApi.createUniversityDomain(domain),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "university-domains"] });
+      toast.success(t("toast.universityDomainAdded"));
+    },
+    onError: (error) => toast.error(serverMessage(error, t("toast.universityDomainAddFailed"))),
+  });
+}
+
+export function useDeleteUniversityDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.deleteUniversityDomain(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "university-domains"] });
+      toast.success(t("toast.universityDomainDeleted"));
+    },
+    onError: (error) => toast.error(serverMessage(error, t("toast.universityDomainDeleteFailed"))),
+  });
+}
+
+//
+// ─── ACADEMIC STRUCTURE WIZARD ────────────────────────────────
+//
+
+export function useCreateAcademicStructure() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AcademicStructurePayload) =>
+      adminApi.createAcademicStructure(payload),
+    onSuccess: (result) => {
+      // The wizard can touch every level, so refresh all of them.
+      for (const key of [
+        "faculties",
+        "departments",
+        "domains",
+        "filieres",
+        "specializations",
+      ]) {
+        qc.invalidateQueries({ queryKey: ["admin", key] });
+      }
+      const c = result.created;
+      toast.success(
+        t("toast.structureCreated", {
+          departments: c.departments,
+          domains: c.domains,
+          filieres: c.filieres,
+          specializations: c.specializations,
+        }),
+      );
+    },
+    onError: (error) =>
+      toast.error(serverMessage(error, t("toast.structureCreateFailed"))),
   });
 }

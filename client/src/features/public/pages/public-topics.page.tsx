@@ -81,7 +81,7 @@ export function PublicTopicsPage() {
   return (
     <div className="font-body mx-auto w-full max-w-7xl px-6 py-10">
       {/* Page header */}
-      <div className="mb-8 text-center md:text-right">
+      <div className="mb-8 text-center md:text-start">
         <h1 className="font-serif text-3xl font-bold text-forest">
           {t("public.topicsTitle")}
         </h1>
@@ -242,7 +242,7 @@ function TopicCard({
         )}
       </div>
 
-      <button onClick={onOpen} className="mb-3 text-right">
+      <button onClick={onOpen} className="mb-3 text-start">
         <h3 className="font-serif text-lg font-bold leading-tight text-forest transition hover:text-gold">
           {topic.title}
         </h3>

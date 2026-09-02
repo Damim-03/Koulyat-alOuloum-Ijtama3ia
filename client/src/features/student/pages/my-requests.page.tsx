@@ -17,6 +17,7 @@ import {
   useCancelGroupRequest,
 } from "../hooks/Student-hook";
 import type { GroupRequestMember } from "../../../types/student.types";
+import { t as translate } from "i18next";
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -30,7 +31,7 @@ const STATUS_ACCENT: Record<string, string> = {
   rejected: "border-r-4 border-r-red-500",
 };
 
-function initials(first?: string | null, last?: string | null, fallback = "؟") {
+function initials(first?: string | null, last?: string | null, fallback = translate("admin.unknownInitial")) {
   const a = (first?.[0] ?? "") + (last?.[0] ?? "");
   return a || fallback;
 }

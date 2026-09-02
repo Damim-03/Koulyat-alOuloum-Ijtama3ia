@@ -73,7 +73,7 @@ export function PublicTopicDetailPage() {
         onClick={() => navigate(`/${lang}/topics`)}
         className="mb-6 inline-flex items-center gap-2 font-serif text-sm font-bold text-forest transition hover:opacity-80"
       >
-        <ChevronRight size={18} />
+        <ChevronRight size={18} className="ltr:rotate-180" />
         {t("public.backToTopics")}
       </button>
 

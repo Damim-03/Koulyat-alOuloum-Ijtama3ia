@@ -6,6 +6,7 @@ import {
   useNetworkStatus,
   type NetworkQuality,
 } from "../hooks/use-network-status";
+import { playCue, preloadCues } from "../lib/sound";
 
 const STYLES: Record<
   NetworkQuality,
@@ -42,12 +43,17 @@ function Toast() {
   useEffect(() => {
     if (prev.current === null) {
       prev.current = status;
+      preloadCues("networkError", "networkRestored");
       return;
     }
     if (prev.current === status) return;
     prev.current = status;
     setCurrent(status);
     setShow(true);
+    // Each transition gets its own cue. The first status is recorded above
+    // without a sound, so opening the app never chimes.
+    if (status === "offline") playCue("networkError");
+    else if (status === "online") playCue("networkRestored");
     if (timer.current) clearTimeout(timer.current);
     if (status !== "offline")
       timer.current = setTimeout(() => setShow(false), 4000);

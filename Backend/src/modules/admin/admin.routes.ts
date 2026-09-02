@@ -64,6 +64,8 @@ import {
   archiveTopicController,
   publishTopicController,
   unpublishTopicController,
+  deleteTopicController,
+  unarchiveTopicController,
   // applications
   listApplicationsController,
   acceptApplicationController,
@@ -78,6 +80,7 @@ import {
   changeSupervisorController,
   assignStudentController,
   listGroupMilestonesController,
+  removeProjectMemberController,
   // defenses
   listDefensesController,
   createDefenseController,
@@ -90,7 +93,14 @@ import {
   updateDomainController,
   deleteDomainController,
   createAssignedTopicController,
+  listUniversityDomainsController,
+  createAcademicStructureController,
+  createUniversityDomainController,
+  setDefaultUniversityDomainController,
+  deleteUniversityDomainController,
   updateAssignedTopicController,
+  removeGroupRequestMemberController,
+  setGroupRequestLeaderController,
 } from "./admin.controller";
 import { cardUpload } from "../../core/middleware/upload.middleware";
 
@@ -160,6 +170,22 @@ adminRoutes.delete("/professors/:id", ownerOnly(), deleteProfessorController);
 //
 // ─── FACULTIES ────────────────────────────────────────────────
 //
+//
+// ─── ACADEMIC STRUCTURE ─────────────────────────────────
+//
+adminRoutes.post("/academic-structure", createAcademicStructureController);
+
+//
+// ─── UNIVERSITY DOMAINS ─────────────────────────────────
+//
+adminRoutes.get("/university-domains", listUniversityDomainsController);
+adminRoutes.post("/university-domains", createUniversityDomainController);
+adminRoutes.patch(
+  "/university-domains/:id/default",
+  setDefaultUniversityDomainController,
+);
+adminRoutes.delete("/university-domains/:id", deleteUniversityDomainController);
+
 adminRoutes.get("/faculties", listFacultiesController);
 adminRoutes.post("/faculties", createFacultyController);
 adminRoutes.patch("/faculties/:id", updateFacultyController);
@@ -215,6 +241,8 @@ adminRoutes.delete("/academic-years/:id", deleteAcademicYearController);
 adminRoutes.get("/topics", listTopicsController);
 adminRoutes.post("/topics/assigned", createAssignedTopicController);
 adminRoutes.patch("/topics/:id/assignment", updateAssignedTopicController);
+adminRoutes.patch("/topics/:id/unarchive", unarchiveTopicController);
+adminRoutes.delete("/topics/:id", deleteTopicController);
 adminRoutes.get("/topics/:id", getTopicController);
 adminRoutes.patch("/topics/:id/approve", approveTopicController);
 adminRoutes.patch("/topics/:id/reject", rejectTopicController);
@@ -235,6 +263,15 @@ adminRoutes.get("/group-requests/:id", getGroupRequestController);
 adminRoutes.patch("/group-requests/:id/accept", acceptGroupRequestController);
 adminRoutes.patch("/group-requests/:id/reject", rejectGroupRequestController);
 
+adminRoutes.delete(
+  "/group-requests/:id/members/:studentId",
+  removeGroupRequestMemberController,
+);
+adminRoutes.patch(
+  "/group-requests/:id/leader/:studentId",
+  setGroupRequestLeaderController,
+);
+
 //
 // ─── PROJECTS ─────────────────────────────────────────────────
 //
@@ -243,6 +280,10 @@ adminRoutes.get("/projects/:id", getProjectController);
 adminRoutes.patch("/projects/:id/supervisor", changeSupervisorController);
 adminRoutes.post("/projects/:id/assign", assignStudentController);
 adminRoutes.get("/projects/:groupId/milestones", listGroupMilestonesController);
+adminRoutes.delete(
+  "/projects/:id/members/:studentId",
+  removeProjectMemberController,
+);
 
 //
 // ─── DEFENSES ─────────────────────────────────────────────────

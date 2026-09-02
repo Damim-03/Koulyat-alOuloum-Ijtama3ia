@@ -50,9 +50,9 @@ export const browseTopicsService = async (
       ...(filters.search
         ? {
             OR: [
-              { title: { contains: filters.search, mode: "insensitive" } },
+              { title: { contains: filters.search } },
               {
-                description: { contains: filters.search, mode: "insensitive" },
+                description: { contains: filters.search },
               },
             ],
           }

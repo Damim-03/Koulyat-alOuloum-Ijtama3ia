@@ -8,6 +8,13 @@ export const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
   search: z.string().trim().optional(),
+  professorId: z.string().uuid().optional(),
+  facultyId: z.string().uuid().optional(),
+  departmentId: z.string().uuid().optional(),
+  filiereId: z.string().uuid().optional(),
+  specializationId: z.string().uuid().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
   // Generic status filter used by lists that support it (applications,
   // group-requests). Lists that don't use it simply ignore the field.
   status: z.string().trim().optional(),
@@ -25,6 +32,10 @@ const LevelEnum = z.enum(["licence", "master", "doctorate"]);
 export const listUsersSchema = listQuerySchema.extend({
   role: RoleEnum.optional(),
   status: StatusEnum.optional(),
+  // `search` matches the person's name; these two target one field each, so
+  // an admin can look someone up by the identifier they have at hand.
+  email: z.string().trim().optional(),
+  registrationNumber: z.string().trim().optional(),
 });
 export type ListUsersDTO = z.infer<typeof listUsersSchema>;
 
@@ -70,6 +81,8 @@ export const listStudentsSchema = listQuerySchema.extend({
   departmentId: z.string().uuid().optional(),
   facultyId: z.string().uuid().optional(),
   unassigned: z.enum(["true", "false"]).optional(),
+  // `search` matches the student's name; this one targets the number alone.
+  registrationNumber: z.string().trim().optional(),
 });
 export type ListStudentsDTO = z.infer<typeof listStudentsSchema>;
 
@@ -95,9 +108,10 @@ export type CreateStudentDTO = z.infer<typeof createStudentSchema>;
 export const updateStudentSchema = z.object({
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
-  email: z.string().email().optional(),
-  phone: z.string().trim().min(1).optional(),
-  avatarUrl: z.string().url().optional(),
+  // null = امسح القيمة (مثل حذف الصورة). كما في updateProfessorSchema.
+  email: z.string().email().nullable().optional(),
+  phone: z.string().trim().min(1).nullable().optional(),
+  avatarUrl: z.string().url().nullable().optional(),
   registrationNumber: z.string().trim().min(1).optional(),
   specializationId: z.string().uuid().optional(),
   academicYearId: z.string().uuid().optional(),
@@ -114,6 +128,9 @@ export const listProfessorsSchema = listQuerySchema.extend({
   facultyId: z.string().uuid().optional(),
   // exact-tag match over the grade array (optional UI filter)
   grade: z.string().trim().optional(),
+  // `search` matches the professor's name; these two target one field each.
+  employeeNumber: z.string().trim().optional(),
+  email: z.string().trim().optional(),
 });
 export type ListProfessorsDTO = z.infer<typeof listProfessorsSchema>;
 
@@ -122,13 +139,15 @@ export const createProfessorSchema = z.object({
   lastName: z.string().trim().min(1).optional(),
   email: z.string().email().optional(),
   password: z.string().min(6),
-  employeeNumber: z.string().trim().min(1),
-  universityEmail: z
+  // اختياري: إن لم يُرسَل، تولّده الخدمة تلقائيًا (13 رقماً فريدة).
+  employeeNumber: z
     .string()
-    .regex(
-      /^[a-zA-Z0-9._%+-]+@univ-eloued\.dz$/,
-      "Must be a valid @univ-eloued.dz email",
-    ),
+    .trim()
+    .regex(/^\d{13}$/, "الرقم الوظيفي يجب أن يتكوّن من 13 رقماً")
+    .optional(),
+  // الصيغة فقط هنا؛ النطاق المسموح به يُفرض في الخدمة مقابل جدول
+  // UniversityDomain حتى تستطيع الإدارة إضافة نطاقات دون تعديل الشيفرة.
+  universityEmail: z.string().email("بريد إلكتروني غير صالح"),
   departmentId: z.string().uuid(),
   grade: z.array(z.string().trim().min(1)).max(20).optional(), // ← جديد
   tags: z.array(z.string().trim().min(1)).max(20).optional(), // ← جديد
@@ -141,10 +160,8 @@ export const updateProfessorSchema = z.object({
   email: z.string().email().nullable().optional(), // ← جديد
   phone: z.string().trim().min(1).nullable().optional(), // ← جديد
   avatarUrl: z.string().url().nullable().optional(), // ← جديد
-  universityEmail: z
-    .string()
-    .regex(/^[a-zA-Z0-9._%+-]+@univ-eloued\.dz$/)
-    .optional(),
+  // كما في الإنشاء: النطاق يُفرض في الخدمة مقابل UniversityDomain.
+  universityEmail: z.string().email("بريد إلكتروني غير صالح").optional(),
   departmentId: z.string().uuid().optional(),
   grade: z.array(z.string().trim().min(1)).max(20).optional(),
   tags: z.array(z.string().trim().min(1)).max(20).optional(),
@@ -163,6 +180,12 @@ export const createDomainSchema = z.object({
   name: z.string().trim().min(1),
   code: z.string().trim().min(1),
   departmentId: z.string().uuid(),
+  // Optional cover image. An empty string clears it; null is the same,
+  // so the client can send either.
+  coverUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
 });
 export type CreateDomainDTO = z.infer<typeof createDomainSchema>;
 
@@ -170,6 +193,12 @@ export const updateDomainSchema = z.object({
   name: z.string().trim().min(1).optional(),
   code: z.string().trim().min(1).optional(),
   departmentId: z.string().uuid().optional(),
+  // Optional cover image. An empty string clears it; null is the same,
+  // so the client can send either.
+  coverUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
 });
 export type UpdateDomainDTO = z.infer<typeof updateDomainSchema>;
 
@@ -177,9 +206,94 @@ export type UpdateDomainDTO = z.infer<typeof updateDomainSchema>;
 // ─── FACULTIES ────────────────────────────────────────────────
 //
 
+//
+// ─── ACADEMIC STRUCTURE (معالج الهيكل الأكاديمي) ──────────────
+//
+// شجرة كاملة تُنشأ في معاملة واحدة: كلية ← أقسام ← ميادين ← شعب ← تخصّصات.
+// الأبناء يشيرون إلى آبائهم بمفتاح مؤقّت (kind: "new") لأنّ المعرّفات لم
+// تُنشأ بعد، أو بمعرّف حقيقي (kind: "existing") للربط بصفّ قائم.
+//
+
+const structureRefSchema = z.object({
+  kind: z.enum(["new", "existing"]),
+  value: z.string().min(1),
+});
+
+const nameCode = {
+  name: z.string().trim().min(1, "الاسم مطلوب"),
+  code: z.string().trim().min(1, "الرمز مطلوب"),
+};
+
+export const academicStructureSchema = z.object({
+  faculty: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("new"), ...nameCode }),
+    z.object({ kind: z.literal("existing"), id: z.string().uuid() }),
+  ]),
+
+  departments: z
+    .array(z.object({ key: z.string().min(1), ...nameCode }))
+    .default([]),
+
+  domains: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        ...nameCode,
+        department: structureRefSchema,
+      }),
+    )
+    .default([]),
+
+  filieres: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        ...nameCode,
+        department: structureRefSchema,
+        domain: structureRefSchema.nullish(),
+        specializations: z
+          .array(
+            z.object({
+              name: z.string().trim().min(1, "اسم التخصّص مطلوب"),
+              level: z.enum(["licence", "master", "doctorate"]),
+            }),
+          )
+          .default([]),
+      }),
+    )
+    .default([]),
+});
+export type AcademicStructureDTO = z.infer<typeof academicStructureSchema>;
+
+//
+// ─── UNIVERSITY DOMAINS ───────────────────────────────────────
+//
+
+// "univ-eloued.dz" — بدون "@" وبدون بروتوكول، ونقطة واحدة على الأقل.
+export const createUniversityDomainSchema = z.object({
+  domain: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(
+      /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/,
+      "نطاق غير صالح — مثال: univ-eloued.dz",
+    ),
+  isDefault: z.boolean().optional(),
+});
+export type CreateUniversityDomainDTO = z.infer<
+  typeof createUniversityDomainSchema
+>;
+
 export const createFacultySchema = z.object({
   name: z.string().trim().min(1),
   code: z.string().trim().min(1),
+  // Optional cover image. An empty string clears it; null is the same,
+  // so the client can send either.
+  coverUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
 });
 export type CreateFacultyDTO = z.infer<typeof createFacultySchema>;
 
@@ -194,6 +308,12 @@ export const createDepartmentSchema = z.object({
   name: z.string().trim().min(1),
   code: z.string().trim().min(1),
   facultyId: z.string().uuid(),
+  // Optional cover image. An empty string clears it; null is the same,
+  // so the client can send either.
+  coverUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
 });
 export type CreateDepartmentDTO = z.infer<typeof createDepartmentSchema>;
 
@@ -201,6 +321,12 @@ export const updateDepartmentSchema = z.object({
   name: z.string().trim().min(1).optional(),
   code: z.string().trim().min(1).optional(),
   facultyId: z.string().uuid().optional(),
+  // Optional cover image. An empty string clears it; null is the same,
+  // so the client can send either.
+  coverUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
 });
 export type UpdateDepartmentDTO = z.infer<typeof updateDepartmentSchema>;
 
@@ -214,6 +340,12 @@ export const createFiliereSchema = z
     code: z.string().trim().min(1),
     departmentId: z.string().uuid().optional(),
     domainId: z.string().uuid().optional(),
+    // Optional cover image. An empty string clears it; null is the same,
+    // so the client can send either.
+    coverUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
   })
   .refine((d) => d.departmentId || d.domainId, {
     message: "departmentId or domainId is required",
@@ -225,6 +357,12 @@ export const updateFiliereSchema = z.object({
   code: z.string().trim().min(1).optional(),
   departmentId: z.string().uuid().optional(),
   domainId: z.string().uuid().optional(),
+  // Optional cover image. An empty string clears it; null is the same,
+  // so the client can send either.
+  coverUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
 });
 export type UpdateFiliereDTO = z.infer<typeof updateFiliereSchema>;
 
@@ -242,6 +380,12 @@ export const createSpecializationSchema = z.object({
   name: z.string().trim().min(1),
   level: LevelEnum,
   filiereId: z.string().uuid(),
+  // Optional cover image. An empty string clears it; null is the same,
+  // so the client can send either.
+  coverUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
 });
 export type CreateSpecializationDTO = z.infer<
   typeof createSpecializationSchema
@@ -251,6 +395,12 @@ export const updateSpecializationSchema = z.object({
   name: z.string().trim().min(1).optional(),
   level: LevelEnum.optional(),
   filiereId: z.string().uuid().optional(),
+  // Optional cover image. An empty string clears it; null is the same,
+  // so the client can send either.
+  coverUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
 });
 export type UpdateSpecializationDTO = z.infer<
   typeof updateSpecializationSchema

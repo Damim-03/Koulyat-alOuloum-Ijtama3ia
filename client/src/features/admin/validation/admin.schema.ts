@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { t } from "i18next";
 
 //
 // ─── USERS ────────────────────────────────────────────────────
@@ -6,15 +7,15 @@ import { z } from "zod";
 
 export const createUserSchema = z
   .object({
-    firstName: z.string().trim().min(1, "الاسم الأول مطلوب").optional().or(z.literal("")),
-    lastName: z.string().trim().min(1, "اللقب مطلوب").optional().or(z.literal("")),
-    email: z.string().email("بريد إلكتروني غير صحيح").optional().or(z.literal("")),
-    username: z.string().trim().min(3, "اسم المستخدم 3 أحرف على الأقل").optional().or(z.literal("")),
-    password: z.string().min(6, "كلمة المرور 6 أحرف على الأقل"),
+    firstName: z.string().trim().min(1, { error: () => t("validation.firstNameRequired") }).optional().or(z.literal("")),
+    lastName: z.string().trim().min(1, { error: () => t("validation.lastNameRequired") }).optional().or(z.literal("")),
+    email: z.string().email({ error: () => t("validation.emailInvalid") }).optional().or(z.literal("")),
+    username: z.string().trim().min(3, { error: () => t("validation.usernameMin") }).optional().or(z.literal("")),
+    password: z.string().min(6, { error: () => t("validation.passwordMin") }),
     role: z.enum(["owner", "admin", "professor", "student"]),
   })
   .refine((d) => !!d.email || !!d.username, {
-    message: "يجب إدخال بريد إلكتروني أو اسم مستخدم",
+    error: () => t("validation.emailOrUsername"),
     path: ["email"],
   });
 export type CreateUserInput = z.infer<typeof createUserSchema>;
@@ -22,13 +23,13 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 export const updateUserSchema = z.object({
   firstName: z.string().trim().min(1).optional().or(z.literal("")),
   lastName: z.string().trim().min(1).optional().or(z.literal("")),
-  email: z.string().email("بريد إلكتروني غير صحيح").optional().or(z.literal("")),
+  email: z.string().email({ error: () => t("validation.emailInvalid") }).optional().or(z.literal("")),
   username: z.string().trim().min(3).optional().or(z.literal("")),
 });
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 
 export const resetPasswordSchema = z.object({
-  password: z.string().min(6, "كلمة المرور 6 أحرف على الأقل"),
+  password: z.string().min(6, { error: () => t("validation.passwordMin") }),
 });
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
@@ -39,11 +40,11 @@ export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export const createStudentSchema = z.object({
   firstName: z.string().trim().min(1).optional().or(z.literal("")),
   lastName: z.string().trim().min(1).optional().or(z.literal("")),
-  email: z.string().email("بريد إلكتروني غير صحيح").optional().or(z.literal("")),
-  password: z.string().min(6, "كلمة المرور 6 أحرف على الأقل"),
-  registrationNumber: z.string().trim().min(1, "رقم التسجيل مطلوب"),
-  specializationId: z.string().uuid("اختر تخصصاً"),
-  academicYearId: z.string().uuid("اختر سنة دراسية"),
+  email: z.string().email({ error: () => t("validation.emailInvalid") }).optional().or(z.literal("")),
+  password: z.string().min(6, { error: () => t("validation.passwordMin") }),
+  registrationNumber: z.string().trim().min(1, { error: () => t("validation.regNumberRequired") }),
+  specializationId: z.string().uuid({ error: () => t("validation.pickSpecialization") }),
+  academicYearId: z.string().uuid({ error: () => t("validation.pickYear") }),
 });
 export type CreateStudentInput = z.infer<typeof createStudentSchema>;
 
@@ -59,18 +60,26 @@ export type UpdateStudentInput = z.infer<typeof updateStudentSchema>;
 // ─── PROFESSORS ───────────────────────────────────────────────
 //
 
+// الصيغة فقط — النطاق المسموح به يُفرض في الخلفية مقابل جدول النطاقات
+// الجامعية، حتى يسري أي نطاق تضيفه الإدارة فوراً دون تعديل هنا.
 const universityEmail = z
   .string()
-  .regex(/^[a-zA-Z0-9._%+-]+@univ-eloued\.dz$/, "يجب أن يكون بريداً جامعياً (@univ-eloued.dz)");
+  .regex(/^[a-zA-Z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i, { error: () => t("validation.universityEmailInvalid") });
 
 export const createProfessorSchema = z.object({
   firstName: z.string().trim().min(1).optional().or(z.literal("")),
   lastName: z.string().trim().min(1).optional().or(z.literal("")),
-  email: z.string().email("بريد إلكتروني غير صحيح").optional().or(z.literal("")),
-  password: z.string().min(6, "كلمة المرور 6 أحرف على الأقل"),
-  employeeNumber: z.string().trim().min(1, "الرقم الوظيفي مطلوب"),
+  email: z.string().email({ error: () => t("validation.emailInvalid") }).optional().or(z.literal("")),
+  password: z.string().min(6, { error: () => t("validation.passwordMin") }),
+  // يُولَّد في الخلفية (13 رقماً فريدة) — لا تُدخله الإدارة.
+  employeeNumber: z
+    .string()
+    .trim()
+    .regex(/^\d{13}$/, { error: () => t("validation.employeeNumberDigits") })
+    .optional()
+    .or(z.literal("")),
   universityEmail,
-  departmentId: z.string().uuid("اختر قسماً"),
+  departmentId: z.string().uuid({ error: () => t("admin.selectDepartment") }),
 });
 export type CreateProfessorInput = z.infer<typeof createProfessorSchema>;
 
@@ -87,8 +96,10 @@ export type UpdateProfessorInput = z.infer<typeof updateProfessorSchema>;
 //
 
 export const facultySchema = z.object({
-  name: z.string().trim().min(1, "الاسم مطلوب"),
-  code: z.string().trim().min(1, "الرمز مطلوب"),
+  name: z.string().trim().min(1, { error: () => t("validation.nameRequired") }),
+  code: z.string().trim().min(1, { error: () => t("validation.codeRequired") }),
+  /** Optional: empty means no cover. */
+  coverUrl: z.string().trim().optional().or(z.literal("")),
 });
 export type FacultyInput = z.infer<typeof facultySchema>;
 
@@ -97,9 +108,11 @@ export type FacultyInput = z.infer<typeof facultySchema>;
 //
 
 export const departmentSchema = z.object({
-  name: z.string().trim().min(1, "الاسم مطلوب"),
-  code: z.string().trim().min(1, "الرمز مطلوب"),
-  facultyId: z.string().uuid("اختر كلية"),
+  name: z.string().trim().min(1, { error: () => t("validation.nameRequired") }),
+  code: z.string().trim().min(1, { error: () => t("validation.codeRequired") }),
+  facultyId: z.string().uuid({ error: () => t("admin.selectFaculty") }),
+  /** Optional: empty means no cover. */
+  coverUrl: z.string().trim().optional().or(z.literal("")),
 });
 export type DepartmentInput = z.infer<typeof departmentSchema>;
 
@@ -108,9 +121,11 @@ export type DepartmentInput = z.infer<typeof departmentSchema>;
 //
 
 export const specializationSchema = z.object({
-  name: z.string().trim().min(1, "الاسم مطلوب"),
+  name: z.string().trim().min(1, { error: () => t("validation.nameRequired") }),
   level: z.enum(["licence", "master", "doctorate"]),
-  departmentId: z.string().uuid("اختر قسماً"),
+  departmentId: z.string().uuid({ error: () => t("admin.selectDepartment") }),
+  /** Optional: empty means no cover. */
+  coverUrl: z.string().trim().optional().or(z.literal("")),
 });
 export type SpecializationInput = z.infer<typeof specializationSchema>;
 
@@ -119,7 +134,7 @@ export type SpecializationInput = z.infer<typeof specializationSchema>;
 //
 
 export const academicYearSchema = z.object({
-  title: z.string().trim().min(1, "العنوان مطلوب"),
+  title: z.string().trim().min(1, { error: () => t("validation.titleRequired") }),
   isActive: z.boolean().optional(),
 });
 export type AcademicYearInput = z.infer<typeof academicYearSchema>;
@@ -129,12 +144,14 @@ export type AcademicYearInput = z.infer<typeof academicYearSchema>;
 //
 
 export const createDefenseSchema = z.object({
-  groupId: z.string().uuid("اختر مشروعاً"),
-  date: z.string().min(1, "التاريخ مطلوب"),
-  room: z.string().trim().min(1, "القاعة مطلوبة"),
+  groupId: z.string().uuid({ error: () => t("validation.pickProject") }),
+  date: z.string().min(1, { error: () => t("validation.dateRequired") }),
+  room: z.string().trim().min(1, { error: () => t("validation.roomRequired") }),
   grade: z.coerce.number().min(0).max(20).optional(),
 });
 export type CreateDefenseInput = z.infer<typeof createDefenseSchema>;
+// ما يمسكه النموذج قبل التحويل: z.coerce يجعل الإدخال يختلف عن الإخراج.
+export type CreateDefenseFormValues = z.input<typeof createDefenseSchema>;
 
 export const updateDefenseSchema = z.object({
   date: z.string().min(1).optional(),

@@ -4,7 +4,7 @@ export function WaveDivider() {
   return (
     <div className="relative h-12 overflow-hidden bg-forest-deep sm:h-16">
       <svg
-        className="absolute bottom-0 w-full text-cream-2"
+        className="page-fill-2 absolute bottom-0 w-full"
         viewBox="0 0 1440 64"
         fill="currentColor"
         preserveAspectRatio="none"

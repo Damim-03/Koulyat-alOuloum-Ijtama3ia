@@ -11,6 +11,7 @@ import { ProfessorLoginForm } from "../components/form/professor-login-form";
 import { HelpDialog } from "../components/help-dialog";
 import { AuthHero } from "../components/auth-hero";
 import { AdminLoginForm } from "../components/form/admin-login-form";
+import { useTranslation } from "react-i18next";
 
 const FORMS: Record<LoginRole, (p: { onSuccess?: () => void }) => ReactNode> = {
   student: StudentLoginForm,
@@ -19,6 +20,7 @@ const FORMS: Record<LoginRole, (p: { onSuccess?: () => void }) => ReactNode> = {
 };
 
 export function LoginPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { localePath } = useLanguage();
@@ -37,7 +39,6 @@ export function LoginPage() {
 
   return (
     <div
-      dir="rtl"
       className="auth-bg relative grid min-h-svh w-full text-forest lg:grid-cols-2"
     >
       {/* back to homepage — pinned top-left */}
@@ -46,9 +47,7 @@ export function LoginPage() {
         onClick={() => navigate(localePath(PATHS.home))}
         className="absolute left-5 top-5 z-20 inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-forest/10 bg-cream-card/70 px-3 py-1.5 text-[12.5px] font-semibold text-clay shadow-sm backdrop-blur-sm transition hover:border-forest/20 hover:text-forest"
       >
-        <ArrowRight size={15} />
-        العودة للرئيسية
-      </button>
+        <ArrowRight size={15} className="ltr:rotate-180" />{t("auth.backHome")}</button>
       {/* LEFT: hero panel (desktop) */}
       <AuthHero />
 
@@ -61,12 +60,8 @@ export function LoginPage() {
               <GraduationCap size={20} strokeWidth={2.2} />
             </div>
             <div>
-              <div className="text-[13px] font-bold text-forest">
-                جامعة الشهيد حمه لخضر
-              </div>
-              <div className="text-[11px] text-clay">
-                نظام إدارة مشاريع التخرج
-              </div>
+              <div className="text-[13px] font-bold text-forest">{t("auth.universityName")}</div>
+              <div className="text-[11px] text-clay">{t("auth.heroSystem")}</div>
             </div>
           </div>
 
@@ -75,11 +70,9 @@ export function LoginPage() {
           <div className="mt-6 rounded-[22px] border border-forest/10 bg-cream-card p-7 shadow-[0_24px_60px_rgba(26,49,45,0.12)]">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="m-0 font-display text-[24px] font-bold text-forest">
-                  تسجيل الدخول
-                </h2>
+                <h2 className="m-0 font-display text-[24px] font-bold text-forest">{t("common.login")}</h2>
                 <p className="mt-1.5 text-[13px] leading-[1.6] text-clay">
-                  {cfg.subtitle}
+                  {t(cfg.subtitleKey)}
                 </p>
               </div>
               <button
@@ -87,13 +80,11 @@ export function LoginPage() {
                 onClick={() => setHelpOpen(true)}
                 className="inline-flex flex-none cursor-pointer items-center gap-1.5 rounded-[10px] border border-gold/35 bg-gold/12 px-2.5 py-1.5 text-[12.5px] font-semibold text-gold transition hover:bg-gold/20"
               >
-                <HelpCircle size={15} />
-                مساعدة
-              </button>
+                <HelpCircle size={15} />{t("auth.help")}</button>
             </div>
 
             <div className="my-5 flex items-center gap-3 text-xs text-clay/70 before:h-px before:flex-1 before:bg-forest/10 after:h-px after:flex-1 after:bg-forest/10">
-              <span>عبر بيانات الجامعة</span>
+              <span>{t("auth.viaUniversityCredentials")}</span>
             </div>
 
             <ActiveForm key={role} onSuccess={handleLoginSuccess} />
