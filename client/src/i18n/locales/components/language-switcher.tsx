@@ -26,8 +26,8 @@ export function LanguageSwitcher({ variant = "header", className = "" }: Props) 
               "rounded-md font-bold transition-colors",
               isMenu ? "px-3 py-1.5 text-xs" : "px-2.5 py-1 text-[11px]",
               active
-                ? "bg-white/90 text-forest-deep"
-                : "text-current/60 hover:bg-white/10 hover:text-current",
+                ? "bg-cream-card/90 text-forest"
+                : "text-current/60 hover:bg-current/10 hover:text-current",
             )}
           >
             {isMenu ? lang.label : lang.labelShort}

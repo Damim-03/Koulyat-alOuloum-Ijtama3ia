@@ -5,6 +5,26 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>client</title>
+    <script>
+      // Paints the theme before the first frame, so the app never flashes the
+      // light palette on its way to dark. Mirrors src/store/ui.store.ts —
+      // same storage key ("ui") and the same zustand/persist shape.
+      (function () {
+        try {
+          var saved = JSON.parse(localStorage.getItem("ui") || "{}");
+          var choice = (saved.state && saved.state.theme) || "system";
+          var dark =
+            choice === "dark" ||
+            (choice === "system" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var root = document.documentElement;
+          root.dataset.theme = dark ? "dark" : "light";
+          root.classList.toggle("dark", dark);
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

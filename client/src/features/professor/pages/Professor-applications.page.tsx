@@ -125,7 +125,7 @@ export function ProfessorApplicationsPage() {
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
         <div className="overflow-x-auto">
-          <table className="w-full text-right">
+          <table className="w-full text-start">
             <thead>
               <tr className="bg-forest text-cream">
                 <th className="px-5 py-3 text-xs font-medium">{t("pro.student")}</th>

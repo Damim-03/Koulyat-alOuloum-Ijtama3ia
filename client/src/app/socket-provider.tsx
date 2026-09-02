@@ -14,6 +14,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     if (!isAuthenticated || !user) return;
 
     const onConnect = () => {
+      // Role room too, so broadcasts can target a whole audience.
+      socket.emit("join", { userId: user.id, role: String(user.role) });
       socket.emit("join-room", user.id);
     };
 

@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
 }
 
 //
@@ -117,8 +117,37 @@ model User {
   submissions   Submission[]
   notifications Notification[]
 
+  sentMessages     Message[]          @relation("SentMessages")
+  receivedMessages MessageRecipient[] @relation("ReceivedMessages")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Message {
+  id         String             @id @default(uuid())
+  senderId   String
+  sender     User               @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  subject    String?
+  body       String             @db.Text
+  broadcast  String? // "all" | "students" | "professors" | "students:<specId>"
+  createdAt  DateTime           @default(now())
+  recipients MessageRecipient[]
+
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model MessageRecipient {
+  id        String    @id @default(uuid())
+  messageId String
+  message   Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation("ReceivedMessages", fields: [userId], references: [id], onDelete: Cascade)
+  readAt    DateTime?
+
+  @@unique([messageId, userId])
+  @@index([userId, readAt])
 }
 
 //
@@ -128,9 +157,11 @@ model User {
 //
 
 model Faculty {
-  id   String @id @default(uuid())
-  name String
-  code String @unique
+  id       String  @id @default(uuid())
+  name     String
+  code     String  @unique
+  /// Optional cover image shown behind this entry's card.
+  coverUrl String?
 
   departments Department[]
 
@@ -146,13 +177,15 @@ model Faculty {
 model Domain {
   id String @id @default(uuid())
 
-  name String
-  code String @unique
+  name     String
+  code     String  @unique
+  /// Optional cover image shown behind this entry's card.
+  coverUrl String?
 
   departmentId String
   department   Department @relation(fields: [departmentId], references: [id])
 
-   filieres Filiere[] 
+  filieres Filiere[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -167,8 +200,10 @@ model Domain {
 model Department {
   id String @id @default(uuid())
 
-  name String
-  code String @unique
+  name     String
+  code     String  @unique
+  /// Optional cover image shown behind this entry's card.
+  coverUrl String?
 
   facultyId String
   faculty   Faculty @relation(fields: [facultyId], references: [id])
@@ -191,8 +226,10 @@ model Department {
 model Filiere {
   id String @id @default(uuid())
 
-  name String
-  code String @unique
+  name     String
+  code     String  @unique
+  /// Optional cover image shown behind this entry's card.
+  coverUrl String?
 
   departmentId String
   department   Department @relation(fields: [departmentId], references: [id])
@@ -215,8 +252,10 @@ model Filiere {
 model Specialization {
   id String @id @default(uuid())
 
-  name  String
-  level AcademicLevel
+  name     String
+  level    AcademicLevel
+  /// Optional cover image shown behind this entry's card.
+  coverUrl String?
 
   filiereId String
   filiere   Filiere @relation(fields: [filiereId], references: [id])
@@ -296,8 +335,8 @@ model Professor {
   departmentId String
   department   Department @relation(fields: [departmentId], references: [id])
 
-  grade String[] @default([]) // الرتبة — free tags entered by the admin
-  tags  String[] @default([]) // الصفة — free tags entered by the admin
+  grade Json? // كان: grade String[] @default([])
+  tags  Json? // كان: tags  String[] @default([])
 
   topics           GraduationTopic[]
   committeeMembers DefenseCommitteeMember[]
@@ -319,8 +358,8 @@ model GraduationTopic {
   description String
 
   // Rich content for the topic detail view.
-  requirements String[] @default([])
-  objectives   String[] @default([])
+  requirements Json? // كان: requirements String[] @default([])
+  objectives   Json? // كان: objectives   String[] @default([])
 
   status TopicStatus @default(pending)
 
@@ -620,6 +659,27 @@ model CardTemplate {
 
   // Whether this template is the approved one applied to all cards.
   isPublished Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// ════════════════════════════════════════════════════════════
+//  UNIVERSITY EMAIL DOMAINS
+//  النطاقات المسموح بها في البريد الجامعي للأساتذة. تديرها الإدارة
+//  من الواجهة، ويفرضها createProfessorService / updateProfessorService.
+// ════════════════════════════════════════════════════════════
+//
+
+model UniversityDomain {
+  id String @id @default(uuid())
+
+  // بدون "@" — مثال: "univ-eloued.dz"
+  domain String @unique
+
+  // النطاق المقترح افتراضياً في نماذج الإضافة.
+  isDefault Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

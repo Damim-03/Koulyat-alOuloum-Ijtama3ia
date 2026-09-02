@@ -118,7 +118,7 @@ export function StudentDashboardPage() {
               className="flex items-center gap-1 text-xs text-sage transition hover:text-forest"
             >
               {t("stu.viewAll")}
-              <ArrowLeft size={14} />
+              <ArrowLeft size={14} className="ltr:rotate-180" />
             </Link>
           </div>
           <div className="p-4">

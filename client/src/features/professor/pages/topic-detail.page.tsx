@@ -83,7 +83,7 @@ export function ProfessorTopicDetailPage() {
         onClick={() => navigate(-1)}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-clay transition hover:text-forest"
       >
-        <ArrowRight size={16} />
+        <ArrowRight size={16} className="ltr:rotate-180" />
         {t("pro.backToTopics")}
       </button>
 
@@ -191,7 +191,7 @@ export function ProfessorTopicDetailPage() {
           <h2 className="font-serif text-lg font-bold text-forest">{t("pro.submittedApplications")}</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-right">
+          <table className="w-full text-start">
             <thead>
               <tr className="bg-forest text-cream">
                 <th className="px-5 py-3 text-xs font-medium">{t("pro.student")}</th>

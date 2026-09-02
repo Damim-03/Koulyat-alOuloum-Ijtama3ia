@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { professorApi } from "../api/professor.api";
+import { t } from "i18next";
 import type {
   CreateTopicInput,
   UpdateTopicInput,
@@ -54,9 +55,9 @@ export function useCreateTopic() {
     mutationFn: (data: CreateTopicInput) => professorApi.createTopic(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.topics });
-      toast.success("تم إرسال الموضوع إلى الإدارة للمراجعة");
+      toast.success(t("toast.topicSentToAdmin"));
     },
-    onError: () => toast.error("تعذّر إرسال الموضوع"),
+    onError: () => toast.error(t("toast.topicSendFailed")),
   });
 }
 export function useUpdateTopic() {
@@ -67,9 +68,9 @@ export function useUpdateTopic() {
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: KEYS.topics });
       qc.invalidateQueries({ queryKey: KEYS.topic(v.id) });
-      toast.success("تم تحديث الموضوع");
+      toast.success(t("admin.topicUpdated"));
     },
-    onError: () => toast.error("تعذّر تحديث الموضوع"),
+    onError: () => toast.error(t("toast.topicUpdateFailed")),
   });
 }
 export function useDeleteTopic() {
@@ -78,9 +79,9 @@ export function useDeleteTopic() {
     mutationFn: (id: string) => professorApi.deleteTopic(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.topics });
-      toast.success("تم حذف الموضوع");
+      toast.success(t("toast.topicDeleted"));
     },
-    onError: () => toast.error("تعذّر حذف الموضوع"),
+    onError: () => toast.error(t("toast.topicDeleteFailed")),
   });
 }
 
@@ -102,9 +103,9 @@ export function useAcceptApplication() {
       qc.invalidateQueries({ queryKey: ["professor", "applications"] });
       qc.invalidateQueries({ queryKey: ["professor", "topic"] });
       qc.invalidateQueries({ queryKey: KEYS.groups });
-      toast.success("تم قبول الطلب");
+      toast.success(t("toast.requestAccepted"));
     },
-    onError: () => toast.error("تعذّر قبول الطلب"),
+    onError: () => toast.error(t("toast.acceptFailed")),
   });
 }
 export function useRejectApplication() {
@@ -114,9 +115,9 @@ export function useRejectApplication() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["professor", "applications"] });
       qc.invalidateQueries({ queryKey: ["professor", "topic"] });
-      toast.success("تم رفض الطلب");
+      toast.success(t("toast.requestRejected"));
     },
-    onError: () => toast.error("تعذّر رفض الطلب"),
+    onError: () => toast.error(t("toast.rejectRequestFailed")),
   });
 }
 
@@ -144,9 +145,9 @@ export function useCreateMilestone() {
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: KEYS.group(v.groupId) });
       qc.invalidateQueries({ queryKey: KEYS.milestones(v.groupId) });
-      toast.success("تمت إضافة المرحلة");
+      toast.success(t("toast.milestoneAdded"));
     },
-    onError: () => toast.error("تعذّرت إضافة المرحلة"),
+    onError: () => toast.error(t("toast.milestoneAddFailed")),
   });
 }
 export function useUpdateMilestone() {
@@ -156,9 +157,9 @@ export function useUpdateMilestone() {
       professorApi.updateMilestone(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["professor", "group"] });
-      toast.success("تم تحديث المرحلة");
+      toast.success(t("toast.milestoneUpdated"));
     },
-    onError: () => toast.error("تعذّر تحديث المرحلة"),
+    onError: () => toast.error(t("toast.milestoneUpdateFailed")),
   });
 }
 export function useDeleteMilestone() {
@@ -167,8 +168,8 @@ export function useDeleteMilestone() {
     mutationFn: (id: string) => professorApi.deleteMilestone(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["professor", "group"] });
-      toast.success("تم حذف المرحلة");
+      toast.success(t("toast.milestoneDeleted"));
     },
-    onError: () => toast.error("تعذّر حذف المرحلة"),
+    onError: () => toast.error(t("toast.milestoneDeleteFailed")),
   });
 }

@@ -49,9 +49,9 @@ export const listPublicTopicsService = async (q: ListPublicTopicsDTO) => {
     ...(q.search
       ? {
           OR: [
-            { title: { contains: q.search, mode: "insensitive" as const } },
+            { title: { contains: q.search } },
             {
-              description: { contains: q.search, mode: "insensitive" as const },
+              description: { contains: q.search },
             },
           ],
         }

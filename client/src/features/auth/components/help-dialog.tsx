@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { LoginRole } from "../../../types/enums";
 import { HELP } from "../../../config/roles.config";
 
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function HelpDialog({ role, open, onClose }: Props) {
+  const { t } = useTranslation();
   if (!open) return null;
   const content = HELP[role];
 
@@ -25,11 +27,11 @@ export function HelpDialog({ role, open, onClose }: Props) {
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="m-0 font-display text-[19px] font-bold text-forest">
-            {content.title}
+            {t(content.titleKey)}
           </h3>
           <button
             onClick={onClose}
-            aria-label="إغلاق"
+            aria-label={t("admin.close")}
             className="grid place-items-center rounded-[9px] border border-forest/10 bg-cream-2 p-1.5 text-clay transition hover:text-forest"
           >
             <X size={18} />
@@ -42,10 +44,10 @@ export function HelpDialog({ role, open, onClose }: Props) {
               <div className="mt-1.75 size-2 flex-none rounded-full bg-linear-to-br from-gold-soft to-gold" />
               <div>
                 <div className="mb-0.75 text-sm font-bold text-forest">
-                  {it.t}
+                  {t(it.titleKey)}
                 </div>
                 <div className="text-[13px] leading-[1.8] text-clay">
-                  {it.d}
+                  {t(it.bodyKey)}
                 </div>
               </div>
             </div>
@@ -55,9 +57,7 @@ export function HelpDialog({ role, open, onClose }: Props) {
         <button
           onClick={onClose}
           className="mt-5 w-full cursor-pointer rounded-[11px] bg-linear-to-br from-forest-soft to-forest p-2.75 font-bold text-cream ring-1 ring-inset ring-gold/15 transition hover:ring-gold/35"
-        >
-          فهمت
-        </button>
+        >{t("auth.understood")}</button>
       </div>
     </div>
   );

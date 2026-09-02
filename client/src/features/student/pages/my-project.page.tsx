@@ -17,6 +17,7 @@ import { useLanguage } from "../../../hooks/use-language";
 import { useMyProject } from "../hooks/Student-hook";
 import { PATHS } from "../../../routes/paths";
 import type { GroupRequestMember } from "../../../types/student.types";
+import { t as translate } from "i18next";
 
 function nameOf(m: GroupRequestMember): string {
   const u = m.student?.user;
@@ -27,10 +28,10 @@ function nameOf(m: GroupRequestMember): string {
   );
 }
 function initials(name?: string | null) {
-  if (!name) return "؟";
+  if (!name) return translate("admin.unknownInitial");
   const clean = name.replace(/^(د\.?|أ\.?|prof\.?|dr\.?)\s*/i, "").trim();
   const parts = clean.split(/\s+/).filter(Boolean);
-  return (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "") || "؟";
+  return (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "") || translate("admin.unknownInitial");
 }
 
 const MILESTONE_STYLE: Record<

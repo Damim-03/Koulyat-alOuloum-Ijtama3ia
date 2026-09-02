@@ -94,7 +94,7 @@ export function ProfessorProjectDetailPage() {
         onClick={() => navigate(-1)}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-clay transition hover:text-forest"
       >
-        <ArrowRight size={16} />
+        <ArrowRight size={16} className="ltr:rotate-180" />
         {t("pro.backToProjects")}
       </button>
 

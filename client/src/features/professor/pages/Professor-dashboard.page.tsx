@@ -159,12 +159,12 @@ export function ProfessorDashboardPage() {
               className="flex items-center gap-1 text-xs text-sage transition hover:text-forest"
             >
               {t("pro.viewAll")}
-              <ArrowLeft size={14} />
+              <ArrowLeft size={14} className="ltr:rotate-180" />
             </Link>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-right">
+            <table className="w-full text-start">
               <thead>
                 <tr className="bg-forest text-cream">
                   <th className="px-5 py-3 text-xs font-medium">
@@ -250,7 +250,7 @@ export function ProfessorDashboardPage() {
                 className="flex items-center gap-1 text-xs text-sage transition hover:text-forest"
               >
                 {t("pro.viewAll")}
-                <ArrowLeft size={12} />
+                <ArrowLeft size={12} className="ltr:rotate-180" />
               </Link>
             </div>
             <div className="space-y-3">

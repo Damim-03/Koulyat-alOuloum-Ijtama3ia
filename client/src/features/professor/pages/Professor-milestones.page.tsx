@@ -91,7 +91,7 @@ function ProjectPicker({ onPick }: { onPick: (id: string) => void }) {
               <button
                 key={g.id}
                 onClick={() => onPick(g.id)}
-                className="group flex flex-col rounded-2xl border border-forest/10 bg-cream-card p-5 text-right shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:border-gold/40 hover:shadow-[0_8px_28px_rgba(193,150,90,0.15)]"
+                className="group flex flex-col rounded-2xl border border-forest/10 bg-cream-card p-5 text-start shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:border-gold/40 hover:shadow-[0_8px_28px_rgba(193,150,90,0.15)]"
               >
                 <div className="mb-3 flex items-center justify-between">
                   {g.topic?.status && <StatusBadge status={g.topic.status} />}
@@ -114,7 +114,7 @@ function ProjectPicker({ onPick }: { onPick: (id: string) => void }) {
                 </div>
                 <span className="mt-auto flex items-center justify-center gap-1 rounded-xl bg-forest px-4 py-2 text-xs font-semibold text-cream transition group-hover:bg-forest-deep">
                   {t("pro.manageMilestones")}
-                  <ChevronLeft size={14} />
+                  <ChevronLeft size={14} className="ltr:rotate-180" />
                 </span>
               </button>
             );
@@ -190,7 +190,7 @@ function MilestonesManager({
         onClick={onBack}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-clay transition hover:text-forest"
       >
-        <ArrowRight size={16} />
+        <ArrowRight size={16} className="ltr:rotate-180" />
         {t("pro.changeProject")}
       </button>
 

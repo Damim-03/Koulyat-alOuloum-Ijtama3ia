@@ -48,10 +48,12 @@ export function Footer() {
   return (
     <footer dir={dir} className="relative font-body">
       <div className="relative overflow-hidden bg-forest-deep text-cream">
-        {/* cream wave painted on top of the green block — its top edge meets the
-            cream section above (cream-on-cream), so there is no white seam. */}
+        {/* The wave is painted in the *page* colour so its top edge meets the
+            section above with no seam. It must not use `text-cream`: that is
+            pinned light for text on the brand chrome, which would leave a
+            bright band across the top of the footer in dark mode. */}
         <svg
-          className="pointer-events-none absolute inset-x-0 top-0 h-12 w-full text-cream sm:h-16"
+          className="page-fill pointer-events-none absolute inset-x-0 top-0 h-12 w-full sm:h-16"
           viewBox="0 0 1440 64"
           fill="currentColor"
           preserveAspectRatio="none"
@@ -88,7 +90,7 @@ export function Footer() {
                 ))}
               </div>
               {/* name + subtitle */}
-              <div className="text-right">
+              <div className="text-start">
                 <p className="font-serif text-[15px] font-bold leading-tight text-cream">
                   {t("brand.name")}
                 </p>

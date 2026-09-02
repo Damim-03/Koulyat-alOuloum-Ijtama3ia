@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { studentApi } from "../api/Student-api";
 import type { CreateGroupRequestInput } from "../validation/student.schema";
+import { t } from "i18next";
 
 const KEYS = {
   topics: (p?: object) => ["student", "topics", p ?? {}] as const,
@@ -73,12 +74,12 @@ export function useCreateGroupRequest() {
       studentApi.createGroupRequest(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.requests });
-      toast.success("تم إرسال طلب المجموعة للإدارة");
+      toast.success(t("toast.groupRequestSent"));
     },
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { message?: string } } })
         ?.response?.data?.message;
-      toast.error(msg || "تعذّر إرسال الطلب");
+      toast.error(msg || t("toast.requestSendFailed"));
     },
   });
 }
@@ -88,9 +89,9 @@ export function useCancelGroupRequest() {
     mutationFn: (id: string) => studentApi.cancelGroupRequest(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.requests });
-      toast.success("تم إلغاء الطلب");
+      toast.success(t("toast.requestCancelled"));
     },
-    onError: () => toast.error("تعذّر إلغاء الطلب"),
+    onError: () => toast.error(t("toast.requestCancelFailed")),
   });
 }
 

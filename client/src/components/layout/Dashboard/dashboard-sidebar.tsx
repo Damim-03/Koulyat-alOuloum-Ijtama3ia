@@ -1,8 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router-dom";
-import { GraduationCap, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
+import facultyLogo from "../../../assets/Faculty.png";
 
 export interface NavItem {
   to: string; // raw path, e.g. PATHS.professor.root
@@ -29,10 +30,21 @@ export function DashboardSidebar({ items, panelKey, collapsed, onToggle }: Props
       }`}
     >
       {/* brand */}
-      <div className="flex h-16 items-center gap-3 border-b border-white/10 px-3">
-        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-linear-to-br from-gold to-gold-soft text-forest-deep shadow-lg shadow-gold/20">
-          <GraduationCap size={20} strokeWidth={2.2} />
-        </div>
+      <div
+        className={`flex h-16 items-center gap-3 border-b border-white/10 ${
+          collapsed ? "justify-center px-2" : "px-3"
+        }`}
+      >
+        {/* The faculty mark is 1.3:1, so it is sized by height and takes the
+            width it needs. Collapsed the rail is only 64px wide, so there it is
+            capped by width instead — otherwise it would spill past the rail. */}
+        <img
+          src={facultyLogo}
+          alt={t("brand.facultyName")}
+          className={`shrink-0 object-contain ${
+            collapsed ? "h-auto w-11" : "h-11 w-auto"
+          }`}
+        />
         {!collapsed && (
           <div className="min-w-0 leading-tight">
             <p className="truncate font-serif text-sm font-bold text-cream">

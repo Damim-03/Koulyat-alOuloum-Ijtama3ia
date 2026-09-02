@@ -28,6 +28,7 @@ import {
 import {
   createTopicSchema,
   type CreateTopicInput,
+  type CreateTopicFormValues,
 } from "../validation/professor.schema";
 import type { Topic } from "../../../types/professor.types";
 
@@ -57,7 +58,7 @@ export function TopicFormDialog({ open, onClose, topic }: Props) {
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<CreateTopicInput>({
+  } = useForm<CreateTopicFormValues, unknown, CreateTopicInput>({
     resolver: zodResolver(createTopicSchema),
     defaultValues: {
       title: "",

@@ -9,6 +9,7 @@ import { useCreateMilestone, useUpdateMilestone } from "../hooks/Professor-hook"
 import {
   createMilestoneSchema,
   type CreateMilestoneInput,
+  type CreateMilestoneFormValues,
 } from "../validation/professor.schema";
 import type { Milestone } from "../../../types/professor.types";
 
@@ -45,7 +46,7 @@ export function MilestoneFormDialog({ open, onClose, groupId, milestone }: Props
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<CreateMilestoneInput>({
+  } = useForm<CreateMilestoneFormValues, unknown, CreateMilestoneInput>({
     resolver: zodResolver(createMilestoneSchema),
     defaultValues: { title: "", description: "", deadline: "", order: 1 },
   });

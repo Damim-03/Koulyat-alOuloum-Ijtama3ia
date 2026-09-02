@@ -14,7 +14,9 @@ import { useAuth } from "../../../../hooks/use-auth";
 import { useLanguage } from "../../../../hooks/use-language";
 import { LocaleLink } from "../../../../i18n/locales/components/locale-link";
 import { LanguageSwitcher } from "../../../../i18n/locales/components/language-switcher";
+import { ThemeToggle } from "../../../../components/theme-toggle";
 import { PATHS } from "../../../../routes/paths";
+import { t as translate } from "i18next";
 
 // ┌─────────────────────────────────────────────────────────┐
 // │  ضع صور اللوغو هنا:                                        │
@@ -22,7 +24,7 @@ import { PATHS } from "../../../../routes/paths";
 // │  2. ألغِ التعليق عن السطرين التاليين وعدّل أسماء الملفات:    │
 // └─────────────────────────────────────────────────────────┘
 import universityLogo from "../../../../assets/university-logo.png"; // لوغو الجامعة
-// import facultyLogo from "../../../../assets/faculty-logo.png";       // لوغو الكلية
+import facultyLogo from "../../../../assets/Faculty.png";       // لوغو الكلية
 
 const NOISE =
   "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E\")";
@@ -112,22 +114,28 @@ function Emblem({
   src?: string;
   alt?: string;
 }) {
-  const size = small ? "size-9" : "size-12";
+  const { t } = useTranslation();
+  // The two marks are not the same shape: the university seal is square, the
+  // faculty one is 1.3:1. A square box would fit the wide mark by its width and
+  // leave it a quarter shorter, so the logos are matched on HEIGHT and each
+  // takes the width its own artwork needs.
+  const height = small ? "h-12" : "h-18";
+  const box = small ? "size-12" : "size-18";
 
   if (src) {
     return (
       <img
         src={src}
         alt={alt ?? "logo"}
-        className={`${size} shrink-0 rounded-xl object-contain transition-all duration-500`}
+        className={`${height} w-auto shrink-0 rounded-xl object-contain transition-all duration-500`}
       />
     );
   }
 
   return (
     <div
-      className={`${size} grid shrink-0 place-items-center rounded-xl border-2 border-dashed border-forest/30 bg-forest/5 text-[8px] font-bold text-forest/40 transition-all duration-500`}
-      title="ضع صورة اللوغو هنا"
+      className={`${box} grid shrink-0 place-items-center rounded-xl border-2 border-dashed border-forest/30 bg-forest/5 text-[8px] font-bold text-forest/40 transition-all duration-500`}
+      title={t("home.logoPlaceholder")}
     >
       LOGO
     </div>
@@ -154,7 +162,7 @@ function Avatar({
       {src ? (
         <img
           src={src}
-          alt="avatar"
+          alt={translate("common.avatarAlt")}
           style={{ width: size, height: size }}
           className={`${rounded} border border-cream/20 object-cover`}
         />
@@ -241,13 +249,13 @@ export function Navbar() {
       <div className="relative overflow-hidden bg-cream-2">
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-linear-to-r from-transparent via-gold/40 to-transparent" />
         <div
-          className={`relative mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 transition-all duration-500 lg:px-8 ${scrolled ? "h-16" : "h-21"}`}
+          className={`relative mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 transition-all duration-500 lg:px-8 ${scrolled ? "h-16" : "h-24"}`}
         >
           <LocaleLink to={PATHS.home}>
             <Emblem
               small={scrolled}
               src={universityLogo}
-              alt="جامعة الشهيد حمه لخضر - الوادي"
+              alt={t("home.universityFull")}
             />
           </LocaleLink>
 
@@ -280,9 +288,9 @@ export function Navbar() {
 
           <LocaleLink to={PATHS.home}>
             <Emblem
-              small={
-                scrolled
-              } /* src={universityLogo} alt="كلية العلوم الاجتماعية و الانسانية" */
+              small={scrolled}
+              src={facultyLogo}
+              alt={t("brand.facultyName")}
             />
           </LocaleLink>
         </div>
@@ -459,8 +467,9 @@ export function Navbar() {
             )}
 
             <div
-              className={`flex items-center ${isRTL ? "border-r pr-3" : "border-l pl-3"} border-cream/10`}
+              className={`flex items-center gap-2 ${isRTL ? "border-r pr-3" : "border-l pl-3"} border-cream/10`}
             >
+              <ThemeToggle />
               <LanguageSwitcher />
             </div>
           </div>
@@ -468,7 +477,7 @@ export function Navbar() {
           <button
             className="grid size-9 place-items-center rounded-md text-cream md:hidden"
             onClick={() => setMobileOpen((o) => !o)}
-            aria-label="menu"
+            aria-label={t("common.menu")}
           >
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>

@@ -18,6 +18,9 @@ import type {
   UserDetail,
   Filiere,
   Domain,
+  UniversityDomain,
+  AcademicStructurePayload,
+  AcademicStructureResult,
 } from "../../../types/admin";
 
 const BASE = "/admin";
@@ -264,6 +267,10 @@ export const adminApi = {
     client.patch(`${BASE}/topics/${id}/publish`).then((r) => r.data),
   unpublishTopic: (id: string) =>
     client.patch(`${BASE}/topics/${id}/unpublish`).then((r) => r.data),
+  deleteTopic: (id: string) =>
+    client.delete(`${BASE}/topics/${id}`).then((r) => r.data),
+  unarchiveTopic: (id: string) =>
+    client.patch(`${BASE}/topics/${id}/unarchive`).then((r) => r.data),
 
   // ── Applications ──
   listApplications: (params?: ListParams) =>
@@ -278,6 +285,16 @@ export const adminApi = {
       .then((r) => r.data),
 
   // ── Group Requests ──
+
+  removeGroupRequestMember: (requestId: string, studentId: string) =>
+    client
+      .delete(`${BASE}/group-requests/${requestId}/members/${studentId}`)
+      .then((r) => r.data),
+  setGroupRequestLeader: (requestId: string, studentId: string) =>
+    client
+      .patch(`${BASE}/group-requests/${requestId}/leader/${studentId}`)
+      .then((r) => r.data),
+
   listGroupRequests: (params?: ListParams) =>
     client
       .get<Paginated<AdminGroupRequest>>(`${BASE}/group-requests`, { params })
@@ -310,6 +327,34 @@ export const adminApi = {
     client
       .post(`${BASE}/projects/${id}/assign`, { studentId })
       .then((r) => r.data),
+  removeProjectMember: (groupId: string, studentId: string) =>
+    client
+      .delete(`${BASE}/projects/${groupId}/members/${studentId}`)
+      .then((r) => r.data),
+
+  // ── Academic structure wizard (whole tree in one transaction) ──
+  createAcademicStructure: (payload: AcademicStructurePayload) =>
+    client
+      .post<AcademicStructureResult>(`${BASE}/academic-structure`, payload)
+      .then((r) => r.data),
+
+  // ── University email domains ──
+  listUniversityDomains: () =>
+    client
+      .get<{ domains: UniversityDomain[] }>(`${BASE}/university-domains`)
+      .then((r) => r.data.domains),
+  createUniversityDomain: (domain: string) =>
+    client
+      .post<{ domain: UniversityDomain }>(`${BASE}/university-domains`, {
+        domain,
+      })
+      .then((r) => r.data.domain),
+  setDefaultUniversityDomain: (id: string) =>
+    client
+      .patch(`${BASE}/university-domains/${id}/default`)
+      .then((r) => r.data),
+  deleteUniversityDomain: (id: string) =>
+    client.delete(`${BASE}/university-domains/${id}`).then((r) => r.data),
 
   // ── Defenses ──
   listDefenses: (params?: ListParams) =>

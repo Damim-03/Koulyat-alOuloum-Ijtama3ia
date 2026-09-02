@@ -9,96 +9,84 @@ import {
 } from "lucide-react";
 import type { LoginRole } from "../types/enums";
 
+/**
+ * Text here is stored as translation *keys*, not as finished strings: this
+ * object is built once at import time, so a `t()` call would freeze the copy
+ * in whatever language happened to load first. Consumers translate at render.
+ */
 export interface RoleConfig {
-  label: string;
+  labelKey: string;
   Icon: LucideIcon;
   /** Backend field name this role authenticates with. */
   fieldName: "registrationNumber" | "universityEmail" | "email";
-  fieldLabel: string;
+  fieldLabelKey: string;
   FieldIcon: LucideIcon;
-  placeholder: string;
+  placeholderKey: string;
   inputType: "text" | "email";
-  subtitle: string;
+  subtitleKey: string;
 }
 
 export const ROLES: Record<LoginRole, RoleConfig> = {
   student: {
-    label: "طالب",
+    labelKey: "roles.student",
     Icon: GraduationCap,
     fieldName: "registrationNumber",
-    fieldLabel: "رقم التسجيل",
+    fieldLabelKey: "pro.regNumber",
     FieldIcon: Hash,
-    placeholder: "مثال: 202039012345",
+    placeholderKey: "auth.regNumberPlaceholder",
     inputType: "text",
-    subtitle: "أدخل بياناتك للوصول إلى حسابك الأكاديمي",
+    subtitleKey: "auth.studentSubtitle",
   },
   professor: {
-    label: "أستاذ",
+    labelKey: "roles.professor",
     Icon: Presentation,
     fieldName: "universityEmail",
-    fieldLabel: "البريد الجامعي",
+    fieldLabelKey: "admin.universityEmail",
     FieldIcon: AtSign,
-    placeholder: "nom@univ-eloued.dz",
+    placeholderKey: "auth.professorEmailPlaceholder",
     inputType: "email",
-    subtitle: "أدخل بريدك الجامعي للوصول إلى لوحة الإشراف",
+    subtitleKey: "auth.professorSubtitle",
   },
   admin: {
-    label: "مسؤول",
+    labelKey: "roles.admin",
     Icon: Shield,
     fieldName: "email",
-    fieldLabel: "البريد الإلكتروني",
+    fieldLabelKey: "admin.email",
     FieldIcon: Mail,
-    placeholder: "admin@univ-eloued.dz",
+    placeholderKey: "auth.adminEmailPlaceholder",
     inputType: "email",
-    subtitle: "دخول لوحة الإدارة",
+    subtitleKey: "auth.adminSubtitle",
   },
 };
 
+/** Keys, not copy — same reason as RoleConfig above. */
 export interface HelpContent {
-  title: string;
-  items: { t: string; d: string }[];
+  titleKey: string;
+  items: { titleKey: string; bodyKey: string }[];
 }
 
 export const HELP: Record<LoginRole, HelpContent> = {
   student: {
-    title: "مساعدة — دخول الطالب",
+    titleKey: "auth.helpStudentTitle",
     items: [
-      {
-        t: "رقم التسجيل",
-        d: "هو رقمك الجامعي المكوّن غالباً من 12 رقماً (مثال: 202039012345). تجده على بطاقة الطالب أو في وثيقة التسجيل أو كشف النقاط.",
-      },
-      {
-        t: "كلمة المرور",
-        d: "تُسلَّم لك من طرف إدارة القسم عند بداية السنة الجامعية.",
-      },
-      {
-        t: "نسيت كلمة المرور؟",
-        d: "لا يوجد استرجاع إلكتروني. توجّه إلى مصلحة الأقسام لإعادة تعيينها.",
-      },
+      { titleKey: "pro.regNumber", bodyKey: "auth.helpRegNumber" },
+      { titleKey: "admin.password", bodyKey: "auth.helpStudentPassword" },
+      { titleKey: "auth.forgotPassword", bodyKey: "auth.helpForgotPassword" },
     ],
   },
   professor: {
-    title: "مساعدة — دخول الأستاذ",
+    titleKey: "auth.helpProfessorTitle",
     items: [
-      {
-        t: "البريد الجامعي",
-        d: "استعمل بريدك الرسمي بصيغة nom@univ-eloued.dz.",
-      },
-      { t: "كلمة المرور", d: "تُمنح من طرف إدارة الكلية." },
-      {
-        t: "مشكلة في الدخول؟",
-        d: "تواصل مع مصلحة المستخدمين أو الدعم التقني.",
-      },
+      { titleKey: "admin.universityEmail", bodyKey: "auth.helpProfessorEmail" },
+      { titleKey: "admin.password", bodyKey: "auth.helpProfessorPassword" },
+      { titleKey: "auth.signInProblem", bodyKey: "auth.helpProfessorProblem" },
     ],
   },
   admin: {
-    title: "مساعدة — دخول المسؤول",
+    titleKey: "auth.helpAdminTitle",
     items: [
-      { t: "البريد الإلكتروني", d: "البريد المهني المخصص لحسابك الإداري." },
-      {
-        t: "مشكلة في الدخول؟",
-        d: "تواصل مع مسؤول النظام (Owner) لاستعادة الوصول.",
-      },
+      { titleKey: "admin.email", bodyKey: "auth.helpAdminEmail" },
+      { titleKey: "auth.signInProblem", bodyKey: "auth.helpAdminProblem" },
     ],
   },
 };
