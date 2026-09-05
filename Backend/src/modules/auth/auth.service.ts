@@ -1,5 +1,4 @@
 import bcrypt from "bcryptjs";
-import jwt, { SignOptions } from "jsonwebtoken";
 
 import { prisma } from "../../core/prisma/client";
 import { config } from "../../core/config/app.config";
@@ -11,6 +10,18 @@ import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { Roles } from "../../core/enums/role.enum";
 import { JwtPayload } from "./auth.types";
 import {
+  signTokenPair,
+  signAccessToken,
+  verifyToken,
+} from "../../core/auth/tokens";
+import {
+  newSessionId,
+  isSessionRevoked,
+  revokeSession,
+  revokeAllSessions,
+  pruneExpiredSessions,
+} from "../../core/auth/sessions";
+import {
   StudentLoginDTO,
   ProfessorLoginDTO,
   AdminLoginDTO,
@@ -20,16 +31,16 @@ import {
 // ─── HELPERS ────────────────────────────────────────────────
 //
 
-const signTokens = (payload: JwtPayload) => {
-  const accessToken = jwt.sign(payload, config.JWT_ACCESS_SECRET, {
-    expiresIn: config.JWT_ACCESS_EXPIRES_IN,
-  } as SignOptions);
+const signTokens = (payload: JwtPayload) => signTokenPair(payload);
 
-  const refreshToken = jwt.sign(payload, config.JWT_REFRESH_SECRET, {
-    expiresIn: config.JWT_REFRESH_EXPIRES_IN,
-  } as SignOptions);
+/**
+ * A wrong password and an unknown account must cost the same wall-clock time,
+ * otherwise response timing reveals which accounts exist.
+ */
+const DUMMY_HASH = "$2a$12$C6UzMDM.H6dfI/f/IKcEeO1Vf3vJ0yXk6z0uS1bJ0aVQqXQe6bJZq";
 
-  return { accessToken, refreshToken };
+const burnPasswordTime = async (plain: string) => {
+  await bcrypt.compare(plain, DUMMY_HASH);
 };
 
 const checkSuspended = (status: string) => {
@@ -64,10 +75,13 @@ const updateLastLogin = (userId: string) =>
 export const studentLoginService = async (data: StudentLoginDTO) => {
   const student = await prisma.student.findUnique({
     where: { registrationNumber: data.registrationNumber },
+    // Internal only: the hash is needed for bcrypt.compare and is never
+    // part of the returned object below.
     include: { user: true },
   });
 
   if (!student) {
+    await burnPasswordTime(data.password);
     throw new UnauthorizedException(
       "Invalid registration number or password",
       ErrorCodeEnum.AUTH_INVALID_CREDENTIALS,
@@ -82,6 +96,8 @@ export const studentLoginService = async (data: StudentLoginDTO) => {
     userId: student.userId,
     role: Roles.STUDENT,
     refId: student.id,
+    tokenVersion: student.user.tokenVersion,
+    sid: newSessionId(),
   });
 
   return {
@@ -101,10 +117,13 @@ export const studentLoginService = async (data: StudentLoginDTO) => {
 export const professorLoginService = async (data: ProfessorLoginDTO) => {
   const professor = await prisma.professor.findUnique({
     where: { universityEmail: data.universityEmail },
+    // Internal only: the hash is needed for bcrypt.compare and is never
+    // part of the returned object below.
     include: { user: true },
   });
 
   if (!professor) {
+    await burnPasswordTime(data.password);
     throw new UnauthorizedException(
       "Invalid university email or password",
       ErrorCodeEnum.AUTH_INVALID_CREDENTIALS,
@@ -119,6 +138,8 @@ export const professorLoginService = async (data: ProfessorLoginDTO) => {
     userId: professor.userId,
     role: Roles.PROFESSOR,
     refId: professor.id,
+    tokenVersion: professor.user.tokenVersion,
+    sid: newSessionId(),
   });
 
   return {
@@ -142,6 +163,7 @@ export const adminLoginService = async (data: AdminLoginDTO) => {
   });
 
   if (!user) {
+    await burnPasswordTime(data.password);
     throw new UnauthorizedException(
       "Invalid email or password",
       ErrorCodeEnum.AUTH_INVALID_CREDENTIALS,
@@ -156,6 +178,8 @@ export const adminLoginService = async (data: AdminLoginDTO) => {
     userId: user.id,
     role: user.role === "admin" ? Roles.ADMIN : Roles.OWNER,
     refId: user.id,
+    tokenVersion: user.tokenVersion,
+    sid: newSessionId(),
   });
 
   return {
@@ -168,11 +192,22 @@ export const adminLoginService = async (data: AdminLoginDTO) => {
   };
 };
 
+/**
+ * Exchanges a refresh token for a new pair.
+ *
+ * Three hardenings over the previous version:
+ *  - the token must verify as type "refresh" with the pinned algorithm,
+ *    issuer and audience (see core/auth/tokens.ts);
+ *  - the token's generation must still match the user's, so logout and
+ *    forced sign-out actually invalidate outstanding refresh tokens;
+ *  - the role is re-read from the database rather than trusted from the
+ *    token, so a demotion takes effect on the next refresh instead of
+ *    lingering for the whole refresh lifetime.
+ */
 export const refreshTokenService = async (refreshToken: string) => {
-  // 1. Verify refresh token
-  let decoded: JwtPayload;
+  let decoded;
   try {
-    decoded = jwt.verify(refreshToken, config.JWT_REFRESH_SECRET) as JwtPayload;
+    decoded = verifyToken(refreshToken, "refresh");
   } catch {
     throw new UnauthorizedException(
       "Invalid or expired refresh token",
@@ -180,9 +215,16 @@ export const refreshTokenService = async (refreshToken: string) => {
     );
   }
 
-  // 2. Check user still exists and is active
   const user = await prisma.user.findUnique({
     where: { id: decoded.userId },
+    select: {
+      id: true,
+      role: true,
+      status: true,
+      tokenVersion: true,
+      student: { select: { id: true } },
+      professor: { select: { id: true } },
+    },
   });
 
   if (!user) {
@@ -194,18 +236,62 @@ export const refreshTokenService = async (refreshToken: string) => {
 
   checkSuspended(user.status);
 
-  // 3. Sign new access token only
-  const accessToken = jwt.sign(
-    {
-      userId: decoded.userId,
-      role: decoded.role,
-      refId: decoded.refId,
-    } as JwtPayload,
-    config.JWT_ACCESS_SECRET,
-    { expiresIn: config.JWT_ACCESS_EXPIRES_IN } as SignOptions,
-  );
+  if ((decoded.tokenVersion ?? 0) !== user.tokenVersion) {
+    throw new UnauthorizedException(
+      "Session has been revoked",
+      ErrorCodeEnum.AUTH_INVALID_TOKEN,
+    );
+  }
 
-  return { accessToken };
+  if (await isSessionRevoked(decoded.sid)) {
+    throw new UnauthorizedException(
+      "Session has been revoked",
+      ErrorCodeEnum.AUTH_INVALID_TOKEN,
+    );
+  }
+
+  const refId = user.student?.id ?? user.professor?.id ?? user.id;
+
+  return {
+    accessToken: signAccessToken({
+      userId: user.id,
+      role: user.role as JwtPayload["role"],
+      refId,
+      tokenVersion: user.tokenVersion,
+      // Same session continues; refreshing does not start a new one.
+      sid: decoded.sid,
+    }),
+  };
+};
+
+/**
+ * Signs out the session that made the request, and nothing else.
+ *
+ * The first version of this bumped the account-wide counter, which meant
+ * signing out of one browser silently killed every other device on the
+ * account. Correct as a panic button, wrong as the everyday behaviour.
+ */
+export const logoutService = async (accessToken: string | undefined) => {
+  if (accessToken) {
+    try {
+      const payload = verifyToken(accessToken, "access");
+      await revokeSession(payload);
+      void pruneExpiredSessions();
+    } catch {
+      // An expired or malformed token has nothing left to revoke; signing out
+      // is still a success from the caller's point of view.
+    }
+  }
+  return { message: "Logged out" };
+};
+
+/**
+ * Signs out every session on the account, including this one. The lever to
+ * pull when a device is lost or a token is believed stolen.
+ */
+export const logoutAllService = async (userId: string) => {
+  await revokeAllSessions(userId);
+  return { message: "Signed out of all devices" };
 };
 
 // داخل auth.service (نفس النمط الموجود)

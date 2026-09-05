@@ -372,8 +372,11 @@ export function AdminUserDetailPage() {
   const closeEdit = () => {
     setModal(null);
     refetch();
-    refetchProfessor();
-    refetchStudent();
+    // Only the query that has an id. A manual refetch() ignores `enabled`,
+    // so calling both fired GET /admin/students/null (404) on every professor
+    // edit — and the mirror-image request on every student edit.
+    if (profId) refetchProfessor();
+    if (studId) refetchStudent();
   };
   const closeModal = () => {
     setModal(null);

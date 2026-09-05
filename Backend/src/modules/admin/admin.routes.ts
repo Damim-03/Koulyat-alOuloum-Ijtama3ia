@@ -66,10 +66,6 @@ import {
   unpublishTopicController,
   deleteTopicController,
   unarchiveTopicController,
-  // applications
-  listApplicationsController,
-  acceptApplicationController,
-  rejectApplicationController,
   listGroupRequestsController,
   getGroupRequestController,
   acceptGroupRequestController,
@@ -80,6 +76,9 @@ import {
   changeSupervisorController,
   assignStudentController,
   listGroupMilestonesController,
+  createGroupMilestoneController,
+  updateGroupMilestoneController,
+  deleteGroupMilestoneController,
   removeProjectMemberController,
   // defenses
   listDefensesController,
@@ -253,9 +252,6 @@ adminRoutes.patch("/topics/:id/unpublish", unpublishTopicController);
 //
 // ─── APPLICATIONS ─────────────────────────────────────────────
 //
-adminRoutes.get("/applications", listApplicationsController);
-adminRoutes.patch("/applications/:id/accept", acceptApplicationController);
-adminRoutes.patch("/applications/:id/reject", rejectApplicationController);
 
 // group requests (team submissions — admin decides)
 adminRoutes.get("/group-requests", listGroupRequestsController);
@@ -280,6 +276,12 @@ adminRoutes.get("/projects/:id", getProjectController);
 adminRoutes.patch("/projects/:id/supervisor", changeSupervisorController);
 adminRoutes.post("/projects/:id/assign", assignStudentController);
 adminRoutes.get("/projects/:groupId/milestones", listGroupMilestonesController);
+adminRoutes.post(
+  "/projects/:groupId/milestones",
+  createGroupMilestoneController,
+);
+adminRoutes.patch("/milestones/:id", updateGroupMilestoneController);
+adminRoutes.delete("/milestones/:id", deleteGroupMilestoneController);
 adminRoutes.delete(
   "/projects/:id/members/:studentId",
   removeProjectMemberController,

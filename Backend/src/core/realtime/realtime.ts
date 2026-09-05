@@ -34,7 +34,6 @@ export type Resource =
   | "specializations"
   | "academic-years"
   | "topics"
-  | "applications"
   | "group-requests"
   | "projects"
   | "defenses"

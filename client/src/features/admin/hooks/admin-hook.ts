@@ -16,7 +16,6 @@ const KEYS = {
   academicYears: ["admin", "academic-years"] as const,
   dashboard: ["admin", "dashboard"] as const,
   topics: (p?: object) => ["admin", "topics", p ?? {}] as const,
-  applications: (p?: object) => ["admin", "applications", p ?? {}] as const,
   projects: (p?: object) => ["admin", "projects", p ?? {}] as const,
   defenses: (p?: object) => ["admin", "defenses", p ?? {}] as const,
 };
@@ -607,8 +606,11 @@ export function useCreateAssignedTopic() {
       qc.invalidateQueries({ queryKey: ["admin", "dashboard"] });
       toast.success(t("toast.topicCreatedAssigned"));
     },
-    onError: (e: any) =>
-      toast.error(e?.response?.data?.message ?? t("toast.topicCreateFailed")),
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.topicCreateFailed"));
+    },
   });
 }
 
@@ -627,41 +629,11 @@ export function useUpdateAssignedTopic() {
         t("admin.topicUpdated", { defaultValue: t("admin.topicUpdated") }),
       );
     },
-    onError: (e: any) =>
-      toast.error(e?.response?.data?.message ?? t("toast.topicUpdateFailed")),
-  });
-}
-
-// ─── APPLICATIONS ───
-export function useAdminApplications(params?: ListParams) {
-  return useQuery({
-    queryKey: KEYS.applications(params),
-    queryFn: () => adminApi.listApplications(params),
-  });
-}
-export function useAcceptApplication() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => adminApi.acceptApplication(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin", "applications"] });
-      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
-      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
-      toast.success(t("toast.requestAccepted"));
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.topicUpdateFailed"));
     },
-    onError: () => toast.error(t("toast.acceptFailed")),
-  });
-}
-export function useRejectApplication() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
-      adminApi.rejectApplication(id, reason),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin", "applications"] });
-      toast.success(t("toast.requestRejected"));
-    },
-    onError: () => toast.error(t("toast.rejectRequestFailed")),
   });
 }
 
@@ -918,5 +890,71 @@ export function useCreateAcademicStructure() {
     },
     onError: (error) =>
       toast.error(serverMessage(error, t("toast.structureCreateFailed"))),
+  });
+}
+
+/* ── Milestones ──────────────────────────────────────────────────────
+   Administration may now shape a project's timeline alongside the
+   supervising professor, so these mirror the professor-side operations. */
+
+export function useGroupMilestones(
+  groupId: string | null,
+  params?: ListParams,
+) {
+  return useQuery({
+    queryKey: ["admin", "milestones", groupId, params ?? {}],
+    queryFn: () => adminApi.listMilestones(groupId as string, params),
+    enabled: !!groupId,
+  });
+}
+
+/** Every milestone write refreshes the project it belongs to as well, since
+ *  the detail page shows progress derived from it. */
+function useMilestoneInvalidation() {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: ["admin", "milestones"] });
+    qc.invalidateQueries({ queryKey: ["admin", "project"] });
+    qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+  };
+}
+
+export function useCreateMilestone() {
+  const invalidate = useMilestoneInvalidation();
+  return useMutation({
+    mutationFn: ({ groupId, data }: { groupId: string; data: unknown }) =>
+      adminApi.createMilestone(groupId, data),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("toast.milestoneCreated"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("toast.milestoneFailed"))),
+  });
+}
+
+export function useUpdateMilestone() {
+  const invalidate = useMilestoneInvalidation();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: unknown }) =>
+      adminApi.updateMilestone(id, data),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("toast.milestoneUpdated"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("toast.milestoneFailed"))),
+  });
+}
+
+export function useDeleteMilestone() {
+  const invalidate = useMilestoneInvalidation();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.deleteMilestone(id),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t("toast.milestoneDeleted"));
+    },
+    // The server refuses to delete a milestone that has submissions; that
+    // message is the useful one, so it is shown rather than a generic failure.
+    onError: (e) => toast.error(serverMessage(e, t("toast.milestoneFailed"))),
   });
 }

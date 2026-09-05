@@ -6,7 +6,6 @@ import {
   Phone,
   AtSign,
   IdCard,
-  Hash,
   Layers,
   Network,
   Building2,
@@ -20,7 +19,7 @@ import {
   User,
   FolderKanban,
   MessagesSquare,
-  Crown,
+  SendHorizontal,
   Pencil,
   Trash2,
   ChevronLeft,
@@ -121,7 +120,6 @@ export function AdminStudentDetailPage() {
   const dept = filiere?.department;
   const faculty = dept?.faculty;
 
-  const applications = student.applications ?? [];
   const ledRequests = student.ledGroupRequests ?? [];
   const memberRequests = student.groupRequestMembers ?? [];
   const projectMembers = student.projectMembers ?? [];
@@ -182,8 +180,7 @@ export function AdminStudentDetailPage() {
   ];
 
   const hasActivity =
-    applications.length +
-      ledRequests.length +
+    ledRequests.length +
       memberRequests.length +
       projectMembers.length >
     0;
@@ -191,7 +188,6 @@ export function AdminStudentDetailPage() {
   // How many activity cards will render. One card should span the full width;
   // pairing it with an empty half looks worse than not splitting at all.
   const activityCards =
-    1 + // the applications card always renders
     (ledRequests.length > 0 ? 1 : 0) +
     (memberRequests.length > 0 ? 1 : 0) +
     (projectMembers.length > 0 ? 1 : 0);
@@ -349,13 +345,7 @@ export function AdminStudentDetailPage() {
           )}
 
           {/* stats */}
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <MiniStat
-              icon={FileText}
-              value={applications.length}
-              label={t("admin.individualApplications")}
-              tint="bg-emerald-100 text-emerald-600"
-            />
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <MiniStat
               icon={Users}
               value={ledRequests.length + memberRequests.length}
@@ -404,38 +394,10 @@ export function AdminStudentDetailPage() {
           activityCards > 1 ? "xl:grid-cols-2" : ""
         }`}
       >
-        {/* ── Individual applications ── */}
-        <Section
-          icon={FileText}
-          title={t("admin.individualTopicApplications")}
-          count={applications.length}
-        >
-          {applications.length === 0 ? (
-            <Empty icon={FileText} text={t("admin.noIndividualApplications")} />
-          ) : (
-            <ul className="space-y-2">
-              {applications.map((a: any) => (
-                <LinkRow
-                  key={a.id}
-                  title={a.topic?.title ?? "\u2014"}
-                  status={a.status}
-                  meta={[
-                    a.topic?.professor?.user &&
-                      `${personName(a.topic.professor.user)}`,
-                    a.priority != null && t("admin.priorityN", { n: a.priority }),
-                  ]}
-                  metaIcons={[User, Hash]}
-                  onClick={() => goToTopic(a.topic?.id)}
-                />
-              ))}
-            </ul>
-          )}
-        </Section>
-
         {/* ── Led group requests ── */}
         {ledRequests.length > 0 && (
           <Section
-            icon={Crown}
+            icon={SendHorizontal}
             title={t("admin.groupRequestsAsLeader")}
             count={ledRequests.length}
           >
@@ -474,7 +436,7 @@ export function AdminStudentDetailPage() {
                     m.request?.leader?.user &&
                       t("admin.leaderName", { name: personName(m.request.leader.user) }),
                   ]}
-                  metaIcons={[Crown]}
+                  metaIcons={[SendHorizontal]}
                   onClick={() => goToTopic(m.request?.topic?.id)}
                 />
               ))}
@@ -500,10 +462,12 @@ export function AdminStudentDetailPage() {
                     >
                       <div className="min-w-0">
                         <p className="flex items-center gap-1.5 text-sm font-semibold text-forest group-hover:text-forest-deep">
-                          {pm.isLeader && (
-                            <Crown size={13} className="text-gold" />
-                          )}
                           {g.topic?.title ?? "\u2014"}
+                          {pm.isLeader && (
+                            <span className="rounded-full bg-gold/15 px-1.5 py-0.5 text-[9px] font-bold text-gold">
+                              {t("admin.leader")}
+                            </span>
+                          )}
                         </p>
                         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-clay">
                           {g.topic?.professor?.user && (
@@ -662,17 +626,6 @@ function LinkRow({
         </div>
       </button>
     </li>
-  );
-}
-
-function Empty({ icon: Icon, text }: { icon: typeof Mail; text: string }) {
-  return (
-    <div className="grid place-items-center gap-2 py-10 text-center">
-      <div className="grid size-12 place-items-center rounded-full bg-forest/5 text-clay">
-        <Icon size={22} />
-      </div>
-      <p className="text-sm text-clay">{text}</p>
-    </div>
   );
 }
 

@@ -4,8 +4,6 @@ import {
   ArrowRight,
   Pencil,
   Trash2,
-  Check,
-  X,
   ListChecks,
   Target,
   Users2,
@@ -13,13 +11,7 @@ import {
   Layers,
   AlertCircle,
 } from "lucide-react";
-import {
-  useTopic,
-  useDeleteTopic,
-  useAcceptApplication,
-  useRejectApplication,
-} from "../hooks/Professor-hook";
-import type { Application } from "../../../types/professor.types";
+import { useTopic, useDeleteTopic } from "../hooks/Professor-hook";
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -31,11 +23,6 @@ const STATUS_STYLES: Record<string, string> = {
   accepted: "bg-emerald-100 text-emerald-700",
 };
 
-function initials(first?: string | null, last?: string | null, fallback = "\u061f") {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fallback;
-}
-
 export function ProfessorTopicDetailPage() {
   const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
@@ -43,8 +30,6 @@ export function ProfessorTopicDetailPage() {
 
   const { data: topic, isLoading } = useTopic(id ?? null);
   const deleteTopic = useDeleteTopic();
-  const acceptApp = useAcceptApplication();
-  const rejectApp = useRejectApplication();
 
   const editable = topic?.status === "pending" || topic?.status === "rejected";
 
@@ -55,10 +40,6 @@ export function ProfessorTopicDetailPage() {
     } catch {
       return iso;
     }
-  }
-  function studentName(a: Application) {
-    const u = a.student?.user;
-    return [u?.firstName, u?.lastName].filter(Boolean).join(" ") || a.student?.registrationNumber || "\u2014";
   }
   function handleDelete() {
     if (!topic) return;
@@ -73,8 +54,6 @@ export function ProfessorTopicDetailPage() {
   if (!topic) {
     return <div className="py-20 text-center text-sm text-clay">{t("pro.topicNotFound")}</div>;
   }
-
-  const applications = topic.applications ?? [];
 
   return (
     <div className="font-body">
@@ -183,81 +162,6 @@ export function ProfessorTopicDetailPage() {
         <MetaTile icon={Users2} label={t("pro.maxStudents")} value={String(topic.maxStudents)} />
         <MetaTile icon={CalendarDays} label={t("pro.createdAt")} value={fmtDate(topic.createdAt)} />
         <MetaTile icon={Layers} label={t("pro.specialization")} value={topic.specialization?.name ?? "\u2014"} />
-      </div>
-
-      {/* Applications */}
-      <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="border-b border-forest/10 px-5 py-4">
-          <h2 className="font-serif text-lg font-bold text-forest">{t("pro.submittedApplications")}</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-start">
-            <thead>
-              <tr className="bg-forest text-cream">
-                <th className="px-5 py-3 text-xs font-medium">{t("pro.student")}</th>
-                <th className="px-5 py-3 text-xs font-medium">{t("pro.regNumber")}</th>
-                <th className="px-5 py-3 text-xs font-medium">{t("pro.priority")}</th>
-                <th className="px-5 py-3 text-xs font-medium">{t("pro.applicationDate")}</th>
-                <th className="px-5 py-3 text-xs font-medium">{t("pro.statusLabel")}</th>
-                <th className="px-5 py-3 text-xs font-medium">{t("pro.actions")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-forest/10">
-              {applications.length === 0 && (
-                <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-clay">{t("pro.noApplications")}</td></tr>
-              )}
-
-              {applications.map((a) => (
-                <tr key={a.id} className="transition-colors hover:bg-forest/[0.03]">
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <div className="grid size-9 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream">
-                        {initials(a.student?.user?.firstName, a.student?.user?.lastName)}
-                      </div>
-                      <span className="text-sm font-medium text-forest">{studentName(a)}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-clay" dir="ltr">{a.student?.registrationNumber ?? "\u2014"}</td>
-                  <td className="px-5 py-3.5">
-                    <span className="grid size-7 place-items-center rounded-full bg-gold/15 text-xs font-bold text-gold">
-                      {a.priority}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-clay">{fmtDate(a.createdAt)}</td>
-                  <td className="px-5 py-3.5">
-                    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[a.status] ?? "bg-gray-100 text-gray-600"}`}>
-                      {t(`status.${a.status}`, { defaultValue: a.status })}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    {a.status === "pending" ? (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => acceptApp.mutate(a.id)}
-                          disabled={acceptApp.isPending}
-                          className="grid size-8 place-items-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-40"
-                          title={t("pro.accept")}
-                        >
-                          <Check size={16} />
-                        </button>
-                        <button
-                          onClick={() => rejectApp.mutate(a.id)}
-                          disabled={rejectApp.isPending}
-                          className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50 disabled:opacity-40"
-                          title={t("pro.reject")}
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-[11px] text-clay">{"\u2014"}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   );

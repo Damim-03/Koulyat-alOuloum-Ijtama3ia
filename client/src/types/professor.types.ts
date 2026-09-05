@@ -1,9 +1,9 @@
-import type { TopicStatus, ApplicationStatus, MilestoneStatus } from "./enums";
+import type { TopicStatus, MilestoneStatus } from "./enums";
 
 // ════════════════════════════════════════════════════════════
 //  Professor feature — shared types
 //  Shapes mirror what the backend professor.service returns.
-//  Enums (TopicStatus, ApplicationStatus, MilestoneStatus) come
+//  Enums (TopicStatus, MilestoneStatus) come
 //  from ./enums — do NOT redefine them here.
 // ════════════════════════════════════════════════════════════
 
@@ -36,7 +36,7 @@ export interface AcademicYearLite {
   isActive: boolean;
 }
 
-// ── Student (nested in applications / members) ──
+// ── Student (nested in group requests / members) ──
 export interface StudentRef {
   id: string;
   registrationNumber: string;
@@ -61,26 +61,10 @@ export interface Topic {
   specialization?: SpecializationLite;
   academicYear?: AcademicYearLite;
 
-  // present on getTopicById
-  applications?: Application[];
-
-  _count?: { applications: number };
+  _count?: { groupRequests: number };
 
   createdAt: string;
   updatedAt?: string;
-}
-
-// ── Application ──
-export interface Application {
-  id: string;
-  status: ApplicationStatus;
-  priority: number;
-  rejectionReason?: string | null;
-  studentId?: string;
-  topicId?: string;
-  student?: StudentRef;
-  topic?: Pick<Topic, "id" | "title" | "maxStudents" | "status">;
-  createdAt: string;
 }
 
 // ── Submission (nested under milestones) ──

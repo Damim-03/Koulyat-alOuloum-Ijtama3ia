@@ -12,6 +12,8 @@ import {
   adminLoginService,
   refreshTokenService,
   getMeService,
+  logoutService,
+  logoutAllService,
 } from "./auth.service";
 import { BadRequestException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
@@ -89,6 +91,37 @@ export const getMeController = async (
   try {
     const userId = req.user!.userId;
     const result = await getMeService(userId);
+    return res.status(HTTPSTATUS.OK).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const logoutController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // Revokes the session this very token belongs to — not the account.
+    const header = req.headers.authorization;
+    const token = header?.startsWith("Bearer ")
+      ? header.substring(7).trim()
+      : undefined;
+    const result = await logoutService(token);
+    return res.status(HTTPSTATUS.OK).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const logoutAllController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await logoutAllService(req.user!.userId);
     return res.status(HTTPSTATUS.OK).json(result);
   } catch (error) {
     next(error);

@@ -26,7 +26,6 @@ import i18n from "../../../../i18n/i18n";
 const PATHS = {
   topics: "admin/topics",
   groupRequests: "admin/group-requests",
-  applications: "admin/applications",
   students: "admin/students",
   defenses: "admin/defenses",
   professors: "admin/professors",
@@ -459,7 +458,7 @@ export function AdminDashboardPage() {
         </div>
 
         {/* primary tiles */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <StatTile
               label={t("dash.students")}
               value={stats.students}
@@ -484,14 +483,6 @@ export function AdminDashboardPage() {
               onClick={() => go(PATHS.topics, { status: "open" })}
           />
           <StatTile
-              label={t("pro.pendingApplications")}
-              value={stats.pendingRequests}
-              icon={ClipboardList}
-              tint="bg-clay/15 text-clay"
-              trend={trends.requests}
-              onClick={() => go(PATHS.groupRequests, { status: "pending" })}
-          />
-          <StatTile
               label={t("admin.upcomingDefensesShort")}
               value={stats.upcomingDefenses}
               icon={MessagesSquare}
@@ -501,7 +492,7 @@ export function AdminDashboardPage() {
         </div>
 
         {/* secondary tiles */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <StatTile
               label={t("admin.pendingProposals")}
               value={stats.pendingTopics}
@@ -517,17 +508,11 @@ export function AdminDashboardPage() {
               onClick={() => go(PATHS.topics, { status: "full" })}
           />
           <StatTile
-              label={t("admin.pendingIndividualRequests")}
-              value={stats.pendingApplications}
-              icon={ClipboardList}
-              tint="bg-sky-100 text-sky-600"
-              onClick={() => go(PATHS.applications, { status: "pending" })}
-          />
-          <StatTile
               label={t("admin.pendingGroupRequests")}
               value={stats.pendingGroupRequests}
-              icon={MessagesSquare}
-              tint="bg-violet-100 text-violet-600"
+              icon={ClipboardList}
+              tint="bg-clay/15 text-clay"
+              trend={trends.requests}
               onClick={() => go(PATHS.groupRequests, { status: "pending" })}
           />
         </div>

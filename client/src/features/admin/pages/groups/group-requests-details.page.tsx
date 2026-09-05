@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   ArrowRight,
-  Crown,
   Users,
   Check,
   X,
@@ -380,7 +379,6 @@ export function AdminGroupRequestDetailPage() {
                   )}
                   <div className="min-w-0">
                     <p className="flex items-center gap-1.5 text-sm font-semibold text-forest group-hover:text-forest-deep group-hover:underline">
-                      {isLeader && <Crown size={13} className="text-gold" />}
                       {fullName(u)}
                     </p>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-clay">
@@ -423,8 +421,9 @@ export function AdminGroupRequestDetailPage() {
                       </>
                     )}
                     {isLeader && (
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-gold/15 px-2.5 py-1.5 text-xs font-semibold text-gold">
-                        <Crown size={13} />{t("admin.leader")}</span>
+                      <span className="inline-flex items-center rounded-lg bg-gold/15 px-2.5 py-1.5 text-xs font-semibold text-gold">
+                        {t("admin.leader")}
+                      </span>
                     )}
                   </div>
                 )}

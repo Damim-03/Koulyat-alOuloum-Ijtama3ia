@@ -37,9 +37,6 @@ export const listPublicTopicsService = async (q: ListPublicTopicsDTO) => {
     groupRequests: {
       none: { status: { in: ["pending", "accepted"] } as never },
     },
-    applications: {
-      none: { status: { in: ["pending", "accepted"] } as never },
-    },
     ...(q.specializationId ? { specializationId: q.specializationId } : {}),
     // Filter by department through topic → specialization → filiere → department.
     ...(q.departmentId

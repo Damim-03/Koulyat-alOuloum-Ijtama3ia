@@ -13,7 +13,6 @@ import { broadcastChange } from "../realtime/realtime";
 /** Paths whose changes ripple into the dashboard counters. */
 const AFFECTS_DASHBOARD = new Set([
   "topics",
-  "applications",
   "group-requests",
   "projects",
   "defenses",

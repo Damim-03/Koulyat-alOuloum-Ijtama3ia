@@ -172,8 +172,8 @@ export function AdminProfessorDetailPage() {
     statusCounts[t.status] = (statusCounts[t.status] ?? 0) + 1;
   const approved = statusCounts["approved"] ?? 0;
   const pending = statusCounts["pending"] ?? 0;
-  const totalApplications = topics.reduce(
-    (s, t) => s + (t._count?.applications ?? 0),
+  const totalRequests = topics.reduce(
+    (s, t) => s + (t._count?.groupRequests ?? 0),
     0,
   );
   const barSegs = STATUS_BAR.filter((s) => (statusCounts[s.key] ?? 0) > 0);
@@ -375,8 +375,8 @@ export function AdminProfessorDetailPage() {
             />
             <MiniStat
               icon={Users}
-              value={totalApplications}
-              label={t("admin.totalApplications")}
+              value={totalRequests}
+              label={t("admin.totalRequests")}
               tint="bg-gold/15 text-gold"
             />
           </div>
@@ -530,7 +530,7 @@ function TopicRow({
             <span className="inline-flex items-center gap-1">
               <Users size={12} />{" "}
               {t("admin.requestsCount", {
-                count: topic._count?.applications ?? 0,
+                count: topic._count?.groupRequests ?? 0,
               })}
             </span>
             <span className="inline-flex items-center gap-1">

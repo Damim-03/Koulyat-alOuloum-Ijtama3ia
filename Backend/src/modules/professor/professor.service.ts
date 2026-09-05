@@ -10,8 +10,8 @@ import {
   UpdateTopicDTO,
   CreateMilestoneDTO,
   UpdateMilestoneDTO,
-  ListApplicationsDTO,
 } from "./professor.validation";
+import { publicUser } from "../../core/prisma/selects";
 
 //
 // ─── GET PROFESSOR BY USERID ─────────────────────────────────
@@ -77,7 +77,7 @@ export const getMyTopicsService = async (userId: string) => {
       specialization: true,
       academicYear: true,
       _count: {
-        select: { applications: true },
+        select: { groupRequests: true },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -98,13 +98,6 @@ export const getTopicByIdService = async (userId: string, topicId: string) => {
     include: {
       specialization: true,
       academicYear: true,
-      applications: {
-        include: {
-          student: {
-            include: { user: true },
-          },
-        },
-      },
     },
   });
 
@@ -218,149 +211,15 @@ export const deleteTopicService = async (userId: string, topicId: string) => {
 
 // ─── LIST APPLICATIONS (for this professor's topics) ──────────
 
-export const getApplicationsService = async (
-  userId: string,
-  filters: ListApplicationsDTO,
-) => {
-  const professor = await getProfessor(userId);
-
-  return prisma.topicApplication.findMany({
-    where: {
-      topic: { professorId: professor.id },
-      ...(filters.topicId ? { topicId: filters.topicId } : {}),
-      ...(filters.status ? { status: filters.status } : {}),
-    },
-    include: {
-      student: { include: { user: true } },
-      topic: {
-        select: { id: true, title: true, maxStudents: true, status: true },
-      },
-    },
-    orderBy: [{ topicId: "asc" }, { priority: "asc" }],
-  });
-};
 
 // ─── helper: load an application owned by this professor ──────
 
-const getOwnedApplication = async (
-  professorId: string,
-  applicationId: string,
-) => {
-  const application = await prisma.topicApplication.findUnique({
-    where: { id: applicationId },
-    include: {
-      topic: { include: { projectGroup: { include: { members: true } } } },
-    },
-  });
-
-  if (!application) {
-    throw new NotFoundException(
-      "Application not found",
-      ErrorCodeEnum.RESOURCE_NOT_FOUND,
-    );
-  }
-
-  if (application.topic.professorId !== professorId) {
-    throw new UnauthorizedException(
-      "You do not own this topic",
-      ErrorCodeEnum.ACCESS_UNAUTHORIZED,
-    );
-  }
-
-  return application;
-};
 
 // ─── ACCEPT APPLICATION ───────────────────────────────────────
 
-export const acceptApplicationService = async (
-  userId: string,
-  applicationId: string,
-) => {
-  const professor = await getProfessor(userId);
-  const application = await getOwnedApplication(professor.id, applicationId);
-
-  if (application.status === "accepted") {
-    throw new BadRequestException(
-      "Application is already accepted",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  }
-
-  const topic = application.topic;
-  const currentMembers = topic.projectGroup?.members.length ?? 0;
-
-  if (currentMembers >= topic.maxStudents) {
-    throw new BadRequestException(
-      "This topic is already full",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  }
-
-  return prisma.$transaction(async (tx) => {
-    // 1. Create the project group on first accept
-    const group =
-      topic.projectGroup ??
-      (await tx.projectGroup.create({ data: { topicId: topic.id } }));
-
-    // 2. Add the student as a member (idempotent)
-    await tx.projectMember.upsert({
-      where: {
-        groupId_studentId: {
-          groupId: group.id,
-          studentId: application.studentId,
-        },
-      },
-      create: { groupId: group.id, studentId: application.studentId },
-      update: {},
-    });
-
-    // 3. Mark this application accepted
-    const updated = await tx.topicApplication.update({
-      where: { id: application.id },
-      data: { status: "accepted" },
-    });
-
-    // 4. If the group is now full → close topic + auto-reject the rest
-    const memberCount = await tx.projectMember.count({
-      where: { groupId: group.id },
-    });
-
-    if (memberCount >= topic.maxStudents) {
-      await tx.graduationTopic.update({
-        where: { id: topic.id },
-        data: { status: "full" },
-      });
-      await tx.topicApplication.updateMany({
-        where: { topicId: topic.id, status: "pending" },
-        data: { status: "rejected" },
-      });
-    }
-
-    return updated;
-  });
-};
 
 // ─── REJECT APPLICATION ───────────────────────────────────────
 
-export const rejectApplicationService = async (
-  userId: string,
-  applicationId: string,
-) => {
-  const professor = await getProfessor(userId);
-  const application = await getOwnedApplication(professor.id, applicationId);
-
-  if (application.status === "rejected") {
-    throw new BadRequestException(
-      "Application is already rejected",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  }
-
-  return prisma.topicApplication.update({
-    where: { id: application.id },
-    data: { status: "rejected" },
-  });
-};
 
 //
 // ═══════════════════════════════════════════════════════════════
@@ -498,7 +357,7 @@ export const getMyGroupsService = async (userId: string) => {
         select: { id: true, title: true, status: true, maxStudents: true },
       },
       members: {
-        include: { student: { include: { user: true } } },
+        include: { student: { include: { user: publicUser } } },
       },
       _count: { select: { milestones: true } },
     },
@@ -519,7 +378,7 @@ export const getGroupByIdService = async (userId: string, groupId: string) => {
         select: { id: true, title: true, status: true, maxStudents: true },
       },
       members: {
-        include: { student: { include: { user: true } } },
+        include: { student: { include: { user: publicUser } } },
       },
       milestones: {
         orderBy: { order: "asc" },

@@ -29,10 +29,20 @@ export function useRealtimeSync() {
 
     const onChange = ({ resource }: ChangePayload) => {
       if (!resource) return;
+
+      // The server names resources after the URL segment, which is plural
+      // ("users"), while detail screens key their query on the singular
+      // ("admin","user",id). An exact match therefore never fired for any
+      // detail page: editing a user refreshed the list behind it but left the
+      // open profile showing the old avatar and the old completion figure.
+      const forms = new Set([resource]);
+      if (resource.endsWith("ies")) forms.add(resource.slice(0, -3) + "y");
+      else if (resource.endsWith("s")) forms.add(resource.slice(0, -1));
+
       qc.invalidateQueries({
         predicate: (query) =>
           query.queryKey.some(
-            (part) => typeof part === "string" && part === resource,
+            (part) => typeof part === "string" && forms.has(part),
           ),
       });
     };

@@ -792,3 +792,13 @@ select {
   background-color: color-mix(in oklab, var(--t-gold) 45%, transparent);
   color: var(--t-forest);
 }
+
+/* Indeterminate sweep for "the table is refetching" hairlines. */
+@keyframes bulkSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}

@@ -312,7 +312,7 @@ function ArchiveBody({
                     </td>
                     <td className="px-5 py-3.5">
                       <span className="inline-grid min-w-7 place-items-center rounded-full bg-forest/10 px-2 py-0.5 text-xs font-bold text-forest">
-                        {tp._count?.applications ?? 0}
+                        {tp._count?.groupRequests ?? 0}
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-clay">

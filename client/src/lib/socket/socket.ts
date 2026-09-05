@@ -1,5 +1,6 @@
 import { io, type Socket } from "socket.io-client";
 import { env } from "../../config/env";
+import { useAuthStore } from "../../store/auth.store";
 
 // Payload shape is a placeholder — align with what your backend actually
 // emits once the notification events are defined server-side.
@@ -25,11 +26,9 @@ export interface ServerToClientEvents {
   notification: (payload: NotificationPayload) => void;
 }
 
-// Events the client sends to the server.
-export interface ClientToServerEvents {
-  "join-room": (userId: string) => void;
-  join: (payload: { userId: string; role?: string }) => void;
-}
+// The client no longer asks to join rooms: the server derives them from the
+// authenticated handshake, so there is nothing left to send.
+export type ClientToServerEvents = Record<string, never>;
 
 export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -38,5 +37,8 @@ export function createSocket(): AppSocket {
     autoConnect: false, // we connect manually once authenticated
     withCredentials: true,
     transports: ["websocket"],
+    // Read at connect time (not at module load) so a reconnect after a token
+    // refresh presents the current token rather than the one from page load.
+    auth: (cb) => cb({ token: useAuthStore.getState().accessToken ?? "" }),
   });
 }

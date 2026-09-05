@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { HTTPSTATUS } from "../../core/config/http/http.config";
+import { config } from "../../core/config/app.config";
+import { verifyUploadedImage } from "../../core/middleware/upload.middleware";
 import { BadRequestException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import {
@@ -34,6 +36,10 @@ import {
   updateDefenseSchema,
   listNotificationsSchema,
   listProfessorsSchema,
+  listProjectsSchema,
+  listMilestonesSchema,
+  adminCreateMilestoneSchema,
+  adminUpdateMilestoneSchema,
   createDomainSchema,
   listDomainsSchema,
   updateDomainSchema,
@@ -299,7 +305,20 @@ export const uploadImageController = (req: Request, res: Response) => {
       "لم يُرفَع أي ملفّ",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
-  const url = `${req.protocol}://${req.get("host")}/uploads/cards/${req.file.filename}`;
+
+  // multer has already written the file; confirm the bytes match the format
+  // that was claimed before we hand out a URL for it. Deletes on mismatch.
+  if (!verifyUploadedImage(req.file.path)) {
+    throw new BadRequestException(
+      "الملفّ ليس صورة صالحة",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  }
+
+  // Built from configuration, not from the Host header: a request carrying
+  // `Host: attacker.example` would otherwise have this endpoint mint — and
+  // the caller then store — an image URL pointing at the attacker's server.
+  const url = `${config.PUBLIC_API_URL}/uploads/cards/${req.file.filename}`;
   return res.status(HTTPSTATUS.OK).json({ url });
 };
 
@@ -1009,54 +1028,8 @@ export const unpublishTopicController = async (
 // ─── APPLICATIONS ─────────────────────────────────────────────
 //
 
-export const listApplicationsController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const q = parseBody(listQuerySchema, req.query);
-    const data = await svc.listApplicationsService(q as never);
-    return res.status(HTTPSTATUS.OK).json(data);
-  } catch (e) {
-    next(e);
-  }
-};
 
-export const acceptApplicationController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const application = await svc.acceptApplicationService(
-      req.params.id as string,
-    );
-    return res
-      .status(HTTPSTATUS.OK)
-      .json({ message: "Application accepted", application });
-  } catch (e) {
-    next(e);
-  }
-};
 
-export const rejectApplicationController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const application = await svc.rejectApplicationService(
-      req.params.id as string,
-      (req.body?.reason as string) ?? undefined,
-    );
-    return res
-      .status(HTTPSTATUS.OK)
-      .json({ message: "Application rejected", application });
-  } catch (e) {
-    next(e);
-  }
-};
 
 //
 // ─── PROJECTS ─────────────────────────────────────────────────
@@ -1068,7 +1041,7 @@ export const listProjectsController = async (
   next: NextFunction,
 ) => {
   try {
-    const q = parseBody(listQuerySchema, req.query);
+    const q = parseBody(listProjectsSchema, req.query);
     const data = await svc.listProjectsService(q as never);
     return res.status(HTTPSTATUS.OK).json(data);
   } catch (e) {
@@ -1149,8 +1122,10 @@ export const listGroupMilestonesController = async (
   next: NextFunction,
 ) => {
   try {
+    const q = parseBody(listMilestonesSchema, req.query);
     const milestones = await svc.listGroupMilestonesService(
       req.params.groupId as string,
+      q as never,
     );
     return res.status(HTTPSTATUS.OK).json({ milestones });
   } catch (e) {
@@ -1427,6 +1402,57 @@ export const updateAssignedTopicController = async (
       data as never,
     );
     return res.status(HTTPSTATUS.OK).json({ message: "Topic updated", topic });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const createGroupMilestoneController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(adminCreateMilestoneSchema, req.body);
+    const milestone = await svc.createGroupMilestoneService(
+      req.params.groupId as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Milestone created", milestone });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const updateGroupMilestoneController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(adminUpdateMilestoneSchema, req.body);
+    const milestone = await svc.updateGroupMilestoneService(
+      req.params.id as string,
+      data as never,
+    );
+    return res.status(HTTPSTATUS.OK).json({ message: "Milestone updated", milestone });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const deleteGroupMilestoneController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await svc.deleteGroupMilestoneService(
+      req.params.id as string,
+    );
+    return res.status(HTTPSTATUS.OK).json(result);
   } catch (e) {
     next(e);
   }

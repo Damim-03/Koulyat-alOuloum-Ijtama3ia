@@ -51,7 +51,6 @@ import { DomainDetailPage } from "../features/admin/pages/domain/domain-detail.p
 import { FiliereDetailPage } from "../features/admin/pages/filters/filter-detail.page";
 import { DepartmentDetailPage } from "../features/admin/pages/departments/department-detail.page";
 import { AdminUnassignedStudentsPage } from "../features/admin/pages/filters/unassigned-students.page";
-import { AdminApplicationsPage } from "../features/admin/pages/application/applications.page";
 import { AdminArchivePage } from "../features/admin/pages/archive/archive.Page";
 import { AdminDashboardPage } from "../features/admin/pages/dashboard/dashboard.page";
 import { SpecializationDetailPage } from "../features/admin/pages/filters/specialization-detail.Page";
@@ -59,6 +58,7 @@ import { AdminGroupRequestDetailPage } from "../features/admin/pages/groups/grou
 import { AdminGroupRequestsPage } from "../features/admin/pages/groups/group-requests.page";
 import { AdminProfessorDetailPage } from "../features/admin/pages/professors/professor-detail-page";
 import { AdminProjectsPage } from "../features/admin/pages/projects/projects.page";
+import { AdminProjectDetailPage } from "../features/admin/pages/projects/project-detail.page";
 import {AdminMessagesPage} from "../features/admin/pages/messages/messages.page.tsx";
 
 export function AppRouter() {
@@ -168,8 +168,11 @@ export function AppRouter() {
             element={<AdminGroupRequestDetailPage />}
           />
           <Route path="defenses" element={<AdminDefensesPage />} />
-          <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="projects" element={<AdminProjectsPage />} />
+          <Route
+            path="projects/:id"
+            element={<AdminProjectDetailPage />}
+          />
           <Route path="academic-years" element={<AdminArchivePage />} />
           <Route
             path="specializations/:specializationId"

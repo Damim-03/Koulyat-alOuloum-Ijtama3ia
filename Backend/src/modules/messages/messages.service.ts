@@ -144,12 +144,6 @@ async function assertStudentCanMessage(
                     },
                 },
             },
-            applications: {
-                where: { status: { in: ["pending", "accepted"] } },
-                select: {
-                    topic: { select: { professor: { select: { userId: true } } } },
-                },
-            },
         },
     });
     if (!student)
@@ -182,11 +176,6 @@ async function assertStudentCanMessage(
             if (m.student?.userId) allowed.add(m.student.userId);
         }
     }
-    for (const a of student.applications) {
-        const prof = a.topic?.professor?.userId;
-        if (prof) allowed.add(prof);
-    }
-
     const blocked = nonStaff.filter((r) => !allowed.has(r.id));
     if (blocked.length > 0)
         throw new BadRequestException(
@@ -196,8 +185,7 @@ async function assertStudentCanMessage(
 }
 
 /* Professors may message: admins/owners, other professors, and students
-   related to their topics (project members, group-request members/leaders,
-   or applicants). */
+   related to their topics (project members, group-request members/leaders). */
 async function assertProfessorCanMessage(
     senderUserId: string,
     recipients: { id: string; role: string }[],
@@ -235,9 +223,6 @@ async function assertProfessorCanMessage(
                         some: { request: { topic: { professorId: professor.id } } },
                     },
                 },
-                {
-                    applications: { some: { topic: { professorId: professor.id } } },
-                },
             ],
         },
         select: { userId: true },
@@ -246,7 +231,7 @@ async function assertProfessorCanMessage(
     const blocked = students.filter((s) => !allowed.has(s.id));
     if (blocked.length > 0)
         throw new BadRequestException(
-            "يمكنك مراسلة الطلبة المرتبطين بمواضيعك فقط (أعضاء مشاريعك أو المتقدّمون إليها).",
+            "يمكنك مراسلة الطلبة المرتبطين بمواضيعك فقط (أعضاء مشاريعك أو أصحاب طلبات المجموعات عليها).",
             ErrorCodeEnum.VALIDATION_ERROR,
         );
 }

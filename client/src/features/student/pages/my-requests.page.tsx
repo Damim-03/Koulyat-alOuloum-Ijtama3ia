@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Plus,
-  Crown,
   AlertCircle,
   X,
   Inbox,
@@ -219,9 +218,7 @@ export function StudentMyRequestsPage() {
                                   isLeader ? "ring-2 ring-gold" : ""
                                 }`}
                               >
-                                {isLeader ? (
-                                  <Crown size={12} className="text-gold-soft" />
-                                ) : (
+                                {(
                                   initials(
                                     m.student?.user?.firstName,
                                     m.student?.user?.lastName,

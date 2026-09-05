@@ -104,3 +104,36 @@ export const adminOrOwner =
 
     return next();
   };
+
+//
+// EXACT ROLE
+//
+
+/**
+ * Restricts a router to specific roles.
+ *
+ * `roleGuard([Permissions.LOGIN])` was being used as the entry gate on the
+ * /professor and /student routers, but LOGIN is granted to every role — so
+ * the gate admitted any authenticated user and the only thing keeping a
+ * student out of professor endpoints was the per-route permission plus the
+ * service-layer ownership checks. This makes the intended boundary explicit
+ * at the router, which is where it is easiest to audit.
+ */
+export const requireRole =
+  (...allowed: RoleType[]) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as Request & { user?: JwtUser }).user;
+
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // OWNER retains the system-wide bypass it has elsewhere in this file.
+    if (user.role === "owner" || allowed.includes(user.role as RoleType)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "You do not have permission to access this resource",
+    });
+  };

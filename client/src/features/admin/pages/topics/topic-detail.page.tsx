@@ -18,6 +18,7 @@ import {
   Send,
   EyeOff,
   Archive,
+  Pencil,
   Undo2,
 } from "lucide-react";
 import {
@@ -32,6 +33,8 @@ import {
 } from "../../hooks/admin-hook";
 import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
 import { ProjectMembersDialog } from "../../components/dialog/projects/project-members-dialog.form";
+import { UserAvatar } from "../../components/ui/user-avatar";
+import { EditAssignedTopicDialog } from "../../components/dialog/projects/edit-assigned-topic-dialog.form";
 import i18n from "../../../../i18n/i18n";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -43,16 +46,18 @@ const STATUS_STYLES: Record<string, string> = {
   archived: "bg-gray-200 text-gray-600",
 };
 
-function initials(
-  first?: string | null,
-  last?: string | null,
-  fallback = "\u061f",
-) {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fallback;
-}
-
 type TopicReference = { title: string; url: string };
+
+type PersonRef = {
+  firstName?: string | null;
+  lastName?: string | null;
+  avatarUrl?: string | null;
+};
+
+/** Display name for a person, falling back to a dash rather than an empty gap. */
+function nameOf(user?: PersonRef | null) {
+  return [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "—";
+}
 
 export function AdminTopicDetailPage() {
   const { t } = useTranslation();
@@ -77,6 +82,7 @@ export function AdminTopicDetailPage() {
   const [reason, setReason] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   function fmtDate(iso?: string) {
     if (!iso) return "\u2014";
@@ -113,10 +119,25 @@ export function AdminTopicDetailPage() {
   const objectives: string[] = topic.objectives ?? [];
   const references: TopicReference[] =
     (topic.references as TopicReference[]) ?? [];
-  const projectGroup = (topic as { projectGroup?: { id: string } | null })
-    .projectGroup;
+  const projectGroup = (
+    topic as {
+      projectGroup?: {
+        id: string;
+        members?: {
+          id: string;
+          isLeader: boolean;
+          student?: {
+            id: string;
+            registrationNumber?: string | null;
+            user?: PersonRef | null;
+          };
+        }[];
+      } | null;
+    }
+  ).projectGroup;
   const hasGroup = Boolean(projectGroup);
   const groupId = projectGroup?.id ?? null;
+  const members = projectGroup?.members ?? [];
 
   function doApprove() {
     approve.mutate(topic!.id, { onSuccess: () => refetch() });
@@ -167,9 +188,17 @@ export function AdminTopicDetailPage() {
             {t(`status.${topic.status}`, { defaultValue: topic.status })}
           </span>
           <button
-            onClick={() =>
-              hasGroup ? setMembersOpen(true) : setConfirmOpen(true)
-            }
+            onClick={() => setEditOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-forest/20 px-3 py-1.5 text-xs font-semibold text-forest transition hover:bg-forest/5"
+          >
+            <Pencil size={14} />
+            {t("admin.editTopic")}
+          </button>
+          {/* This used to open the members dialog whenever a group existed —
+              a red "delete" button that showed a member list instead. Deleting
+              is now just deleting; members are managed from their own card. */}
+          <button
+            onClick={() => setConfirmOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-50"
           >
             <Trash2 size={14} />
@@ -204,9 +233,7 @@ export function AdminTopicDetailPage() {
               <h4 className="text-sm font-bold text-forest">{profName}</h4>
               <p className="text-[11px] text-clay">{t("admin.supervisor")}</p>
             </div>
-            <div className="grid size-12 place-items-center rounded-xl bg-linear-to-br from-forest to-forest-deep text-sm font-bold text-cream">
-              {initials(u?.firstName, u?.lastName)}
-            </div>
+            <UserAvatar user={u} size={48} className="rounded-xl" />
           </div>
         </div>
       </div>
@@ -228,8 +255,73 @@ export function AdminTopicDetailPage() {
             </p>
           </section>
 
+          {/* Group members — for an assigned topic this is the point of the
+              page, and it was previously reachable only through the delete
+              button. */}
+          <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-forest/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Users size={18} className="text-gold" />
+                <h2 className="font-serif text-lg font-bold text-forest">
+                  {t("admin.groupMembers")}
+                </h2>
+                {hasGroup && (
+                  <span className="rounded-full bg-forest/10 px-2 py-0.5 text-[11px] font-bold text-forest tabular-nums">
+                    {t("admin.membersOfMax", {
+                      n: members.length,
+                      max: topic.maxStudents,
+                    })}
+                  </span>
+                )}
+              </div>
+              {hasGroup && (
+                <button
+                  onClick={() => setMembersOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-forest/20 px-3 py-1.5 text-xs font-semibold text-forest transition hover:bg-forest/5"
+                >
+                  <Users size={14} />
+                  {t("admin.manageMembers")}
+                </button>
+              )}
+            </div>
+
+            {members.length === 0 ? (
+              <p className="py-4 text-center text-sm text-clay">
+                {t("admin.noGroupYet")}
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {members.map((m) => (
+                  <div
+                    key={m.id}
+                    className={`flex items-center gap-3 rounded-xl border p-3 ${
+                      m.isLeader
+                        ? "border-gold bg-gold/5"
+                        : "border-forest/10 bg-cream-2"
+                    }`}
+                  >
+                    <UserAvatar user={m.student?.user} size={38} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-forest">
+                        {nameOf(m.student?.user)}
+                        {m.isLeader && (
+                          <span className="ms-2 rounded-full bg-gold/15 px-1.5 py-0.5 text-[9px] font-bold text-gold">
+                            {t("admin.leader")}
+                          </span>
+                        )}
+                      </p>
+                      <p className="truncate text-[11px] text-clay" dir="ltr">
+                        {m.student?.registrationNumber ?? ""}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
           {/* Requirements */}
-          {requirements.length > 0 && (
+          {requirements.length > 0 ? (
             <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
               <div className="mb-5 flex items-center gap-2 border-b border-forest/10 pb-3">
                 <ListChecks size={18} className="text-gold" />
@@ -249,10 +341,23 @@ export function AdminTopicDetailPage() {
                 ))}
               </div>
             </section>
+          )
+           : (
+            <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+              <div className="mb-4 flex items-center gap-2 border-b border-forest/10 pb-3">
+                <ListChecks size={18} className="text-clay/60" />
+                <h2 className="font-serif text-lg font-bold text-forest">
+                  {t("admin.requirementsLabel")}
+                </h2>
+              </div>
+              <p className="py-2 text-center text-sm text-clay">
+                {t("admin.noRequirements")}
+              </p>
+            </section>
           )}
 
           {/* Objectives */}
-          {objectives.length > 0 && (
+          {objectives.length > 0 ? (
             <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
               <div className="mb-5 flex items-center gap-2 border-b border-forest/10 pb-3">
                 <Flag size={18} className="text-gold" />
@@ -271,10 +376,23 @@ export function AdminTopicDetailPage() {
                 ))}
               </ul>
             </section>
+          )
+           : (
+            <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+              <div className="mb-4 flex items-center gap-2 border-b border-forest/10 pb-3">
+                <Flag size={18} className="text-clay/60" />
+                <h2 className="font-serif text-lg font-bold text-forest">
+                  {t("admin.objectivesLabel")}
+                </h2>
+              </div>
+              <p className="py-2 text-center text-sm text-clay">
+                {t("admin.noObjectives")}
+              </p>
+            </section>
           )}
 
           {/* References */}
-          {references.length > 0 && (
+          {references.length > 0 ? (
             <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
               <div className="mb-5 flex items-center gap-2 border-b border-forest/10 pb-3">
                 <Link2 size={18} className="text-gold" />
@@ -307,6 +425,19 @@ export function AdminTopicDetailPage() {
                   </div>
                 ))}
               </div>
+            </section>
+          )
+           : (
+            <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+              <div className="mb-4 flex items-center gap-2 border-b border-forest/10 pb-3">
+                <Link2 size={18} className="text-clay/60" />
+                <h2 className="font-serif text-lg font-bold text-forest">
+                  {t("admin.referencesLabel")}
+                </h2>
+              </div>
+              <p className="py-2 text-center text-sm text-clay">
+                {t("admin.noReferencesYet")}
+              </p>
             </section>
           )}
         </div>
@@ -494,9 +625,17 @@ export function AdminTopicDetailPage() {
         groupId={groupId}
         topicId={topic.id}
         topicTitle={topic.title}
+        maxStudents={topic.maxStudents}
+        specializationId={topic.specialization?.id ?? null}
         onClose={() => setMembersOpen(false)}
         onChanged={() => refetch()}
         onDeleted={() => navigate(topicsPath)}
+      />
+
+      <EditAssignedTopicDialog
+        topicId={editOpen ? topic.id : null}
+        onClose={() => setEditOpen(false)}
+        onUpdated={() => refetch()}
       />
 
       <ConfirmDialog
