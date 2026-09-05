@@ -27,7 +27,9 @@
     "lightMode": "Light mode",
     "darkMode": "Dark mode",
     "avatarAlt": "avatar",
-    "menu": "menu"
+    "menu": "menu",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "hero": {
     "badge": "Mudhakkarati Platform",
@@ -804,7 +806,6 @@
     "addDepartmentFirstHint": "Add at least one department first — domains and branches belong to a department.",
     "backToDepartments": "Back to departments",
     "filieresAndSpecializations": "Branches and specializations",
-    "unknownInitial": "?",
     "chooseDepartment": "Choose the department",
     "editProfessorTitle": "Edit the professor's details",
     "personalData": "Personal details",
@@ -1030,7 +1031,7 @@
     "assignMaxReached": "Maximum reached: {{count}} students",
     "assignCreateError": "Could not create and assign the topic",
     "assignTopicTitle": "Create and assign a topic",
-    "assignTopicSubtitle": "Create the topic and pick the students and supervisor in one step",
+    "assignTopicSubtitle": "The topic plus its assigned students, in two steps",
     "assignTopicTitlePlaceholder": "Topic title",
     "topicDescription": "Topic description",
     "assignTopicDescPlaceholder": "Explain the topic's idea and objectives…",
@@ -1161,7 +1162,25 @@
     "milestoneSharedNote": "Milestones are shared with the supervising professor — they are notified of every change.",
     "noMilestonesMatch": "No matching milestones",
     "deleteMilestone": "Delete milestone",
-    "memberDifferentSpec": "Different specialization from the topic"
+    "memberDifferentSpec": "Different specialization from the topic",
+    "createTopicBtn": "Create topic",
+    "createTopicTitle": "Create a new topic",
+    "createTopicSubtitle": "The topic alone — no students assigned",
+    "createTopicError": "Could not create the topic",
+    "publishNow": "Publish it to students now",
+    "publishNowHint": "Otherwise the topic stays on the board, unseen by students until you publish it.",
+    "statusOpenNote": "Visible to students, who can send a group request for it.",
+    "statusApprovedNote": "Approved but unpublished — publish it later from the list.",
+    "supervisorNotifiedNote": "{{name}} will be notified that the administration assigned them this topic to supervise.",
+    "gender": "Gender",
+    "genderMale": "Male",
+    "genderFemale": "Female",
+    "genderClear": "Not stated",
+    "genderHint": "Chooses the default avatar when no photo has been uploaded.",
+    "genderUnset": "Not stated",
+    "pickOrTypeHint": "Pick from the list or type…",
+    "gradeFieldHint": "Pick the rank from the list; typing it by hand can create a duplicate rank with a different spelling.",
+    "tagFieldHint": "Pick from the attributes other professors already carry, so they stay consistent."
   },
   "prof": {
     "newTopic": "Propose a new topic",
@@ -1317,7 +1336,8 @@
     "structureCreated": "Structure created: {{departments}} departments, {{domains}} domains, {{filieres}} branches, {{specializations}} specializations",
     "broadcastSent": "Sent to {{count}} recipients",
     "milestoneCreated": "Milestone added",
-    "milestoneFailed": "The milestone operation failed"
+    "milestoneFailed": "The milestone operation failed",
+    "topicCreated": "Topic created"
   },
   "auth": {
     "regNumberPlaceholder": "e.g. 202039012345",

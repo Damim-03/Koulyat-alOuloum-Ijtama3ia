@@ -33,9 +33,9 @@ import {
 } from "../../hooks/admin-hook";
 import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
 import { ProjectMembersDialog } from "../../components/dialog/projects/project-members-dialog.form";
-import { UserAvatar } from "../../components/ui/user-avatar";
 import { EditAssignedTopicDialog } from "../../components/dialog/projects/edit-assigned-topic-dialog.form";
 import i18n from "../../../../i18n/i18n";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 const STATUS_STYLES: Record<string, string> = {
   approved: "bg-emerald-100 text-emerald-700",

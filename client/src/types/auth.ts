@@ -1,4 +1,4 @@
-import type { Role } from "./enums";
+import type { Gender, Role } from "./enums";
 
 export interface AuthUser {
   id: string;
@@ -10,6 +10,8 @@ export interface AuthUser {
   firstName?: string;
   lastName?: string;
   avatarUrl?: string;
+  /** Decides the default avatar when there is no photo. */
+  gender?: Gender | null;
 }
 
 export interface AuthTokens {

@@ -13,13 +13,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { FormDialog } from "../../form/form-dialog";
-import { t as translate } from "i18next";
+import { UserAvatar } from "../../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function initials(first?: string | null, last?: string | null, fb = translate("admin.unknownInitial")) {
-  return (first?.[0] ?? "") + (last?.[0] ?? "") || fb;
-}
 
 /**
  * A student at a glance, without leaving the list.
@@ -111,9 +108,13 @@ export function StudentPreviewDialog({
             className="h-24 w-[4.66rem] shrink-0 rounded-xl object-cover shadow-sm"
           />
         ) : (
-          <div className="grid h-24 w-[4.66rem] shrink-0 place-items-center rounded-xl bg-linear-to-br from-forest to-forest-deep text-2xl font-bold text-cream shadow-sm">
-            {initials(u.firstName, u.lastName)}
-          </div>
+          <UserAvatar
+            user={u}
+            width={75}
+            height={96}
+            radius="rounded-xl"
+            className="shadow-sm"
+          />
         )}
         <div className="min-w-0">
           <p className="font-serif text-xl font-bold text-forest">{name}</p>

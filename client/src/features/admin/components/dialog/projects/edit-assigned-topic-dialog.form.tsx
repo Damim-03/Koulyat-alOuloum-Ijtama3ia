@@ -27,7 +27,6 @@ import {
 } from "../../../hooks/admin-hook";
 import { ProfessorPicker } from "../../ui/professor-picker";
 import { ListInput } from "../../ui/list-input";
-import { UserAvatar } from "../../ui/user-avatar";
 import { statusChip } from "../../../utils/status-styles";
 import {
   inputCls,
@@ -36,6 +35,7 @@ import {
   StepTab,
   ReviewRow,
 } from "../../ui/form-bits";
+import { UserAvatar } from "../../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

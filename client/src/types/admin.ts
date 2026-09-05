@@ -1,4 +1,4 @@
-import type { Role } from "./enums";
+import type { Gender, Role } from "./enums";
 
 // ── Shared ──
 export interface Paginated<T> {
@@ -44,6 +44,7 @@ export interface UserLite {
   email: string | null;
   username: string | null;
   avatarUrl?: string | null;
+  gender?: Gender | null;
   phone?: string | null;
   role: Role;
   status: "active" | "suspended";

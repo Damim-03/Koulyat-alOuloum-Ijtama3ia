@@ -25,6 +25,13 @@ enum UserStatus {
   suspended
 }
 
+/// Optional on the account: it decides the default avatar when the
+/// administration has not uploaded a photo. Absent stays valid.
+enum Gender {
+  male
+  female
+}
+
 enum AcademicLevel {
   licence
   master
@@ -104,6 +111,7 @@ model User {
 
   phone     String?
   avatarUrl String?
+  gender    Gender?
 
   role   Role
   status UserStatus @default(active)

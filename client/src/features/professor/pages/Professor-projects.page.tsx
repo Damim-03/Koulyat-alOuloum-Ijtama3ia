@@ -6,11 +6,8 @@ import {
 import { useMyGroups } from "../hooks/Professor-hook";
 import { StatusBadge } from "../components/status-badge";
 import type { ProjectGroup } from "../../../types/professor.types";
+import { UserAvatar } from "../../../components/ui/user-avatar";
 
-function initials(first?: string | null, last?: string | null, fallback = "\u061f") {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fallback;
-}
 
 export function ProfessorProjectsPage() {
   const { t } = useTranslation();
@@ -73,9 +70,12 @@ export function ProfessorProjectsPage() {
                     </span>
                     <div className="flex -space-x-2 flex-row-reverse">
                       {members.slice(0, 3).map((m) => (
-                        <div key={m.id} className="grid size-6 place-items-center rounded-full border-2 border-cream-card bg-linear-to-br from-sage to-forest text-[9px] font-bold text-cream">
-                          {initials(m.student?.user?.firstName, m.student?.user?.lastName)}
-                        </div>
+                        <UserAvatar
+                          key={m.id}
+                          user={m.student?.user}
+                          size={24}
+                          className="border-2 border-cream-card"
+                        />
                       ))}
                     </div>
                   </div>

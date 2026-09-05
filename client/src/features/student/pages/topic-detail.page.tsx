@@ -21,7 +21,7 @@ import { useTopic } from "../hooks/Student-hook";
 // ⚠️ طابِق اسم/مسار/props هذا المكوّن مع ما تستعمله في browse-topics.page.tsx
 import { GroupRequestDialog } from "../components/group-request-dialog";
 import type { TopicView } from "../../../types/student.types";
-import { t as translate } from "i18next";
+import { UserAvatar } from "../../../components/ui/user-avatar";
 
 const SHADOW = "shadow-[0_4px_20px_rgba(38,66,61,0.06)]";
 
@@ -34,12 +34,6 @@ const STATUS_PILL: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
 };
 
-function initials(name?: string | null) {
-  if (!name) return translate("admin.unknownInitial");
-  const clean = name.replace(/^(د\.?|أ\.?|prof\.?|dr\.?)\s*/i, "").trim();
-  const parts = clean.split(/\s+/).filter(Boolean);
-  return (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "") || translate("admin.unknownInitial");
-}
 
 /** يحوّل حقل قد يكون نصًّا أو مصفوفة إلى مصفوفة أسطر نظيفة. */
 function toLines(val?: string | string[] | null): string[] {
@@ -254,9 +248,12 @@ export function StudentTopicDetailPage() {
                 {t("stu.supervisor")}
               </h3>
               <div className="flex items-center gap-4">
-                <div className="grid size-16 shrink-0 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep font-serif text-xl font-bold text-gold-soft ring-2 ring-gold/30">
-                  {initials(profName)}
-                </div>
+                <UserAvatar
+                  user={v.professor?.user}
+                  size={64}
+                  tone="gold"
+                  className="ring-2 ring-gold/30"
+                />
                 <h4 className="min-w-0 font-serif text-lg text-cream">
                   {profName}
                 </h4>

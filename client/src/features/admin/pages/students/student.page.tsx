@@ -26,17 +26,10 @@ import {
 } from "../../hooks/admin-hook";
 import { UserFormDialog } from "../../components/dialog/user/user-form-dialog.form";
 import { SearchField } from "../../components/ui/search-field";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function initials(
-  first?: string | null,
-  last?: string | null,
-  fallback = "\u061f",
-) {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fallback;
-}
 
 const PAGE_SIZE = 10;
 
@@ -544,17 +537,7 @@ export function AdminStudentsPage() {
                     className="cursor-pointer transition-colors hover:bg-forest/4"
                   >
                     <td className="px-4 py-3.5">
-                      {s.user?.avatarUrl ? (
-                        <img
-                          src={s.user.avatarUrl}
-                          alt=""
-                          className="size-9 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="grid size-9 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream">
-                          {initials(s.user?.firstName, s.user?.lastName)}
-                        </div>
-                      )}
+                      <UserAvatar user={s.user} size={36} />
                     </td>
                     <td className="px-4 py-3.5 text-sm font-medium text-forest">
                       {s.user?.firstName ?? "\u2014"}

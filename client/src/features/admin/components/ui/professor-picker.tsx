@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronDown, Search, X, Check } from "lucide-react";
 
 import { useProfessors } from "../../hooks/admin-hook";
-import { UserAvatar } from "./user-avatar";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

@@ -308,6 +308,8 @@ export const getMeService = async (userId: string) => {
       role: true,
       firstName: true,
       lastName: true,
+      avatarUrl: true,
+      gender: true,
       student: {
         select: {
           id: true,
@@ -338,6 +340,10 @@ export const getMeService = async (userId: string) => {
       universityEmail: user.professor?.universityEmail,
       firstName: user.firstName,
       lastName: user.lastName,
+      // Both drive the account avatar: the photo when there is one, the
+      // gender-specific default when there is not.
+      avatarUrl: user.avatarUrl,
+      gender: user.gender,
     },
   };
 };

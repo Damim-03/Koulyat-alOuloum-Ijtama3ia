@@ -24,16 +24,10 @@ import {
 import type { Filiere } from "../../../../types/admin";
 import { UserFormDialog } from "../../components/dialog/user/user-form-dialog.form";
 import { SearchField } from "../../components/ui/search-field";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 const PAGE_SIZE = 10;
 
-function initials(
-  first?: string | null,
-  last?: string | null,
-  fallback = "\u061f",
-) {
-  return (first?.[0] ?? "") + (last?.[0] ?? "") || fallback;
-}
 export function AdminProfessorsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -437,17 +431,7 @@ export function AdminProfessorsPage() {
                   className="cursor-pointer align-top transition-colors hover:bg-forest/4"
                 >
                   <td className="px-4 py-3.5">
-                    {p.user?.avatarUrl ? (
-                      <img
-                        src={p.user.avatarUrl}
-                        alt=""
-                        className="size-9 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="grid size-9 shrink-0 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream">
-                        {initials(p.user?.firstName, p.user?.lastName)}
-                      </div>
-                    )}
+                    <UserAvatar user={p.user} size={36} />
                   </td>
                   <td className="px-4 py-3.5 text-sm font-medium text-forest">
                     {p.user?.firstName ?? "\u2014"}

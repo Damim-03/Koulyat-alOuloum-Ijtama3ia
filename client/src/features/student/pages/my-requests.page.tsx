@@ -16,7 +16,7 @@ import {
   useCancelGroupRequest,
 } from "../hooks/Student-hook";
 import type { GroupRequestMember } from "../../../types/student.types";
-import { t as translate } from "i18next";
+import { UserAvatar } from "../../../components/ui/user-avatar";
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -30,10 +30,6 @@ const STATUS_ACCENT: Record<string, string> = {
   rejected: "border-r-4 border-r-red-500",
 };
 
-function initials(first?: string | null, last?: string | null, fallback = translate("admin.unknownInitial")) {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fallback;
-}
 
 export function StudentMyRequestsPage() {
   const { t, i18n } = useTranslation();
@@ -207,24 +203,23 @@ export function StudentMyRequestsPage() {
                             const isLeader =
                               m.student?.id === req.leaderStudentId;
                             return (
-                              <div
+                              <span
                                 key={m.id}
                                 title={`${memberName(m)}${
                                   m.student?.registrationNumber
                                     ? ` · ${m.student.registrationNumber}`
                                     : ""
                                 }`}
-                                className={`relative grid size-8 place-items-center rounded-full border-2 border-cream-card bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream ${
-                                  isLeader ? "ring-2 ring-gold" : ""
-                                }`}
+                                className="relative"
                               >
-                                {(
-                                  initials(
-                                    m.student?.user?.firstName,
-                                    m.student?.user?.lastName,
-                                  )
-                                )}
-                              </div>
+                                <UserAvatar
+                                  user={m.student?.user}
+                                  size={32}
+                                  className={`border-2 border-cream-card ${
+                                    isLeader ? "ring-2 ring-gold" : ""
+                                  }`}
+                                />
+                              </span>
                             );
                           })}
                         </div>

@@ -24,6 +24,7 @@ export type ListQueryDTO = z.infer<typeof listQuerySchema>;
 
 const RoleEnum = z.enum(["owner", "admin", "professor", "student"]);
 const StatusEnum = z.enum(["active", "suspended"]);
+const GenderEnum = z.enum(["male", "female"]);
 const LevelEnum = z.enum(["licence", "master", "doctorate"]);
 
 //
@@ -59,6 +60,7 @@ export const createUserSchema = z.object({
   username: z.string().trim().min(3).optional(),
   password: passwordSchema,
   role: RoleEnum,
+  gender: GenderEnum.optional(),
 });
 export type CreateUserDTO = z.infer<typeof createUserSchema>;
 
@@ -67,6 +69,7 @@ export const updateUserSchema = z.object({
   lastName: z.string().trim().min(1).optional(),
   email: z.string().email().optional(),
   username: z.string().trim().min(3).optional(),
+  gender: GenderEnum.nullable().optional(),
 });
 export type UpdateUserDTO = z.infer<typeof updateUserSchema>;
 
@@ -113,6 +116,7 @@ export const createStudentSchema = z.object({
   phone: z.string().trim().min(1).optional(),
   avatarUrl: z.string().url().optional(),
   password: passwordSchema,
+  gender: GenderEnum.optional(),
   // student side
   registrationNumber: z.string().trim().min(1),
   // The student is attached to a specialization; the form selects it by
@@ -131,6 +135,7 @@ export const updateStudentSchema = z.object({
   email: z.string().email().nullable().optional(),
   phone: z.string().trim().min(1).nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
+  gender: GenderEnum.nullable().optional(),
   registrationNumber: z.string().trim().min(1).optional(),
   specializationId: entityId.optional(),
   academicYearId: entityId.optional(),
@@ -230,6 +235,7 @@ export const createProfessorSchema = z.object({
   lastName: z.string().trim().min(1).optional(),
   email: z.string().email().optional(),
   password: passwordSchema,
+  gender: GenderEnum.optional(),
   // اختياري: إن لم يُرسَل، تولّده الخدمة تلقائيًا (13 رقماً فريدة).
   employeeNumber: z
     .string()
@@ -251,6 +257,7 @@ export const updateProfessorSchema = z.object({
   email: z.string().email().nullable().optional(), // ← جديد
   phone: z.string().trim().min(1).nullable().optional(), // ← جديد
   avatarUrl: z.string().url().nullable().optional(), // ← جديد
+  gender: GenderEnum.nullable().optional(),
   // كما في الإنشاء: النطاق يُفرض في الخدمة مقابل UniversityDomain.
   universityEmail: z.string().email("بريد إلكتروني غير صالح").optional(),
   departmentId: entityId.optional(),
@@ -534,6 +541,21 @@ export const rejectTopicSchema = z.object({
   reason: z.string().trim().optional(),
 });
 export type RejectTopicDTO = z.infer<typeof rejectTopicSchema>;
+
+// Same topic fields as the assigned variant, minus the group. `publish`
+// decides which of the two admin-reachable statuses the topic starts in.
+export const createTopicSchema = z.object({
+  title: z.string().trim().min(1),
+  description: z.string().trim().min(1),
+  requirements: z.array(z.string().trim().min(1)).max(50).optional(),
+  objectives: z.array(z.string().trim().min(1)).max(50).optional(),
+  maxStudents: z.number().int().min(1).max(10),
+  professorId: entityId,
+  specializationId: entityId,
+  academicYearId: entityId,
+  publish: z.boolean().optional().default(false),
+});
+export type CreateTopicDTO = z.infer<typeof createTopicSchema>;
 
 export const createAssignedTopicSchema = z
   .object({

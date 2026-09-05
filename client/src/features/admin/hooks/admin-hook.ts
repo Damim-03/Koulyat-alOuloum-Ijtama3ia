@@ -593,6 +593,25 @@ export function useUnpublishTopic() {
   });
 }
 
+export function useCreateTopic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: adminApi.createTopic,
+    onSuccess: () => {
+      // No group and no students, so only the topic lists and the counters
+      // that read them go stale.
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "dashboard"] });
+      toast.success(t("toast.topicCreated"));
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.topicCreateFailed"));
+    },
+  });
+}
+
 export function useCreateAssignedTopic() {
   const qc = useQueryClient();
   return useMutation({

@@ -27,8 +27,8 @@ import {
 } from "../../hooks/admin-hook";
 import { ProfessorPicker } from "../../components/ui/professor-picker";
 import { useLangNavigate } from "../../../../hooks/useLangNavigate";
-import { UserAvatar } from "../../components/ui/user-avatar";
 import i18n from "../../../../i18n/i18n";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

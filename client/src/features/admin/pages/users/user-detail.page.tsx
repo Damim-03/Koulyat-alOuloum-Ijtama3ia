@@ -44,6 +44,7 @@ import type { UserDetail } from "../../../../types/admin";
 import { StudentEditDialog } from "../../components/dialog/student/student-edit-dialog.form";
 import { ProfessorEditDialog } from "../../components/dialog/professor/professor-edit-dialog.form";
 import { SuccessDialog } from "../../../../components/dialog/success-dialog";
+import { GenderSelect } from "../../components/ui/gender-select";
 import { useTranslation } from "react-i18next";
 import { t as translate } from "i18next";
 import i18n from "../../../../i18n/i18n";
@@ -341,6 +342,7 @@ export function AdminUserDetailPage() {
     lastName: "",
     email: "",
     username: "",
+    gender: "" as "male" | "female" | "",
   });
 
   // shared feedback dialogs
@@ -412,12 +414,13 @@ export function AdminUserDetailPage() {
       lastName: user!.lastName ?? "",
       email: user!.email ?? "",
       username: user!.username ?? "",
+      gender: user!.gender ?? "",
     });
     setModal("edit");
   }
   function onSaveEdit() {
     // أرسِل الحقول المتغيّرة فقط (كلها اختيارية في الـ backend).
-    const data: Record<string, string> = {};
+    const data: Record<string, string | null> = {};
     const fn = form.firstName.trim();
     const ln = form.lastName.trim();
     const em = form.email.trim();
@@ -426,6 +429,9 @@ export function AdminUserDetailPage() {
     if (ln && ln !== (user!.lastName ?? "")) data.lastName = ln;
     if (em && em !== (user!.email ?? "")) data.email = em;
     if (un && un !== (user!.username ?? "")) data.username = un;
+    // Unlike the others, an emptied gender is a real change: null clears it.
+    if (form.gender !== (user!.gender ?? ""))
+      data.gender = form.gender || null;
     const newPassword = pw.trim();
 
     // كلمة المرور صارت داخل نفس الحوار — تُرسل بعد حفظ البيانات.
@@ -818,6 +824,14 @@ export function AdminUserDetailPage() {
                 setForm((f) => ({ ...f, username: e.target.value }))
               }
               className={fieldCls}
+            />
+          </Labeled>
+          <Labeled label={t("admin.gender")}>
+            <GenderSelect
+              value={form.gender || null}
+              onChange={(next) =>
+                setForm((f) => ({ ...f, gender: next ?? "" }))
+              }
             />
           </Labeled>
           {!emailOk && (

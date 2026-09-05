@@ -30,13 +30,10 @@ import {
   useFilieres,
   useSpecializations,
 } from "../../hooks/admin-hook";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function initials(first?: string | null, last?: string | null, fb = "\u061f") {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fb;
-}
 function personName(u: any) {
   return [u?.firstName, u?.lastName].filter(Boolean).join(" ") || "\u2014";
 }
@@ -595,12 +592,7 @@ export function AdminGroupRequestsPage() {
                 {/* leader + members */}
                 <div className="mt-3 flex items-center justify-between gap-3 border-t border-forest/10 pt-3">
                   <div className="flex min-w-0 items-center gap-2">
-                    <div className="grid size-8 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream ring-2 ring-gold/40">
-                      {initials(
-                        r.leader?.user?.firstName,
-                        r.leader?.user?.lastName,
-                      )}
-                    </div>
+                    <UserAvatar user={r.leader?.user} size={32} />
                     <div className="min-w-0">
                       <p className="truncate text-xs font-semibold text-forest">
                         {personName(r.leader?.user)}

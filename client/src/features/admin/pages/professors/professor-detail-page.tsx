@@ -32,6 +32,7 @@ import { useProfessor, useDeleteProfessor } from "../../hooks/admin-hook";
 import { ProfessorEditDialog } from "../../components/dialog/professor/professor-edit-dialog.form";
 import { HeaderTrail } from "../../components/ui/hierarchy-header";
 import i18n from "../../../../i18n/i18n";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 const TOPIC_STATUS: Record<
   string,
@@ -85,13 +86,6 @@ const STATUS_BAR: { key: string; labelKey: string; bar: string; dot: string }[] 
   { key: "archived", labelKey: "status.archived", bar: "bg-clay", dot: "bg-clay" },
 ];
 
-function initials(
-  first?: string | null,
-  last?: string | null,
-  fallback = "\u061f",
-) {
-  return (first?.[0] ?? "") + (last?.[0] ?? "") || fallback;
-}
 function fullName(p: Professor) {
   return (
     [p.user?.firstName, p.user?.lastName].filter(Boolean).join(" ") ||
@@ -259,17 +253,14 @@ export function AdminProfessorDetailPage() {
           {/* avatar overlapping banner */}
           <div className="-mt-16 flex">
             <div className="relative">
-              {p.user?.avatarUrl ? (
-                <img
-                  src={p.user.avatarUrl}
-                  alt=""
-                  className="h-28 w-[5.44rem] rounded-2xl border-4 border-cream-card object-cover shadow-lg"
-                />
-              ) : (
-                <div className="grid h-28 w-[5.44rem] place-items-center rounded-2xl border-4 border-cream-card bg-linear-to-br from-gold to-gold-soft text-3xl font-bold text-forest-deep shadow-lg">
-                  {initials(p.user?.firstName, p.user?.lastName)}
-                </div>
-              )}
+              <UserAvatar
+                user={p.user}
+                width={87}
+                height={112}
+                radius="rounded-2xl"
+                tone="gold"
+                className="border-4 border-cream-card shadow-lg"
+              />
               <span
                 className={`absolute bottom-1 left-1 size-6 rounded-full border-4 border-cream-card ${
                   isActive ? "bg-emerald-500" : "bg-red-500"

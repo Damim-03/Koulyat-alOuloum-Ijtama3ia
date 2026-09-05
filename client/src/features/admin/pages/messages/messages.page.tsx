@@ -38,6 +38,7 @@ import type {
 import { useUsers, useSpecializations } from "../../hooks/admin-hook";
 import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
 import i18n from "../../../../i18n/i18n";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -47,9 +48,6 @@ function personName(u?: MessageUserLite | null) {
     return (
         [u?.firstName, u?.lastName].filter(Boolean).join(" ") || u?.email || "\u2014"
     );
-}
-function initials(u?: MessageUserLite | null) {
-    return (u?.firstName?.[0] ?? "") + (u?.lastName?.[0] ?? "") || "\u061f";
 }
 function fmtDateTime(iso?: string) {
     if (!iso) return "\u2014";
@@ -714,11 +712,11 @@ function Avatar({
             />
         );
     return (
-        <div
-            className={`${cls} grid shrink-0 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep font-bold text-cream ${ring ? "ring-2 ring-gold/50" : ""}`}
-        >
-            {initials(u)}
-        </div>
+        <UserAvatar
+            user={u}
+            size={size}
+            className={`${cls} ${ring ? "ring-2 ring-gold/50" : ""}`}
+        />
     );
 }
 
