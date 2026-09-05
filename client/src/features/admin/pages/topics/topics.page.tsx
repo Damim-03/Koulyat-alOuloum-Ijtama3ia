@@ -9,6 +9,7 @@ import {
   Send,
   EyeOff,
   Plus,
+  FilePlus2,
   Pencil,
   Trash2,
   Undo2,
@@ -31,15 +32,13 @@ import {
   useAcademicYears,
 } from "../../hooks/admin-hook";
 import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
+import { TopicDialog } from "../../components/dialog/projects/topic-dialog.form";
 import { AssignedTopicDialog } from "../../components/dialog/projects/assigned-topic-dialog.form";
 import { EditAssignedTopicDialog } from "../../components/dialog/projects/edit-assigned-topic-dialog.form";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function initials(first?: string | null, last?: string | null, fb = "\u061f") {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fb;
-}
 
 const STATUS_FILTERS = [
   "",
@@ -74,6 +73,7 @@ export function AdminTopicsPage() {
   const [page, setPage] = useState(1);
 
   const [addOpen, setAddOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmRejectOpen, setConfirmRejectOpen] = useState(false);
@@ -338,13 +338,25 @@ export function AdminTopicsPage() {
           <p className="mt-1 text-sm text-clay">{t("admin.topicsSubtitle")}</p>
         </div>
 
-        <button
-          onClick={() => setAddOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep shadow-sm transition hover:bg-gold-soft"
-        >
-          <Plus size={18} />
-          {t("admin.assignTopicBtn")}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setCreateOpen(true)}
+            title={t("admin.createTopicSubtitle")}
+            className="inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2.5 text-sm font-semibold text-forest transition hover:border-gold hover:bg-gold/10"
+          >
+            <FilePlus2 size={18} />
+            {t("admin.createTopicBtn")}
+          </button>
+
+          <button
+            onClick={() => setAddOpen(true)}
+            title={t("admin.assignTopicSubtitle")}
+            className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep shadow-sm transition hover:bg-gold-soft"
+          >
+            <Plus size={18} />
+            {t("admin.assignTopicBtn")}
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -720,12 +732,7 @@ export function AdminTopicsPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
-                        <div className="grid size-7 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream">
-                          {initials(
-                            tp.professor?.user?.firstName,
-                            tp.professor?.user?.lastName,
-                          )}
-                        </div>
+                        <UserAvatar user={tp.professor?.user} size={28} />
                         <span className="text-sm text-clay">
                           {profName(tp)}
                         </span>
@@ -793,6 +800,9 @@ export function AdminTopicsPage() {
           </div>
         </div>
       </div>
+
+      {/* Create-topic dialog — the topic alone, no group */}
+      <TopicDialog open={createOpen} onClose={() => setCreateOpen(false)} />
 
       {/* Assign-topic dialog */}
       <AssignedTopicDialog

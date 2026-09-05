@@ -91,6 +91,7 @@ import {
   createDomainController,
   updateDomainController,
   deleteDomainController,
+  createTopicController,
   createAssignedTopicController,
   listUniversityDomainsController,
   createAcademicStructureController,
@@ -238,6 +239,7 @@ adminRoutes.delete("/academic-years/:id", deleteAcademicYearController);
 // ─── TOPICS ───────────────────────────────────────────────────
 //
 adminRoutes.get("/topics", listTopicsController);
+adminRoutes.post("/topics", createTopicController);
 adminRoutes.post("/topics/assigned", createAssignedTopicController);
 adminRoutes.patch("/topics/:id/assignment", updateAssignedTopicController);
 adminRoutes.patch("/topics/:id/unarchive", unarchiveTopicController);

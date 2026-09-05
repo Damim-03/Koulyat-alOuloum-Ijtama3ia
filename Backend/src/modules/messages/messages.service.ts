@@ -17,6 +17,7 @@ const userLite = {
     lastName: true,
     email: true,
     avatarUrl: true,
+    gender: true,
     role: true,
 } as const;
 

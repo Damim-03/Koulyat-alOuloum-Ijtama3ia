@@ -4,6 +4,7 @@ import { FolderKanban, UserCog, UserPlus, Check } from "lucide-react";
 import { useProject, useProfessors, useStudents, useChangeSupervisor, useAssignStudent } from "../../../hooks/admin-hook";
 import { FormDialog } from "../../form/form-dialog";
 import i18n from "../../../../../i18n/i18n";
+import { UserAvatar } from "../../../../../components/ui/user-avatar";
 
 interface Props {
   projectId: string | null;
@@ -18,14 +19,6 @@ const MS_STYLES: Record<string, string> = {
   overdue: "bg-red-100 text-red-700",
 };
 
-function initials(
-  first?: string | null,
-  last?: string | null,
-  fallback = "\u061f",
-) {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fallback;
-}
 
 export function ProjectDetailDialog({ projectId, open, onClose }: Props) {
   const { t } = useTranslation();
@@ -83,12 +76,7 @@ export function ProjectDetailDialog({ projectId, open, onClose }: Props) {
                   key={m.id}
                   className="flex items-center gap-2 rounded-full bg-cream-2 px-3 py-1"
                 >
-                  <div className="grid size-6 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-[9px] font-bold text-cream">
-                    {initials(
-                      m.student?.user?.firstName,
-                      m.student?.user?.lastName,
-                    )}
-                  </div>
+                  <UserAvatar user={m.student?.user} size={24} />
                   <span className="text-xs text-forest">
                     {[m.student?.user?.firstName, m.student?.user?.lastName]
                       .filter(Boolean)

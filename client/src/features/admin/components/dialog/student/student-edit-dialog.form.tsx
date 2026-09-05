@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState} from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -12,6 +12,7 @@ import {
   Eye,
   EyeOff,
   User,
+  Users,
   Mail,
   Phone,
   IdCard,
@@ -26,9 +27,9 @@ import {
 } from "lucide-react";
 import type { Student } from "../../../../../types/admin";
 import { ImageCropperDialog } from "../../ui/image-cropper-dialog";
+import { GenderSelect } from "../../ui/gender-select";
 import { useBodyScrollLock } from "../../../../../hooks/use-body-scroll-lock";
 import { useTranslation } from "react-i18next";
-import { t as translate } from "i18next";
 import {
   useUpdateStudent,
   useSetUserStatus,
@@ -40,6 +41,8 @@ import {
   useSpecializations,
   useAcademicYears,
 } from "../../../hooks/admin-hook";
+import { UserAvatar } from "../../../../../components/ui/user-avatar";
+import { inputCls, Panel, FieldBox } from "../../form/entity-form";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -54,6 +57,7 @@ interface EditState {
   lastName: string;
   email: string;
   phone: string;
+  gender: "male" | "female" | "";
   registrationNumber: string;
   facultyId: string;
   departmentId: string;
@@ -65,9 +69,6 @@ interface EditState {
   password: string;
 }
 
-function initials(first?: string, last?: string) {
-  return (first?.[0] ?? "") + (last?.[0] ?? "") || translate("admin.unknownInitial");
-}
 
 export function StudentEditDialog({ open, student, onClose }: Props) {
   const { t } = useTranslation();
@@ -87,6 +88,7 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
     lastName: "",
     email: "",
     phone: "",
+    gender: "",
     registrationNumber: "",
     facultyId: "",
     departmentId: "",
@@ -112,6 +114,7 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
         lastName: student.user?.lastName ?? "",
         email: student.user?.email ?? "",
         phone: student.user?.phone ?? "",
+        gender: student.user?.gender ?? "",
         registrationNumber: student.registrationNumber ?? "",
         facultyId: dept?.faculty?.id ?? dept?.facultyId ?? "",
         departmentId: dept?.id ?? "",
@@ -126,6 +129,15 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
       setShowPassword(false);
     }
   }, [open, student]);
+
+  // The preview follows the form, not the saved account: picking a gender
+  // must change the default photo before the dialog is saved.
+  const previewUser = {
+    firstName: form.firstName,
+    lastName: form.lastName,
+    gender: form.gender || undefined,
+    avatarUrl: form.avatarUrl || undefined,
+  };
 
   // ── cascading options ──
   const deptOptions = useMemo(
@@ -231,6 +243,7 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
     clearable("email", form.email, student!.user?.email ?? "");
     clearable("phone", form.phone, student!.user?.phone ?? "");
     clearable("avatarUrl", form.avatarUrl, student!.user?.avatarUrl ?? "");
+    clearable("gender", form.gender, student!.user?.gender ?? "");
 
     if (form.registrationNumber.trim())
       data.registrationNumber = form.registrationNumber.trim();
@@ -284,17 +297,13 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
         <header className="relative shrink-0 bg-linear-to-l from-forest to-forest-deep px-6 py-3 text-cream">
           <div className="flex items-center gap-4">
             <div className="relative shrink-0">
-              {form.avatarUrl ? (
-                <img
-                  src={form.avatarUrl}
-                  alt=""
-                  className="h-16 w-[3.11rem] rounded-lg border-2 border-gold/60 object-cover"
-                />
-              ) : (
-                <div className="grid h-16 w-[3.11rem] place-items-center rounded-lg border-2 border-cream/25 bg-cream/15 text-lg font-bold text-cream">
-                  {initials(form.firstName, form.lastName)}
-                </div>
-              )}
+              <UserAvatar
+                user={previewUser}
+                width={50}
+                height={64}
+                radius="rounded-lg"
+                className="border-2 border-gold/60"
+              />
               {uploadImage.isPending && (
                 <div className="absolute inset-0 grid place-items-center rounded-lg bg-forest-deep/60">
                   <Loader2 size={18} className="animate-spin text-cream" />
@@ -330,17 +339,13 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
             <Panel title={t("admin.personalData")} icon={User}>
               {/* avatar controls */}
               <div className="mb-2 flex items-center gap-3 rounded-xl bg-cream-2/70 p-2">
-                <div className="grid h-14 w-[2.72rem] shrink-0 place-items-center overflow-hidden rounded-lg border-2 border-gold/40 bg-linear-to-br from-forest to-forest-deep text-sm font-bold text-cream">
-                  {form.avatarUrl ? (
-                    <img
-                      src={form.avatarUrl}
-                      alt=""
-                      className="size-full object-cover"
-                    />
-                  ) : (
-                    initials(form.firstName, form.lastName)
-                  )}
-                </div>
+                <UserAvatar
+                  user={previewUser}
+                  width={44}
+                  height={56}
+                  radius="rounded-lg"
+                  className="border-2 border-gold/40"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
@@ -386,6 +391,13 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
                   />
                 </FieldBox>
               </div>
+
+              <FieldBox label={t("admin.gender")} icon={Users}>
+                <GenderSelect
+                  value={form.gender || null}
+                  onChange={(next) => set("gender", next ?? "")}
+                />
+              </FieldBox>
 
               <FieldBox label={t("admin.email")} icon={Mail}>
                 <input
@@ -613,58 +625,5 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
       />
     </div>,
     document.body,
-  );
-}
-
-//
-// ─── SHARED BITS ─────────────────────────────────────────────
-//
-
-const inputCls =
-  "w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30 placeholder:text-clay/50";
-
-/** One of the two side-by-side sections. */
-function Panel({
-  title,
-  icon: Icon,
-  children,
-}: {
-  title: string;
-  icon: typeof User;
-  children: ReactNode;
-}) {
-  return (
-    <section className="space-y-2 rounded-2xl border border-forest/10 bg-cream-card p-3 shadow-[0_2px_12px_rgba(38,66,61,0.04)]">
-      <h4 className="flex items-center gap-2 border-b border-forest/10 pb-2 text-sm font-bold text-forest">
-        <span className="grid size-7 place-items-center rounded-lg bg-gold/15 text-gold">
-          <Icon size={15} />
-        </span>
-        {title}
-      </h4>
-      {children}
-    </section>
-  );
-}
-
-function FieldBox({
-  label,
-  icon: Icon,
-  required,
-  children,
-}: {
-  label: string;
-  icon: typeof User;
-  required?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-clay">
-        <Icon size={12} className="text-clay/70" />
-        {label}
-        {required && <span className="text-brick">*</span>}
-      </span>
-      {children}
-    </label>
   );
 }

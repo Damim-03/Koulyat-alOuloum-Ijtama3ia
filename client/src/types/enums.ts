@@ -8,6 +8,12 @@ export const Role = {
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
+export const Gender = {
+  MALE: "male",
+  FEMALE: "female",
+} as const;
+export type Gender = (typeof Gender)[keyof typeof Gender];
+
 // The three login entry points exposed by /auth.
 export type LoginRole = "student" | "professor" | "admin";
 

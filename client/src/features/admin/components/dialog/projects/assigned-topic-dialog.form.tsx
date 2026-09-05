@@ -33,6 +33,7 @@ import {
   StepTab,
   ReviewRow,
 } from "../../ui/form-bits";
+import { UserAvatar } from "../../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -61,9 +62,6 @@ interface PickedStudent {
 
 const selectCls = inputCls;
 
-function initials(first?: string | null, last?: string | null) {
-  return (first?.[0] ?? "") + (last?.[0] ?? "") || "؟";
-}
 function fullName(u: any) {
   return [u?.firstName, u?.lastName].filter(Boolean).join(" ");
 }
@@ -625,9 +623,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                             onClick={() => addStudent(s)}
                             className="flex w-full items-center gap-2.5 px-3 py-2 text-start transition hover:bg-forest/5"
                           >
-                            <div className="grid size-8 shrink-0 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream">
-                              {initials(s.user?.firstName, s.user?.lastName)}
-                            </div>
+                            <UserAvatar user={s.user} size={32} />
                             <div className="min-w-0">
                               <p className="truncate text-sm text-forest">
                                 {fullName(s.user) || "—"}

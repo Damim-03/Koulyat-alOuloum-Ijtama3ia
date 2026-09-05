@@ -17,7 +17,7 @@ import { useLanguage } from "../../../hooks/use-language";
 import { useMyProject } from "../hooks/Student-hook";
 import { PATHS } from "../../../routes/paths";
 import type { GroupRequestMember } from "../../../types/student.types";
-import { t as translate } from "i18next";
+import { UserAvatar } from "../../../components/ui/user-avatar";
 
 function nameOf(m: GroupRequestMember): string {
   const u = m.student?.user;
@@ -26,12 +26,6 @@ function nameOf(m: GroupRequestMember): string {
     m.student?.registrationNumber ||
     "—"
   );
-}
-function initials(name?: string | null) {
-  if (!name) return translate("admin.unknownInitial");
-  const clean = name.replace(/^(د\.?|أ\.?|prof\.?|dr\.?)\s*/i, "").trim();
-  const parts = clean.split(/\s+/).filter(Boolean);
-  return (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "") || translate("admin.unknownInitial");
 }
 
 const MILESTONE_STYLE: Record<
@@ -141,9 +135,12 @@ export function StudentMyProjectPage() {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           {/* supervisor */}
           <div className="flex items-center gap-3 rounded-xl bg-forest px-4 py-3 text-cream-2">
-            <div className="grid size-10 shrink-0 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-sm font-bold text-gold-soft ring-2 ring-gold/30">
-              {initials(profName)}
-            </div>
+            <UserAvatar
+              user={prof}
+              size={40}
+              tone="gold"
+              className="ring-2 ring-gold/30"
+            />
             <div className="min-w-0">
               <p className="text-[11px] text-soft-sage">
                 {t("stu.academicSupervisor")}
@@ -175,13 +172,13 @@ export function StudentMyProjectPage() {
                 {members.map((m, i) => {
                   const nm = nameOf(m);
                   return (
-                    <div
-                      key={m.id ?? i}
-                      title={nm}
-                      className="grid size-9 place-items-center rounded-full border-2 border-cream-card bg-linear-to-br from-sage to-forest text-xs font-bold text-cream"
-                    >
-                      {initials(nm)}
-                    </div>
+                    <span key={m.id ?? i} title={nm}>
+                      <UserAvatar
+                        user={m.student?.user}
+                        size={36}
+                        className="border-2 border-cream-card"
+                      />
+                    </span>
                   );
                 })}
               </div>

@@ -31,6 +31,7 @@ import { StudentEditDialog } from "../../components/dialog/student/student-edit-
 import { HeaderTrail } from "../../components/ui/hierarchy-header";
 import { useTranslation } from "react-i18next";
 import i18n from "../../../../i18n/i18n";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -46,9 +47,6 @@ const STATUS: Record<string, { labelKey: string; cls: string }> = {
 const pill = (s: string) =>
   STATUS[s] ?? { label: s, cls: "bg-clay/15 text-clay" };
 
-function initials(first?: string | null, last?: string | null) {
-  return (first?.[0] ?? "") + (last?.[0] ?? "") || "\u061f";
-}
 function fmtDate(iso?: string | null) {
   if (!iso) return "\u2014";
   const d = new Date(iso);
@@ -225,17 +223,14 @@ export function AdminStudentDetailPage() {
           {/* avatar overlapping banner */}
           <div className="-mt-16 flex">
             <div className="relative">
-              {u.avatarUrl ? (
-                <img
-                  src={u.avatarUrl}
-                  alt=""
-                  className="h-28 w-[5.44rem] rounded-2xl border-4 border-cream-card object-cover shadow-lg"
-                />
-              ) : (
-                <div className="grid h-28 w-[5.44rem] place-items-center rounded-2xl border-4 border-cream-card bg-linear-to-br from-gold to-gold-soft text-3xl font-bold text-forest-deep shadow-lg">
-                  {initials(u.firstName, u.lastName)}
-                </div>
-              )}
+              <UserAvatar
+                user={u}
+                width={87}
+                height={112}
+                radius="rounded-2xl"
+                tone="gold"
+                className="border-4 border-cream-card shadow-lg"
+              />
               <span
                 className={`absolute bottom-1 left-1 size-6 rounded-full border-4 border-cream-card ${
                   u.status === "active" ? "bg-emerald-500" : "bg-red-500"

@@ -46,6 +46,7 @@ import {
   ListDomainsDTO,
   ListFilieresDTO,
   listFilieresSchema,
+  createTopicSchema,
   createAssignedTopicSchema,
   updateAssignedTopicSchema,
 } from "./admin.validation";
@@ -1369,6 +1370,22 @@ export const markAllNotificationsReadController = async (
   try {
     const data = await markAllNotificationsReadService(getAuthUserId(req));
     return res.status(HTTPSTATUS.OK).json(data);
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const createTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(createTopicSchema, req.body);
+    const topic = await svc.createTopicService(data as never);
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Topic created", topic });
   } catch (e) {
     next(e);
   }

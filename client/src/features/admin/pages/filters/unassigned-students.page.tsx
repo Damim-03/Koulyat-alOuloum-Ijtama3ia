@@ -8,6 +8,7 @@ import {
   useFaculties,
   useAcademicYears,
 } from "../../hooks/admin-hook";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -16,10 +17,6 @@ const PAGE_SIZE = 12;
 const selectCls =
   "rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30";
 
-function initials(first?: string | null, last?: string | null, fb = "\u061f") {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fb;
-}
 
 export function AdminUnassignedStudentsPage() {
   const { t } = useTranslation();
@@ -311,9 +308,7 @@ export function AdminUnassignedStudentsPage() {
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
-                        <div className="grid size-9 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream">
-                          {initials(s.user?.firstName, s.user?.lastName)}
-                        </div>
+                        <UserAvatar user={s.user} size={36} />
                         <p className="text-sm font-medium text-forest">
                           {[s.user?.firstName, s.user?.lastName]
                             .filter(Boolean)

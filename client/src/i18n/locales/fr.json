@@ -27,7 +27,9 @@
     "lightMode": "Mode clair",
     "darkMode": "Mode sombre",
     "avatarAlt": "avatar",
-    "menu": "menu"
+    "menu": "menu",
+    "copy": "Copier",
+    "copied": "Copié"
   },
   "hero": {
     "badge": "Plateforme Mudhakkarati",
@@ -813,7 +815,6 @@
     "addDepartmentFirstHint": "Ajoutez d'abord au moins un département — les domaines et filières s'y rattachent.",
     "backToDepartments": "Retour aux départements",
     "filieresAndSpecializations": "Filières et spécialités",
-    "unknownInitial": "?",
     "chooseDepartment": "Choisissez le département",
     "editProfessorTitle": "Modifier les informations du professeur",
     "personalData": "Informations personnelles",
@@ -1030,7 +1031,7 @@
     "assignMaxReached": "Maximum atteint : {{count}} étudiants",
     "assignCreateError": "Impossible de créer et d'attribuer le sujet",
     "assignTopicTitle": "Créer et attribuer un sujet",
-    "assignTopicSubtitle": "Créez le sujet et choisissez les étudiants et l'encadrant en une étape",
+    "assignTopicSubtitle": "Le sujet et ses étudiants affectés, en deux étapes",
     "assignTopicTitlePlaceholder": "Titre du sujet",
     "topicDescription": "Description du sujet",
     "assignTopicDescPlaceholder": "Expliquez l'idée du sujet et ses objectifs…",
@@ -1161,7 +1162,25 @@
     "milestoneSharedNote": "Les étapes sont partagées avec l'encadrant — il est notifié de chaque changement.",
     "noMilestonesMatch": "Aucune étape correspondante",
     "deleteMilestone": "Supprimer l'étape",
-    "memberDifferentSpec": "Spécialité différente du sujet"
+    "memberDifferentSpec": "Spécialité différente du sujet",
+    "createTopicBtn": "Créer un sujet",
+    "createTopicTitle": "Créer un nouveau sujet",
+    "createTopicSubtitle": "Le sujet seul — sans affectation d'étudiants",
+    "createTopicError": "Impossible de créer le sujet",
+    "publishNow": "Le publier immédiatement aux étudiants",
+    "publishNowHint": "Sinon le sujet reste au tableau, invisible aux étudiants jusqu'à sa publication.",
+    "statusOpenNote": "Visible par les étudiants, qui peuvent envoyer une demande de groupe.",
+    "statusApprovedNote": "Approuvé mais non publié — publiez-le plus tard depuis la liste.",
+    "supervisorNotifiedNote": "{{name}} sera notifié que l'administration lui a confié l'encadrement de ce sujet.",
+    "gender": "Genre",
+    "genderMale": "Homme",
+    "genderFemale": "Femme",
+    "genderClear": "Non renseigné",
+    "genderHint": "Détermine l'avatar par défaut lorsqu'aucune photo n'est chargée.",
+    "genderUnset": "Non renseigné",
+    "pickOrTypeHint": "Choisissez dans la liste ou saisissez…",
+    "gradeFieldHint": "Choisissez le grade dans la liste ; le saisir à la main peut créer un doublon avec une autre orthographe.",
+    "tagFieldHint": "Choisissez parmi les attributs déjà utilisés par les autres enseignants, pour rester cohérent."
   },
   "prof": {
     "newTopic": "Proposer un nouveau sujet",
@@ -1317,7 +1336,8 @@
     "structureCreated": "Structure créée : {{departments}} départements, {{domains}} domaines, {{filieres}} filières, {{specializations}} spécialités",
     "broadcastSent": "Envoyé à {{count}} destinataires",
     "milestoneCreated": "Étape ajoutée",
-    "milestoneFailed": "L'opération sur l'étape a échoué"
+    "milestoneFailed": "L'opération sur l'étape a échoué",
+    "topicCreated": "Sujet créé"
   },
   "auth": {
     "regNumberPlaceholder": "ex. 202039012345",

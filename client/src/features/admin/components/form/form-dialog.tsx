@@ -117,11 +117,17 @@ export function FormDialog({
 export function Field({
   label,
   icon: Icon,
+  note,
+  hint,
   error,
   children,
 }: {
   label: string;
   icon?: LucideIcon;
+  /** Short qualifier beside the label, e.g. "optional". */
+  note?: string;
+  /** One line under the control explaining what the value is used for. */
+  hint?: string;
   error?: string;
   children: ReactNode;
 }) {
@@ -130,8 +136,14 @@ export function Field({
       <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-forest">
         {Icon && <Icon size={14} className="text-clay" />}
         {label}
+        {note && (
+          <span className="text-[10px] font-normal text-clay/80">({note})</span>
+        )}
       </label>
       {children}
+      {hint && !error && (
+        <p className="mt-1 text-[11px] leading-relaxed text-clay/80">{hint}</p>
+      )}
       {error && <p className="mt-1 text-[11px] text-red-500">{error}</p>}
     </div>
   );

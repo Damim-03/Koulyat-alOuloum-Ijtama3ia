@@ -27,7 +27,9 @@
     "lightMode": "الوضع الفاتح",
     "darkMode": "الوضع الداكن",
     "avatarAlt": "الصورة الشخصية",
-    "menu": "القائمة"
+    "menu": "القائمة",
+    "copy": "نسخ",
+    "copied": "نُسخ"
   },
   "hero": {
     "badge": "منصة مذكرتي",
@@ -820,7 +822,6 @@
     "addDepartmentFirstHint": "أضِف قسماً واحداً على الأقلّ أوّلاً — الميادين والشعب تُنسب إلى قسم.",
     "backToDepartments": "العودة إلى الأقسام",
     "filieresAndSpecializations": "الشعب والتخصّصات",
-    "unknownInitial": "؟",
     "chooseDepartment": "اختر القسم",
     "editProfessorTitle": "تعديل بيانات الأستاذ",
     "personalData": "البيانات الشخصية",
@@ -1030,7 +1031,7 @@
     "assignMaxReached": "بلغت الحد الأقصى: {{count}} طلبة",
     "assignCreateError": "تعذّر إنشاء الموضوع وإسناده",
     "assignTopicTitle": "إنشاء موضوع وإسناده",
-    "assignTopicSubtitle": "أنشئ الموضوع واختر الطلبة والمشرف في خطوة واحدة",
+    "assignTopicSubtitle": "الموضوع وإسناده إلى طلبة، في خطوتين",
     "assignTopicTitlePlaceholder": "عنوان الموضوع",
     "topicDescription": "وصف الموضوع",
     "assignTopicDescPlaceholder": "اشرح فكرة الموضوع وأهدافه…",
@@ -1161,7 +1162,25 @@
     "milestoneSharedNote": "المراحل مشتركة بينك وبين الأستاذ المشرف — سيصله إشعار بكل تغيير.",
     "noMilestonesMatch": "لا مراحل مطابقة",
     "deleteMilestone": "حذف المرحلة",
-    "memberDifferentSpec": "تخصّص مختلف عن الموضوع"
+    "memberDifferentSpec": "تخصّص مختلف عن الموضوع",
+    "createTopicBtn": "إنشاء موضوع",
+    "createTopicTitle": "إنشاء موضوع جديد",
+    "createTopicSubtitle": "الموضوع وحده — دون إسناد طلبة",
+    "createTopicError": "تعذّر إنشاء الموضوع",
+    "publishNow": "انشره فوراً للطلبة",
+    "publishNowHint": "دون ذلك يبقى الموضوع على اللوحة ولا يراه الطلبة حتى تنشره.",
+    "statusOpenNote": "يظهر للطلبة ويمكنهم تقديم طلب مجموعة عليه.",
+    "statusApprovedNote": "معتمَد وغير منشور — انشره لاحقاً من القائمة.",
+    "supervisorNotifiedNote": "سيصل إشعار إلى {{name}} بأنّ الإدارة أسندت إليه إشراف هذا الموضوع.",
+    "gender": "الجنس",
+    "genderMale": "ذكر",
+    "genderFemale": "أنثى",
+    "genderClear": "غير محدَّد",
+    "genderHint": "يُستعمل لاختيار الصورة الافتراضية عند عدم رفع صورة شخصية.",
+    "genderUnset": "غير محدَّد",
+    "pickOrTypeHint": "اختر من القائمة أو اكتب…",
+    "gradeFieldHint": "اختر الرتبة من القائمة؛ الكتابة اليدوية قد تُنشئ رتبة مكرّرة بإملاء مختلف.",
+    "tagFieldHint": "اختر من الصفات المستعملة عند الأساتذة الآخرين حتى تبقى موحّدة."
   },
   "prof": {
     "newTopic": "اقتراح موضوع جديد",
@@ -1317,7 +1336,8 @@
     "structureCreated": "تم إنشاء الهيكل: {{departments}} قسم، {{domains}} ميدان، {{filieres}} شعبة، {{specializations}} تخصّص",
     "broadcastSent": "تم الإرسال إلى {{count}} مستلماً",
     "milestoneCreated": "أُضيفت المرحلة",
-    "milestoneFailed": "تعذّرت العملية على المرحلة"
+    "milestoneFailed": "تعذّرت العملية على المرحلة",
+    "topicCreated": "أُنشئ الموضوع"
   },
   "auth": {
     "regNumberPlaceholder": "مثال: 202039012345",

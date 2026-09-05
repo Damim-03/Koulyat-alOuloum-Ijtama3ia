@@ -18,11 +18,11 @@ import {
 
 import { useProject } from "../../hooks/admin-hook";
 import { useLangNavigate } from "../../../../hooks/useLangNavigate";
-import { UserAvatar } from "../../components/ui/user-avatar";
 import { statusChip } from "../../utils/status-styles";
 import { ProjectDetailDialog } from "../../components/dialog/projects/project-detail-dialog.form";
 import { MilestoneManager } from "../../components/ui/milestone-manager";
 import i18n from "../../../../i18n/i18n";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

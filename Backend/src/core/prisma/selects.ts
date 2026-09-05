@@ -22,6 +22,7 @@ export const publicUserSelect = {
   username: true,
   phone: true,
   avatarUrl: true,
+  gender: true,
   role: true,
   status: true,
   isVerified: true,
@@ -35,6 +36,7 @@ export const userBadgeSelect = {
   firstName: true,
   lastName: true,
   avatarUrl: true,
+  gender: true,
 } as const;
 
 /** Ready-made relation include, so call sites read as `user: publicUser`. */

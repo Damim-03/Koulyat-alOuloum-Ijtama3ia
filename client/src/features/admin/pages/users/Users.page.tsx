@@ -22,15 +22,8 @@ import {
 } from "../../../../components/dialog/error-dialog";
 import { SuccessDialog } from "../../../../components/dialog/success-dialog";
 import i18n from "../../../../i18n/i18n";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
-function initials(
-  first?: string | null,
-  last?: string | null,
-  fallback = "\u061f",
-) {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fallback;
-}
 const ROLE_STYLES: Record<string, string> = {
   owner: "bg-gold/20 text-gold",
   admin: "bg-forest/10 text-forest",
@@ -428,17 +421,7 @@ export function AdminUsersPage() {
                   className="cursor-pointer transition-colors hover:bg-forest/4"
                 >
                   <td className="px-5 py-3.5">
-                    {u.avatarUrl ? (
-                      <img
-                        src={u.avatarUrl}
-                        alt=""
-                        className="size-9 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="grid size-9 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream">
-                        {initials(u.firstName, u.lastName)}
-                      </div>
-                    )}
+                    <UserAvatar user={u} size={36} />
                   </td>
                   <td className="px-5 py-3.5 text-sm font-medium text-forest">
                     {u.firstName ?? "\u2014"}

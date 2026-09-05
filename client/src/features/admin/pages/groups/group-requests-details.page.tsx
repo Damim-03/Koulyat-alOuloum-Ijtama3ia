@@ -27,6 +27,7 @@ import {
   useRemoveGroupRequestMember,
   useSetGroupRequestLeader,
 } from "../../hooks/admin-hook";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -36,9 +37,6 @@ const STATUS_STYLES: Record<string, string> = {
   rejected: "bg-red-100 text-red-700",
 };
 
-function initials(first?: string | null, last?: string | null) {
-  return (first?.[0] ?? "") + (last?.[0] ?? "") || "\u061f";
-}
 function fullName(u: any) {
   return [u?.firstName, u?.lastName].filter(Boolean).join(" ") || "\u2014";
 }
@@ -191,17 +189,7 @@ export function AdminGroupRequestDetailPage() {
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-clay">
             {prof && (
               <span className="inline-flex items-center gap-2">
-                {prof.avatarUrl ? (
-                  <img
-                    src={prof.avatarUrl}
-                    alt=""
-                    className="size-6 rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="grid size-6 place-items-center rounded-full bg-soft-sage/40 text-[9px] font-bold text-forest">
-                    {initials(prof.firstName, prof.lastName)}
-                  </span>
-                )}
+                <UserAvatar user={prof} size={24} />
                 <span className="font-medium text-forest">
                   {fullName(prof)}
                 </span>
@@ -371,11 +359,11 @@ export function AdminGroupRequestDetailPage() {
                       className={`size-10 rounded-full object-cover ${isLeader ? "ring-2 ring-gold/50" : ""}`}
                     />
                   ) : (
-                    <div
-                      className={`grid size-10 place-items-center rounded-full bg-linear-to-br from-forest to-forest-deep text-xs font-bold text-cream ${isLeader ? "ring-2 ring-gold/50" : ""}`}
-                    >
-                      {initials(u?.firstName, u?.lastName)}
-                    </div>
+                    <UserAvatar
+                      user={u}
+                      size={40}
+                      className={isLeader ? "ring-2 ring-gold/50" : ""}
+                    />
                   )}
                   <div className="min-w-0">
                     <p className="flex items-center gap-1.5 text-sm font-semibold text-forest group-hover:text-forest-deep group-hover:underline">

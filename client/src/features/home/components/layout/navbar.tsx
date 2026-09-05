@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  User,
   LogIn,
   LayoutDashboard,
   LogOut,
@@ -16,7 +15,7 @@ import { LocaleLink } from "../../../../i18n/locales/components/locale-link";
 import { LanguageSwitcher } from "../../../../i18n/locales/components/language-switcher";
 import { ThemeToggle } from "../../../../components/theme-toggle";
 import { PATHS } from "../../../../routes/paths";
-import { t as translate } from "i18next";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 // ┌─────────────────────────────────────────────────────────┐
 // │  ضع صور اللوغو هنا:                                        │
@@ -142,16 +141,14 @@ function Emblem({
   );
 }
 
-/* ── User avatar — صورة ← أحرف الاسم ← أيقونة، مع نقطة "متصل" خضراء ── */
+/* ── الصورة الشخصية مع نقطة "متصل" خضراء ── */
 function Avatar({
-  src,
-  initials,
+  user,
   size = 24,
   rounded = "rounded-[5px]",
   dotBorder = "border-forest",
 }: {
-  src?: string;
-  initials: string;
+  user: unknown;
   size?: number;
   rounded?: string;
   dotBorder?: string;
@@ -159,27 +156,7 @@ function Avatar({
   const dot = Math.max(8, Math.round(size * 0.32));
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
-      {src ? (
-        <img
-          src={src}
-          alt={translate("common.avatarAlt")}
-          style={{ width: size, height: size }}
-          className={`${rounded} border border-cream/20 object-cover`}
-        />
-      ) : (
-        <div
-          style={{ width: size, height: size }}
-          className={`grid place-items-center ${rounded} bg-linear-to-br from-forest to-forest-deep text-cream`}
-        >
-          {initials ? (
-            <span className="text-[10px] font-bold">
-              {initials.toUpperCase()}
-            </span>
-          ) : (
-            <User size={Math.round(size * 0.55)} className="text-cream/70" />
-          )}
-        </div>
-      )}
+      <UserAvatar user={user} size={size} radius={rounded} />
       {/* نقطة "متصل" */}
       <span
         className={`absolute -bottom-0.5 -right-0.5 rounded-full bg-emerald-400 border-2 ${dotBorder}`}
@@ -234,11 +211,6 @@ export function Navbar() {
     user?.universityEmail ||
     t("common.dashboard");
   const roleLabel = role ? t(`roles.${role}`, { defaultValue: "" }) : "";
-  // أحرف فقط لو فيه اسم؛ غير ذلك فاضي → الأفاتار يعرض أيقونة
-  const initials = [user?.firstName?.[0], user?.lastName?.[0]]
-    .filter(Boolean)
-    .join("");
-  const avatarUrl = user?.avatarUrl;
 
   return (
     <header
@@ -384,12 +356,7 @@ export function Navbar() {
                         : "border-cream/10 hover:bg-white/[0.07]"
                   }`}
                 >
-                  <Avatar
-                    src={avatarUrl}
-                    initials={initials}
-                    size={24}
-                    dotBorder="border-forest"
-                  />
+                  <Avatar user={user} size={24} dotBorder="border-forest" />
                   <span className="max-w-28 truncate text-[11px] font-medium text-cream/75">
                     {displayName}
                   </span>
@@ -413,8 +380,7 @@ export function Navbar() {
                     <div className="border-b border-forest/10 bg-cream-2 px-4 py-3">
                       <div className="flex items-center gap-3">
                         <Avatar
-                          src={avatarUrl}
-                          initials={initials}
+                          user={user}
                           size={36}
                           rounded="rounded-lg"
                           dotBorder="border-cream-card"

@@ -32,6 +32,12 @@ export interface ListParams {
 }
 
 export const adminApi = {
+  // A topic with no group: the students reach it through a group request.
+  createTopic: (data: unknown) =>
+    client
+      .post<{ topic: AdminTopic }>(`${BASE}/topics`, data)
+      .then((r) => r.data.topic),
+
   createAssignedTopic: (data: unknown) =>
     client
       .post<{ topic: AdminTopic }>(`${BASE}/topics/assigned`, data)

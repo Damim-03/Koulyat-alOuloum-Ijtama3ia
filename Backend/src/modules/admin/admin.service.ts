@@ -43,6 +43,7 @@ import {
   AdminUpdateMilestoneDTO,
   CreateDomainDTO,
   UpdateDomainDTO,
+  CreateTopicDTO,
   CreateAssignedTopicDTO,
   UpdateAssignedTopicDTO,
 } from "./admin.validation";
@@ -60,6 +61,7 @@ const userSelect = {
   email: true,
   username: true,
   avatarUrl: true, // ← جديد
+  gender: true, // ← يحدّد الصورة الافتراضية
   role: true,
   status: true,
   isVerified: true,
@@ -424,6 +426,67 @@ export const getDashboardService = async () => {
     monthlyGrowth,
     systemHealth,
   };
+};
+
+export const createTopicService = async (data: CreateTopicDTO) => {
+  const {
+    title,
+    description,
+    requirements = [],
+    objectives = [],
+    maxStudents,
+    professorId,
+    specializationId,
+    academicYearId,
+    publish,
+  } = data;
+
+  const [professor, specialization, academicYear] = await Promise.all([
+    prisma.professor.findUnique({ where: { id: professorId } }),
+    prisma.specialization.findUnique({ where: { id: specializationId } }),
+    prisma.academicYear.findUnique({ where: { id: academicYearId } }),
+  ]);
+  if (!professor)
+    throw new NotFoundException(
+      "Professor not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (!specialization)
+    throw new NotFoundException(
+      "Specialization not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  if (!academicYear)
+    throw new NotFoundException(
+      "Academic year not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+
+  // لا مجموعة ولا أعضاء: الموضوع يُنشأ وحده، والطلبة يصلونه عبر طلب مجموعة.
+  const topic = await prisma.graduationTopic.create({
+    data: {
+      title,
+      description,
+      requirements,
+      objectives,
+      maxStudents,
+      status: publish ? "open" : "approved",
+      professorId,
+      specializationId,
+      academicYearId,
+    },
+  });
+
+  // الأستاذ لم يقترح هذا الموضوع، فأعلِمه أنّ الإدارة أسندت إشرافه إليه.
+  await createNotification({
+    userId: professor.userId,
+    type: "general",
+    title: "أُسنِد إليك موضوع جديد",
+    message: `أنشأت الإدارة موضوعاً تحت إشرافك: «${topic.title}».`,
+    link: "/professor/topics",
+  });
+
+  return topic;
 };
 
 export const createAssignedTopicService = async (
@@ -907,6 +970,7 @@ export const createUserService = async (data: CreateUserDTO) => {
       username: data.username,
       password: hashed,
       role: data.role as Role,
+      gender: data.gender,
     },
     select: userSelect,
   });
@@ -1142,6 +1206,7 @@ export const createStudentService = async (data: CreateStudentDTO) => {
           email: data.email,
           phone: data.phone,
           avatarUrl: data.avatarUrl,
+          gender: data.gender,
           password: hashed,
           role: "student" as Role,
         },
@@ -1189,6 +1254,7 @@ export const updateStudentService = async (
   if (data.email !== undefined) userUpdate.email = data.email;
   if (data.phone !== undefined) userUpdate.phone = data.phone;
   if (data.avatarUrl !== undefined) userUpdate.avatarUrl = data.avatarUrl;
+  if (data.gender !== undefined) userUpdate.gender = data.gender;
   if (Object.keys(userUpdate).length > 0)
     updateData.user = { update: userUpdate };
 
@@ -1689,6 +1755,7 @@ export const createProfessorService = async (data: CreateProfessorDTO) => {
           firstName: data.firstName,
           lastName: data.lastName,
           email: data.email,
+          gender: data.gender,
           password: hashed,
           role: "professor" as Role,
         },
@@ -1722,6 +1789,7 @@ export const updateProfessorService = async (
   if (data.email !== undefined) userUpdate.email = data.email;
   if (data.phone !== undefined) userUpdate.phone = data.phone;
   if (data.avatarUrl !== undefined) userUpdate.avatarUrl = data.avatarUrl;
+  if (data.gender !== undefined) userUpdate.gender = data.gender;
   if (Object.keys(userUpdate).length > 0)
     updateData.user = { update: userUpdate };
 

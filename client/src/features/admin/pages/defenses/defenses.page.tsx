@@ -15,15 +15,8 @@ import {
 import { useAdminDefenses, useDeleteDefense } from "../../hooks/admin-hook";
 import type { AdminDefense } from "../../../../types/admin";
 import { DefenseFormDialog } from "../../components/dialog/defense/defense-dialog.form";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
 
-function initials(
-  first?: string | null,
-  last?: string | null,
-  fallback = "\u061f",
-) {
-  const a = (first?.[0] ?? "") + (last?.[0] ?? "");
-  return a || fallback;
-}
 
 const PAGE_SIZE = 10;
 
@@ -215,15 +208,12 @@ export function AdminDefensesPage() {
                   {/* Member avatars */}
                   <div className="flex -space-x-2 flex-row-reverse">
                     {members.slice(0, 3).map((m) => (
-                      <div
+                      <UserAvatar
                         key={m.id}
-                        className="grid size-7 place-items-center rounded-full border-2 border-cream-card bg-linear-to-br from-forest to-forest-deep text-[10px] font-bold text-cream"
-                      >
-                        {initials(
-                          m.student?.user?.firstName,
-                          m.student?.user?.lastName,
-                        )}
-                      </div>
+                        user={m.student?.user}
+                        size={28}
+                        className="border-2 border-cream-card"
+                      />
                     ))}
                   </div>
                   <button className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest">
