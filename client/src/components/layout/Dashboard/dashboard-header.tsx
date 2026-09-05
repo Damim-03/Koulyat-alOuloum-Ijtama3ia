@@ -28,11 +28,15 @@ export function DashboardHeader({ onMenuClick, titleKey }: Props) {
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
-  const displayName =
-    user?.registrationNumber ||
-    user?.email ||
-    user?.universityEmail ||
-    t("dash.greeting");
+  // The account already carries a name; showing the login address instead made
+  // the button say "...in@univ-eloued.dz". Name first, address as the fallback.
+  const fullName = [user?.firstName, user?.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const account =
+    user?.universityEmail || user?.email || user?.registrationNumber || "";
+  const displayName = fullName || account || t("dash.greeting");
   const roleLabel = role ? t(`roles.${role}`, { defaultValue: "" }) : "";
 
   return (
@@ -62,7 +66,7 @@ export function DashboardHeader({ onMenuClick, titleKey }: Props) {
             <span className="grid size-7 place-items-center rounded-md bg-forest/10">
               <User size={15} className="text-forest/70" />
             </span>
-            <span className="hidden max-w-32 truncate text-[12px] font-medium text-forest sm:inline">
+            <span className="hidden max-w-56 truncate text-[12px] font-medium text-forest sm:inline">
               {displayName}
             </span>
             <ChevronDown
@@ -72,15 +76,22 @@ export function DashboardHeader({ onMenuClick, titleKey }: Props) {
           </button>
 
           <div
-            className={`absolute top-full z-50 mt-2 w-56 origin-top transition-all duration-200 ${isRTL ? "left-0" : "right-0"} ${open ? "scale-100 opacity-100" : "pointer-events-none scale-95 opacity-0"}`}
+            className={`absolute top-full z-50 mt-2 w-64 origin-top transition-all duration-200 ${isRTL ? "left-0" : "right-0"} ${open ? "scale-100 opacity-100" : "pointer-events-none scale-95 opacity-0"}`}
           >
             <div className="overflow-hidden rounded-xl border border-forest/10 bg-cream-card shadow-2xl">
               <div className="border-b border-forest/10 bg-cream-2 px-4 py-3">
-                <p className="truncate text-sm font-semibold text-forest">
+                <p className="text-sm font-semibold break-words text-forest">
                   {displayName}
                 </p>
+                {/* the login address wraps rather than truncates, so it is
+                    always readable in full somewhere */}
+                {account && account !== displayName && (
+                  <p className="mt-0.5 text-[11px] break-all text-clay">
+                    {account}
+                  </p>
+                )}
                 {roleLabel && (
-                  <p className="truncate text-[10px] text-clay">{roleLabel}</p>
+                  <p className="mt-1 text-[10px] text-clay/80">{roleLabel}</p>
                 )}
               </div>
               <div className="border-t border-forest/10 py-1.5">

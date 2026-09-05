@@ -12,8 +12,6 @@ import type {
 const KEYS = {
   topics: ["professor", "topics"] as const,
   topic: (id: string) => ["professor", "topic", id] as const,
-  applications: (p?: { topicId?: string; status?: string }) =>
-    ["professor", "applications", p ?? {}] as const,
   groups: ["professor", "groups"] as const,
   group: (id: string) => ["professor", "group", id] as const,
   milestones: (groupId: string) =>
@@ -82,42 +80,6 @@ export function useDeleteTopic() {
       toast.success(t("toast.topicDeleted"));
     },
     onError: () => toast.error(t("toast.topicDeleteFailed")),
-  });
-}
-
-// ── Applications ──
-export function useApplications(params?: {
-  topicId?: string;
-  status?: string;
-}) {
-  return useQuery({
-    queryKey: KEYS.applications(params),
-    queryFn: () => professorApi.listApplications(params),
-  });
-}
-export function useAcceptApplication() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => professorApi.acceptApplication(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["professor", "applications"] });
-      qc.invalidateQueries({ queryKey: ["professor", "topic"] });
-      qc.invalidateQueries({ queryKey: KEYS.groups });
-      toast.success(t("toast.requestAccepted"));
-    },
-    onError: () => toast.error(t("toast.acceptFailed")),
-  });
-}
-export function useRejectApplication() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => professorApi.rejectApplication(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["professor", "applications"] });
-      qc.invalidateQueries({ queryKey: ["professor", "topic"] });
-      toast.success(t("toast.requestRejected"));
-    },
-    onError: () => toast.error(t("toast.rejectRequestFailed")),
   });
 }
 

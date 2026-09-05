@@ -491,23 +491,23 @@ export function AdminStudentsPage() {
           <table className="w-full text-start">
             <thead>
               <tr className="bg-forest text-cream">
-                <th className="w-20 px-4 py-3 text-xs font-medium">
+                <th className="w-20 px-4 py-3 text-start text-xs font-medium">
                   {t("admin.avatarColumn")}
                 </th>
-                <th className="px-4 py-3 text-xs font-medium">
+                <th className="px-4 py-3 text-start text-xs font-medium">
                   {t("admin.firstNameColumn")}
                 </th>
-                <th className="px-4 py-3 text-xs font-medium">{t("admin.lastName")}</th>
-                <th className="px-4 py-3 text-xs font-medium">
+                <th className="px-4 py-3 text-start text-xs font-medium">{t("admin.lastName")}</th>
+                <th className="px-4 py-3 text-start text-xs font-medium">
                   {t("admin.regNumber")}
                 </th>
-                <th className="px-4 py-3 text-xs font-medium">
+                <th className="px-4 py-3 text-start text-xs font-medium">
                   {t("admin.specialization")}
                 </th>
-                <th className="px-4 py-3 text-xs font-medium">{t("admin.filiere")}</th>
-                <th className="px-4 py-3 text-xs font-medium">{t("admin.department")}</th>
-                <th className="px-4 py-3 text-xs font-medium">{t("admin.facultyLabel")}</th>
-                <th className="px-4 py-3 text-xs font-medium">
+                <th className="px-4 py-3 text-start text-xs font-medium">{t("admin.filiere")}</th>
+                <th className="px-4 py-3 text-start text-xs font-medium">{t("admin.department")}</th>
+                <th className="px-4 py-3 text-start text-xs font-medium">{t("admin.facultyLabel")}</th>
+                <th className="px-4 py-3 text-start text-xs font-medium">
                   {t("admin.academicYear")}
                 </th>
                 <th className="w-8 px-4 py-3"></th>

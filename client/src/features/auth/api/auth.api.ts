@@ -24,4 +24,12 @@ export const authApi = {
       .then((r) => r.data),
 
   me: () => client.get<MeResponse>("/auth/me").then((r) => r.data),
+
+  /** Revokes this session only — other devices stay signed in. */
+  logout: () =>
+    client.post<{ message: string }>("/auth/logout").then((r) => r.data),
+
+  /** Revokes every session on the account. For a lost device or a stolen token. */
+  logoutAll: () =>
+    client.post<{ message: string }>("/auth/logout-all").then((r) => r.data),
 };

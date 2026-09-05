@@ -6,6 +6,8 @@ declare global {
       user?: {
         userId: string;
         role: RoleType;
+        /** Profile id: Student.id | Professor.id | User.id for admins. */
+        refId: string;
       };
     }
   }

@@ -1,5 +1,6 @@
 import { prisma } from "../../core/prisma/client";
 import bcrypt from "bcryptjs";
+import { config } from "../../core/config/app.config";
 import {
   NotFoundException,
   BadRequestException,
@@ -36,6 +37,10 @@ import {
   CreateDefenseDTO,
   UpdateDefenseDTO,
   ListProfessorsDTO,
+  ListProjectsDTO,
+  ListMilestonesDTO,
+  AdminCreateMilestoneDTO,
+  AdminUpdateMilestoneDTO,
   CreateDomainDTO,
   UpdateDomainDTO,
   CreateAssignedTopicDTO,
@@ -44,7 +49,9 @@ import {
 import { Role } from "../../generated/prisma";
 import { createNotification } from "../notification/notification.service";
 
-const SALT_ROUNDS = 10;
+// Cost factor is configurable and defaults to 12. bcrypt stores the cost in
+// the hash, so raising it does not invalidate existing passwords.
+const SALT_ROUNDS = config.BCRYPT_ROUNDS;
 
 const userSelect = {
   id: true,
@@ -102,7 +109,6 @@ export const getOverviewStatsService = async () => {
     approvedTopics,
     projects,
     defenses,
-    pendingApplications,
   ] = await Promise.all([
     prisma.student.count(),
     prisma.professor.count(),
@@ -110,7 +116,6 @@ export const getOverviewStatsService = async () => {
     prisma.graduationTopic.count({ where: { status: "approved" } }),
     prisma.projectGroup.count(),
     prisma.defense.count(),
-    prisma.topicApplication.count({ where: { status: "pending" } }),
   ]);
 
   return {
@@ -120,7 +125,6 @@ export const getOverviewStatsService = async () => {
     approvedTopics,
     projects,
     defenses,
-    pendingApplications,
   };
 };
 
@@ -164,7 +168,6 @@ export const getDashboardService = async () => {
     openTopics,
     fullTopics,
     pendingTopics,
-    pendingApplications,
     pendingGroupRequests,
     upcomingDefensesCount,
     // lists
@@ -193,7 +196,6 @@ export const getDashboardService = async () => {
     prisma.graduationTopic.count({ where: { status: "open" } }),
     prisma.graduationTopic.count({ where: { status: "full" } }),
     prisma.graduationTopic.count({ where: { status: "pending" } }),
-    prisma.topicApplication.count({ where: { status: "pending" } }),
     prisma.groupRequest.count({ where: { status: "pending" } }),
     prisma.defense.count({
       where: { status: "scheduled", date: { gte: now } },
@@ -277,7 +279,6 @@ export const getDashboardService = async () => {
     prisma.graduationTopic.findMany({
       where: {
         status: "open",
-        applications: { none: {} },
         groupRequests: { none: {} },
       },
       orderBy: { updatedAt: "desc" },
@@ -408,9 +409,8 @@ export const getDashboardService = async () => {
       openTopics,
       fullTopics,
       pendingTopics,
-      pendingApplications,
       pendingGroupRequests,
-      pendingRequests: pendingApplications + pendingGroupRequests,
+      pendingRequests: pendingGroupRequests,
       upcomingDefenses: upcomingDefensesCount,
     },
     trends,
@@ -485,7 +485,7 @@ export const createAssignedTopicService = async (
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
-  // 4) أنشئ الموضوع + المجموعة + الأعضاء (مع القائد) + اضبط الحالة full — في معاملة واحدة.
+  // 4) أنشئ الموضوع + المجموعة + الأعضاء (مع المرسِل) + اضبط الحالة full — في معاملة واحدة.
   const topic = await prisma.$transaction(async (tx) => {
     const created = await tx.graduationTopic.create({
       data: {
@@ -595,9 +595,43 @@ export const updateAssignedTopicService = async (
     (currentGroup?.members ?? []).map((m) => m.studentId),
   );
 
+  // The size check below only ran when the member list was part of the same
+  // request. A PATCH carrying maxStudents alone slipped past it and could set
+  // a ceiling under the group that already exists — three members in a topic
+  // whose maximum now says one.
+  if (maxStudents !== undefined && !memberStudentIds) {
+    if (currentIds.size > maxStudents)
+      throw new BadRequestException(
+        "الحدّ الأقصى أقلّ من عدد الطلبة المُسنَدين حالياً",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+  }
+
   // 3) تحقّقات الطلبة عند تعديلهم.
   let newlyAdded: string[] = [];
   if (memberStudentIds) {
+    // These two also live in the Zod schema, but the service must not depend
+    // on its caller having validated. Without them a request could empty a
+    // group, or name a leader who is not in it — which silently produced a
+    // group with no leader at all, since isLeader is set by comparison.
+    if (memberStudentIds.length === 0)
+      throw new BadRequestException(
+        "يجب أن تبقى المجموعة تضمّ طالباً واحداً على الأقل",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+
+    if (!leaderStudentId || !memberStudentIds.includes(leaderStudentId))
+      throw new BadRequestException(
+        "المرسِل يجب أن يكون ضمن الطلبة المُسنَدين",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+
+    if (new Set(memberStudentIds).size !== memberStudentIds.length)
+      throw new BadRequestException(
+        "يوجد طالب مكرّر في القائمة",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+
     if (memberStudentIds.length > effectiveMax)
       throw new BadRequestException(
         "عدد الطلبة يتجاوز الحدّ الأقصى",
@@ -667,6 +701,29 @@ export const updateAssignedTopicService = async (
           update: { isLeader: sid === leaderStudentId },
         });
       }
+    } else if (leaderStudentId && currentGroup) {
+      // Promoting an existing member without touching the roster. This used to
+      // fall through both branches: the request was accepted with 200 and the
+      // leader silently stayed as it was.
+      if (!currentIds.has(leaderStudentId))
+        throw new BadRequestException(
+          "المرسِل يجب أن يكون ضمن أعضاء المجموعة",
+          ErrorCodeEnum.VALIDATION_ERROR,
+        );
+
+      await tx.projectMember.updateMany({
+        where: { groupId: currentGroup.id },
+        data: { isLeader: false },
+      });
+      await tx.projectMember.update({
+        where: {
+          groupId_studentId: {
+            groupId: currentGroup.id,
+            studentId: leaderStudentId,
+          },
+        },
+        data: { isLeader: true },
+      });
     }
   });
 
@@ -920,7 +977,7 @@ export const listStudentsService = async (q: ListStudentsDTO) => {
   if (q.academicYearId) where.academicYearId = q.academicYearId;
 
   if (q.unassigned === "true") {
-    // «لم يختر موضوعاً» = لا مشروع نهائي، ولا طلب مجموعة نشط (يقوده أو عضو فيه)، ولا التحاق مقبول.
+    // «لم يختر موضوعاً» = لا مشروع نهائي ولا طلب مجموعة نشط (يقوده أو عضو فيه).
     where.projectMembers = { none: {} };
     where.ledGroupRequests = {
       none: { status: { in: ["pending", "accepted"] } },
@@ -928,7 +985,6 @@ export const listStudentsService = async (q: ListStudentsDTO) => {
     where.groupRequestMembers = {
       none: { request: { status: { in: ["pending", "accepted"] } } },
     };
-    where.applications = { none: { status: "accepted" } };
   }
 
   // Hierarchical filters resolved through the specialization → filiere chain.
@@ -950,6 +1006,21 @@ export const listStudentsService = async (q: ListStudentsDTO) => {
     ? nameSearchFilter(q.search, (f) => ({ user: f }))
     : null;
   if (byName) and.push(byName);
+
+  // Picker search: try every identifier at once.
+  if (q.quickSearch) {
+    const term = q.quickSearch;
+    const byNameToo = nameSearchFilter(term, (f) => ({ user: f }));
+    and.push({
+      OR: [
+        ...(byNameToo ? [byNameToo] : []),
+        { registrationNumber: { contains: term } },
+        // Student has no universityEmail of its own — only Professor does.
+        { user: { username: { contains: term } } },
+        { user: { email: { contains: term } } },
+      ],
+    });
+  }
 
   if (q.registrationNumber) {
     and.push({ registrationNumber: { contains: q.registrationNumber } });
@@ -993,20 +1064,6 @@ export const getStudentByIdService = async (id: string) => {
         include: {
           filiere: {
             include: { department: { include: { faculty: true } } },
-          },
-        },
-      },
-      // Individual topic applications (with the topic + its status).
-      applications: {
-        orderBy: { priority: "asc" },
-        include: {
-          topic: {
-            select: {
-              id: true,
-              title: true,
-              status: true,
-              professor: { include: { user: { select: userSelect } } },
-            },
           },
         },
       },
@@ -1196,6 +1253,22 @@ export const listProfessorsService = async (q: ListProfessorsDTO) => {
     : null;
   if (byName) and.push(byName);
 
+  // Picker search: the caller has one string and does not know which field
+  // it belongs to, so every identifier is tried at once.
+  if (q.quickSearch) {
+    const term = q.quickSearch;
+    const byNameToo = nameSearchFilter(term, (f) => ({ user: f }));
+    and.push({
+      OR: [
+        ...(byNameToo ? [byNameToo] : []),
+        { universityEmail: { contains: term } },
+        { employeeNumber: { contains: term } },
+        { user: { username: { contains: term } } },
+        { user: { email: { contains: term } } },
+      ],
+    });
+  }
+
   if (q.employeeNumber) {
     and.push({ employeeNumber: { contains: q.employeeNumber } });
   }
@@ -1252,7 +1325,7 @@ export const getProfessorByIdService = async (id: string) => {
         orderBy: { createdAt: "desc" },
         include: {
           specialization: { select: { id: true, name: true } },
-          _count: { select: { applications: true } },
+          _count: { select: { groupRequests: true } },
         },
       },
     },
@@ -2196,7 +2269,7 @@ export const listTopicsService = async (q: ListTopicsDTO) => {
         professor: { include: { user: { select: userSelect } } },
         specialization: true,
         academicYear: true,
-        _count: { select: { applications: true } },
+        _count: { select: { groupRequests: true } },
       },
       orderBy: { createdAt: "desc" },
       skip: (q.page - 1) * q.limit,
@@ -2215,10 +2288,16 @@ export const getTopicByIdService = async (id: string) => {
       professor: { include: { user: { select: userSelect } } },
       specialization: true,
       academicYear: true,
-      applications: {
-        include: { student: { include: { user: { select: userSelect } } } },
+      // `projectGroup: true` returned the group row and nothing else, so the
+      // detail page could not name the students it was reporting a count of.
+      projectGroup: {
+        include: {
+          members: {
+            orderBy: { isLeader: "desc" },
+            include: { student: { include: { user: { select: userSelect } } } },
+          },
+        },
       },
-      projectGroup: true,
     },
   });
   if (!topic)
@@ -2381,193 +2460,169 @@ export const unpublishTopicService = async (id: string) => {
 //
 // ════════ APPLICATIONS ════════
 //
-export const listApplicationsService = async (q: ListQueryDTO) => {
-  const statusFilter = (q as { status?: string }).status;
-  const where: Record<string, unknown> = {};
-  if (statusFilter && statusFilter !== "all") where.status = statusFilter;
-  if (q.search) {
-    where.OR = [
-      { topic: { title: { contains: q.search } } },
-      {
-        student: {
-          registrationNumber: { contains: q.search },
-        },
-      },
-      {
-        student: {
-          user: { firstName: { contains: q.search } },
-        },
-      },
-      {
-        student: {
-          user: { lastName: { contains: q.search } },
-        },
-      },
-    ];
-  }
-
-  const [items, total] = await Promise.all([
-    prisma.topicApplication.findMany({
-      where,
-      include: {
-        student: { include: { user: { select: userSelect } } },
-        topic: {
-          include: { professor: { include: { user: { select: userSelect } } } },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      skip: (q.page - 1) * q.limit,
-      take: q.limit,
-    }),
-    prisma.topicApplication.count({ where }),
-  ]);
-  return { items, total, page: q.page, limit: q.limit };
-};
 
 // ─── ACCEPT APPLICATION (admin decision) ──────────────────────
-export const acceptApplicationService = async (applicationId: string) => {
-  const application = await prisma.topicApplication.findUnique({
-    where: { id: applicationId },
-    include: {
-      topic: { include: { projectGroup: { include: { members: true } } } },
-    },
-  });
-  if (!application)
-    throw new NotFoundException(
-      "Application not found",
-      ErrorCodeEnum.RESOURCE_NOT_FOUND,
-    );
-  if (application.status === "accepted")
-    throw new BadRequestException(
-      "Application is already accepted",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-
-  const topic = application.topic;
-  const currentMembers = topic.projectGroup?.members.length ?? 0;
-  if (currentMembers >= topic.maxStudents)
-    throw new BadRequestException(
-      "This topic is already full",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-
-  const result = await prisma.$transaction(async (tx) => {
-    const group =
-      topic.projectGroup ??
-      (await tx.projectGroup.create({ data: { topicId: topic.id } }));
-
-    await tx.projectMember.upsert({
-      where: {
-        groupId_studentId: {
-          groupId: group.id,
-          studentId: application.studentId,
-        },
-      },
-      create: { groupId: group.id, studentId: application.studentId },
-      update: {},
-    });
-
-    const updated = await tx.topicApplication.update({
-      where: { id: application.id },
-      data: { status: "accepted" },
-    });
-
-    const memberCount = await tx.projectMember.count({
-      where: { groupId: group.id },
-    });
-    if (memberCount >= topic.maxStudents) {
-      await tx.graduationTopic.update({
-        where: { id: topic.id },
-        data: { status: "full" },
-      });
-      await tx.topicApplication.updateMany({
-        where: { topicId: topic.id, status: "pending" },
-        data: { status: "rejected" },
-      });
-    }
-
-    return updated;
-  });
-
-  // إشعار الطالب بقبول طلبه.
-  const studentUserId = await getStudentUserId(application.studentId);
-  if (studentUserId)
-    await createNotification({
-      userId: studentUserId,
-      type: "application_accepted",
-      title: "تم قبول طلبك",
-      message: `تم قبولك في الموضوع: «${topic.title}».`,
-      link: "/student/applications",
-    });
-
-  return result;
-};
 
 // ─── REJECT APPLICATION (admin decision) ──────────────────────
-export const rejectApplicationService = async (
-  applicationId: string,
-  rejectionReason?: string,
-) => {
-  const application = await prisma.topicApplication.findUnique({
-    where: { id: applicationId },
-  });
-  if (!application)
-    throw new NotFoundException(
-      "Application not found",
-      ErrorCodeEnum.RESOURCE_NOT_FOUND,
-    );
-  if (application.status === "rejected")
-    throw new BadRequestException(
-      "Application is already rejected",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-
-  const updated = await prisma.topicApplication.update({
-    where: { id: applicationId },
-    data: {
-      status: "rejected",
-      ...(rejectionReason !== undefined ? { rejectionReason } : {}),
-    },
-  });
-
-  const userId = await getStudentUserId(application.studentId);
-  if (userId)
-    await createNotification({
-      userId,
-      type: "application_rejected",
-      title: "تم رفض طلبك",
-      message: rejectionReason
-        ? `تم رفض طلبك. السبب: ${rejectionReason}`
-        : "تم رفض طلبك على الموضوع.",
-      link: "/student/applications",
-    });
-
-  return updated;
-};
 
 //
 // ════════ PROJECTS (groups) ════════
 //
-export const listProjectsService = async (q: ListQueryDTO) => {
-  const [items, total] = await Promise.all([
-    prisma.projectGroup.findMany({
-      include: {
-        topic: {
-          include: { professor: { include: { user: { select: userSelect } } } },
+export const listProjectsService = async (q: ListProjectsDTO) => {
+  // Filters are combined with AND: each one narrows what the others left.
+  const and: Record<string, unknown>[] = [];
+
+  if (q.search) {
+    const term = q.search;
+    const byName = nameSearchFilter(term, (f) => ({ user: f }));
+    and.push({
+      OR: [
+        { topic: { title: { contains: term } } },
+        {
+          members: {
+            some: {
+              student: {
+                OR: [
+                  ...(byName ? [byName] : []),
+                  { registrationNumber: { contains: term } },
+                ],
+              },
+            },
+          },
         },
-        members: {
-          include: { student: { include: { user: { select: userSelect } } } },
-        },
-        _count: { select: { milestones: true } },
-        defense: true,
+      ],
+    });
+  }
+
+  if (q.professorId) and.push({ topic: { professorId: q.professorId } });
+  if (q.academicYearId)
+    and.push({ topic: { academicYearId: q.academicYearId } });
+
+  // Most specific wins, matching the other list endpoints.
+  if (q.specializationId) {
+    and.push({ topic: { specializationId: q.specializationId } });
+  } else if (q.filiereId) {
+    and.push({ topic: { specialization: { filiereId: q.filiereId } } });
+  } else if (q.departmentId) {
+    and.push({
+      topic: { specialization: { filiere: { departmentId: q.departmentId } } },
+    });
+  } else if (q.facultyId) {
+    and.push({
+      topic: {
+        specialization: { filiere: { department: { facultyId: q.facultyId } } },
       },
-      orderBy: { createdAt: "desc" },
-      skip: (q.page - 1) * q.limit,
-      take: q.limit,
-    }),
-    prisma.projectGroup.count(),
-  ]);
-  return { items, total, page: q.page, limit: q.limit };
+    });
+  }
+
+  if (q.defense === "none") and.push({ defense: { is: null } });
+  else if (q.defense) and.push({ defense: { status: q.defense } });
+
+  const where = and.length > 0 ? { AND: and } : {};
+
+  // "Defence soonest" has to put groups that have one first; Prisma sorts
+  // nulls last on a descending relation order, so ascending date with the
+  // relation is the closest honest ordering.
+  const orderBy =
+    q.sort === "oldest"
+      ? ({ createdAt: "asc" } as const)
+      : q.sort === "defenseSoon"
+        ? ({ defense: { date: "asc" } } as const)
+        : ({ createdAt: "desc" } as const);
+
+  /** The active filter plus one more condition, for the summary counts. */
+  const narrowed = (extra: Record<string, unknown>) => ({
+    AND: [...and, extra],
+  });
+
+  // The summary is computed over the *filtered* set, not the whole table, so
+  // the tiles always describe the grid underneath them. They are counts, not
+  // a second page of rows, so they cost four cheap aggregates.
+  const [items, total, defenseScheduled, defenseDone, noDefense, withOverdue] =
+    await Promise.all([
+      prisma.projectGroup.findMany({
+        where,
+        include: {
+          topic: {
+            include: {
+              professor: { include: { user: { select: userSelect } } },
+              // Neither of these was fetched before, so the card could not show
+              // — or filter by — where the project sits academically.
+              specialization: true,
+              academicYear: true,
+            },
+          },
+          members: {
+            include: { student: { include: { user: { select: userSelect } } } },
+          },
+          _count: { select: { milestones: true } },
+          defense: true,
+        },
+        orderBy,
+        skip: (q.page - 1) * q.limit,
+        take: q.limit,
+      }),
+      prisma.projectGroup.count({ where }),
+      prisma.projectGroup.count({
+        where: narrowed({ defense: { status: "scheduled" } }),
+      }),
+      prisma.projectGroup.count({
+        where: narrowed({ defense: { status: "completed" } }),
+      }),
+      prisma.projectGroup.count({ where: narrowed({ defense: { is: null } }) }),
+      prisma.projectGroup.count({
+        where: narrowed({ milestones: { some: { status: "overdue" } } }),
+      }),
+    ]);
+
+  // Progress is the point of this page, and a bare milestone count cannot
+  // express it. One grouped query covers the whole page rather than one
+  // query per project.
+  const ids = items.map((p) => p.id);
+  const grouped = ids.length
+    ? await prisma.milestone.groupBy({
+        by: ["groupId", "status"],
+        where: { groupId: { in: ids } },
+        _count: { _all: true },
+      })
+    : [];
+
+  const progressByGroup = new Map<
+    string,
+    { total: number; completed: number; overdue: number }
+  >();
+  for (const id of ids)
+    progressByGroup.set(id, { total: 0, completed: 0, overdue: 0 });
+
+  for (const row of grouped) {
+    const acc = progressByGroup.get(row.groupId);
+    if (!acc) continue;
+    const n = row._count._all;
+    acc.total += n;
+    if (row.status === "completed") acc.completed += n;
+    if (row.status === "overdue") acc.overdue += n;
+  }
+
+  return {
+    items: items.map((p) => ({
+      ...p,
+      progress: progressByGroup.get(p.id) ?? {
+        total: 0,
+        completed: 0,
+        overdue: 0,
+      },
+    })),
+    total,
+    stats: {
+      total,
+      defenseScheduled,
+      defenseDone,
+      noDefense,
+      withOverdue,
+    },
+    page: q.page,
+    limit: q.limit,
+  };
 };
 
 export const getProjectByIdService = async (id: string) => {
@@ -2577,14 +2632,50 @@ export const getProjectByIdService = async (id: string) => {
       topic: {
         include: {
           professor: { include: { user: { select: userSelect } } },
-          specialization: true,
+          specialization: { include: { filiere: { include: { department: true } } } },
+          // Missing before, so the detail view could not say which year the
+          // project belongs to.
+          academicYear: true,
         },
       },
       members: {
-        include: { student: { include: { user: { select: userSelect } } } },
+        orderBy: { isLeader: "desc" },
+        include: {
+          student: {
+            include: {
+              user: { select: userSelect },
+              // Where each member sits academically. Nothing enforces that a
+              // group's members share the topic's specialization, so showing
+              // it per person is the only way a mismatch becomes visible.
+              specialization: {
+                include: {
+                  filiere: {
+                    include: { department: { include: { faculty: true } } },
+                  },
+                },
+              },
+              academicYear: true,
+            },
+          },
+        },
       },
-      milestones: { orderBy: { order: "asc" } },
-      defense: true,
+      milestones: {
+        orderBy: { order: "asc" },
+        // The count is enough to show "3 submissions" without shipping every
+        // file record to a page that only summarises them.
+        include: { _count: { select: { submissions: true } } },
+      },
+      defense: {
+        // The jury: previously the defence came back without it, so the page
+        // could announce a date but never who would be sitting on it.
+        include: {
+          committee: {
+            include: {
+              professor: { include: { user: { select: userSelect } } },
+            },
+          },
+        },
+      },
     },
   });
   if (!group)
@@ -2701,7 +2792,9 @@ export const removeProjectMemberService = async (
 //
 // ════════ MILESTONES (read-only) ════════
 //
-export const listGroupMilestonesService = async (groupId: string) => {
+/** Loads a group or fails; the admin scope is every group, unlike the
+ *  professor endpoints which are limited to the ones they supervise. */
+const requireGroup = async (groupId: string) => {
   const group = await prisma.projectGroup.findUnique({
     where: { id: groupId },
   });
@@ -2710,10 +2803,152 @@ export const listGroupMilestonesService = async (groupId: string) => {
       "Project not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+  return group;
+};
+
+export const listGroupMilestonesService = async (
+  groupId: string,
+  q: ListMilestonesDTO = {},
+) => {
+  await requireGroup(groupId);
+
+  const where: Record<string, unknown> = { groupId };
+  if (q.status) where.status = q.status;
+  if (q.search) {
+    where.OR = [
+      { title: { contains: q.search } },
+      { description: { contains: q.search } },
+    ];
+  }
+
   return prisma.milestone.findMany({
-    where: { groupId },
+    where,
     orderBy: { order: "asc" },
+    include: { _count: { select: { submissions: true } } },
   });
+};
+
+export const createGroupMilestoneService = async (
+  groupId: string,
+  data: AdminCreateMilestoneDTO,
+) => {
+  await requireGroup(groupId);
+
+  // Order is a position in a list, so leaving it to the caller invites two
+  // milestones claiming the same slot. When omitted it continues the group's
+  // own sequence.
+  let order = data.order;
+  if (order === undefined) {
+    const last = await prisma.milestone.findFirst({
+      where: { groupId },
+      orderBy: { order: "desc" },
+      select: { order: true },
+    });
+    order = (last?.order ?? 0) + 1;
+  }
+
+  const milestone = await prisma.milestone.create({
+    data: {
+      title: data.title,
+      description: data.description,
+      deadline: data.deadline,
+      order,
+      groupId,
+      status: data.status ?? "pending",
+    },
+  });
+
+  // The supervisor owns this timeline too; they should not discover a change
+  // to it by accident.
+  await notifySupervisorOfMilestone(groupId, "أضافت الإدارة مرحلة جديدة");
+
+  return milestone;
+};
+
+export const updateGroupMilestoneService = async (
+  id: string,
+  data: AdminUpdateMilestoneDTO,
+) => {
+  const existing = await prisma.milestone.findUnique({ where: { id } });
+  if (!existing)
+    throw new NotFoundException(
+      "Milestone not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+
+  const milestone = await prisma.milestone.update({
+    where: { id },
+    data: {
+      ...(data.title !== undefined ? { title: data.title } : {}),
+      ...(data.description !== undefined
+        ? { description: data.description }
+        : {}),
+      ...(data.deadline !== undefined ? { deadline: data.deadline } : {}),
+      ...(data.order !== undefined ? { order: data.order } : {}),
+      ...(data.status !== undefined ? { status: data.status } : {}),
+    },
+  });
+
+  await notifySupervisorOfMilestone(
+    existing.groupId,
+    "عدّلت الإدارة مرحلة في مشروعكم",
+  );
+
+  return milestone;
+};
+
+export const deleteGroupMilestoneService = async (id: string) => {
+  const existing = await prisma.milestone.findUnique({
+    where: { id },
+    include: { _count: { select: { submissions: true } } },
+  });
+  if (!existing)
+    throw new NotFoundException(
+      "Milestone not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+
+  // Deleting would cascade away work the students already handed in. Refuse
+  // and say so, rather than destroying submissions as a side effect.
+  if (existing._count.submissions > 0)
+    throw new BadRequestException(
+      "لا يمكن حذف مرحلة تحتوي على تسليمات؛ احذف التسليمات أولاً.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  await prisma.milestone.delete({ where: { id } });
+  await notifySupervisorOfMilestone(
+    existing.groupId,
+    "حذفت الإدارة مرحلة من مشروعكم",
+  );
+
+  return { message: "Milestone deleted" };
+};
+
+/** Tells the supervising professor that administration touched the timeline. */
+const notifySupervisorOfMilestone = async (groupId: string, title: string) => {
+  try {
+    const group = await prisma.projectGroup.findUnique({
+      where: { id: groupId },
+      select: {
+        topic: {
+          select: { title: true, professor: { select: { userId: true } } },
+        },
+      },
+    });
+    const userId = group?.topic?.professor?.userId;
+    if (!userId) return;
+
+    await createNotification({
+      userId,
+      type: "general",
+      title,
+      message: `المشروع: «${group?.topic?.title ?? ""}».`,
+      link: "/professor/projects",
+    });
+  } catch {
+    // A notification must never fail the write it is reporting.
+  }
 };
 
 //
@@ -2869,7 +3104,7 @@ export const removeGroupRequestMemberService = async (
     );
   if (request.leaderStudentId === studentId)
     throw new BadRequestException(
-      "لا يمكن إزالة القائد؛ غيّر القائد أولاً",
+      "لا يمكن إزالة المرسِل؛ غيّر المرسِل أولاً",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   const member = request.members.find((m) => m.studentId === studentId);
@@ -2903,12 +3138,12 @@ export const setGroupRequestLeaderService = async (
     );
   if (request.status === "accepted")
     throw new BadRequestException(
-      "لا يمكن تغيير القائد بعد الموافقة",
+      "لا يمكن تغيير المرسِل بعد الموافقة",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   if (!request.members.some((m) => m.studentId === studentId))
     throw new BadRequestException(
-      "القائد يجب أن يكون أحد الأعضاء",
+      "المرسِل يجب أن يكون أحد الأعضاء",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3187,7 +3422,7 @@ export const rejectGroupRequestService = async (
     await tx.groupRequest.delete({ where: { id } });
   });
 
-  // أعلِم قائد الفريق بالرفض.
+  // أعلِم مرسِل الفريق بالرفض.
   if (leaderUserId)
     await createNotification({
       userId: leaderUserId,

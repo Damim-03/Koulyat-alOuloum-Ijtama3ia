@@ -91,7 +91,6 @@ export interface OverviewStats {
   approvedTopics: number;
   projects: number;
   defenses: number;
-  pendingApplications: number;
 }
 
 // ── Faculty / Department / Specialization / Year ──
@@ -168,7 +167,7 @@ export interface ProfessorTopicLite {
   maxStudents: number;
   createdAt: string;
   specialization?: { id: string; name: string } | null;
-  _count?: { applications: number };
+  _count?: { groupRequests: number };
 }
 
 export interface Professor {
@@ -184,7 +183,7 @@ export interface Professor {
   _count?: { topics: number };
 }
 
-// ── Topics / Applications / Projects / Defenses ──
+// ── Topics / Projects / Defenses ──
 export interface AdminTopic {
   references: TopicReference[];
   id: string;
@@ -198,17 +197,7 @@ export interface AdminTopic {
   professor?: Professor;
   specialization?: Specialization;
   academicYear?: AcademicYear;
-  _count?: { applications: number };
-  createdAt: string;
-}
-
-export interface AdminApplication {
-  id: string;
-  status: string;
-  priority: number;
-  rejectionReason?: string | null;
-  student?: Student;
-  topic?: AdminTopic;
+  _count?: { groupRequests: number };
   createdAt: string;
 }
 
@@ -288,7 +277,6 @@ export interface DashboardStats {
   openTopics: number;
   fullTopics: number;
   pendingTopics: number;
-  pendingApplications: number;
   pendingGroupRequests: number;
   pendingRequests: number;
   upcomingDefenses: number;

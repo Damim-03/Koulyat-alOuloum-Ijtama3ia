@@ -111,6 +111,10 @@ model User {
   isVerified  Boolean   @default(false)
   lastLoginAt DateTime?
 
+  /// Bumped on logout / forced sign-out. Tokens carrying an older value are
+  /// rejected, which is what makes logout and "revoke everywhere" real.
+  tokenVersion Int @default(0)
+
   student   Student?
   professor Professor?
 
@@ -683,4 +687,24 @@ model UniversityDomain {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Sessions signed out individually.
+///
+/// A denylist rather than a session table: only a logout writes here, rows are
+/// pruned once the token they revoke would have expired anyway, so the table
+/// stays proportional to recent logouts rather than to active users.
+model RevokedSession {
+  /// The `sid` claim carried by the revoked token pair.
+  id String @id
+
+  userId String
+
+  /// Original token expiry — anything past this is safe to delete.
+  expiresAt DateTime
+
+  revokedAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }

@@ -9,7 +9,6 @@ import {
   Layers,
   CalendarDays,
   FileText,
-  ClipboardList,
   FolderKanban,
   MessagesSquare, Mail,
 } from "lucide-react";
@@ -46,11 +45,6 @@ const NAV: NavItem[] = [
     to: `${R}/group-requests`,
     labelKey: "admin.groupRequestsTitle",
     icon: Users,
-  },
-  {
-    to: `${R}/applications`,
-    labelKey: "admin.applications",
-    icon: ClipboardList,
   },
   { to: `${R}/projects`, labelKey: "admin.projects", icon: FolderKanban },
   { to: `${R}/messages`, labelKey: "admin.messagesTitle", icon: Mail },

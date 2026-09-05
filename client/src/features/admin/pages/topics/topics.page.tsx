@@ -15,16 +15,16 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
+  AlertTriangle,
+  RotateCcw,
+  FilterX,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { adminApi } from "../../api/admin.api";
+import { statusChip } from "../../utils/status-styles";
 import {
   useAdminTopics,
-  useApproveTopic,
-  useRejectTopic,
-  useArchiveTopic,
-  usePublishTopic,
-  useUnpublishTopic,
-  useUnarchiveTopic,
-  useDeleteTopic,
   useProfessors,
   useSpecializations,
   useFaculties,
@@ -40,15 +40,6 @@ function initials(first?: string | null, last?: string | null, fb = "\u061f") {
   const a = (first?.[0] ?? "") + (last?.[0] ?? "");
   return a || fb;
 }
-
-const STATUS_STYLES: Record<string, string> = {
-  approved: "bg-emerald-100 text-emerald-700",
-  pending: "bg-amber-100 text-amber-700",
-  rejected: "bg-red-100 text-red-700",
-  open: "bg-sky-100 text-sky-700",
-  full: "bg-violet-100 text-violet-700",
-  archived: "bg-gray-200 text-gray-600",
-};
 
 const STATUS_FILTERS = [
   "",
@@ -85,6 +76,19 @@ export function AdminTopicsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmRejectOpen, setConfirmRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+
+  function clearFilters() {
+    setSearch("");
+    setStatus("");
+    setProfessorId("");
+    setAcademicYearId("");
+    setFacultyId("");
+    setDepartmentId("");
+    setFiliereId("");
+    setSpecializationId("");
+  }
 
   const activeFilters =
     (search ? 1 : 0) +
@@ -143,19 +147,15 @@ export function AdminTopicsPage() {
     ],
   );
 
-  const { data, isLoading, refetch } = useAdminTopics(params);
+  const qc = useQueryClient();
+  const { data, isLoading, isError, isFetching, refetch } =
+    useAdminTopics(params);
+  // 100 is the API's ceiling for `limit` (listQuerySchema). Asking for more
+  // is rejected outright, which empties the filter instead of widening it.
   const { data: profsData } = useProfessors({ limit: 100 });
   const { data: specs } = useSpecializations();
   const { data: faculties } = useFaculties();
   const { data: years } = useAcademicYears();
-
-  const approve = useApproveTopic();
-  const reject = useRejectTopic();
-  const archive = useArchiveTopic();
-  const publish = usePublishTopic();
-  const unpublish = useUnpublishTopic();
-  const unarchive = useUnarchiveTopic();
-  const del = useDeleteTopic();
 
   const topics = (data?.items ?? []) as any[];
   const total = data?.total ?? 0;
@@ -167,8 +167,9 @@ export function AdminTopicsPage() {
     () => new Map((faculties ?? []).map((f: any) => [f.id, f])),
     [faculties],
   );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const specList = (specs ?? []) as any[];
+  // `specs ?? []` built a fresh array on every render while the query was
+  // still loading, invalidating all four option memos below each time.
+  const specList = useMemo(() => (specs ?? []) as any[], [specs]);
 
   const facultyOptions = useMemo(() => {
     const seen = new Map<string, any>();
@@ -258,49 +259,64 @@ export function AdminTopicsPage() {
   // deletion, so we exclude it from the deletable set up front.
   const deletable = selectedTopics.filter((tp) => tp.status !== "full");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
 
+  /**
+   * Runs one action over a set of topics.
+   *
+   * Every item is attempted even when some fail — the server guards a few
+   * transitions (a topic with a formed group cannot be deleted), and one such
+   * refusal must not abandon the rest of the selection. The outcome is
+   * reported once at the end: the per-item mutation hooks were each firing
+   * their own toast and cache invalidation, so a run over ten rows produced
+   * ten toasts and ten refetches while the loop was still going.
+   */
   async function runBulk(items: any[], fn: (id: string) => Promise<unknown>) {
-    if (items.length === 0) return;
+    if (items.length === 0 || bulkBusy) return;
     setBulkBusy(true);
-    try {
-      for (const tp of items) await fn(tp.id);
-      setSelected(new Set());
-    } finally {
-      setBulkBusy(false);
-    }
-  }
+    setBulkProgress({ done: 0, total: items.length });
 
-  // Tolerant delete: keep going even if some topics are blocked by the guard.
-  async function bulkDelete() {
-    if (deletable.length === 0) return;
-    setBulkBusy(true);
+    let ok = 0;
+    let failed = 0;
     try {
-      for (const tp of deletable) {
+      for (const tp of items) {
         try {
-          await del.mutateAsync(tp.id);
+          await fn(tp.id);
+          ok++;
         } catch {
-          // topic with a formed project group — blocked by the backend
+          failed++;
         }
+        setBulkProgress((p) => ({ ...p, done: p.done + 1 }));
       }
-      setSelected(new Set());
     } finally {
+      await qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      setSelected(new Set());
       setBulkBusy(false);
-      setConfirmDeleteOpen(false);
+      setBulkProgress({ done: 0, total: 0 });
     }
+
+    if (failed === 0) toast.success(t("admin.bulkDone", { n: ok }));
+    else if (ok === 0) toast.error(t("admin.bulkAllFailed", { n: failed }));
+    else toast.warning(t("admin.bulkPartial", { ok, failed }));
   }
 
-  const bulkApprove = () =>
-    runBulk(approvable, (id) => approve.mutateAsync(id));
-  const bulkPublish = () =>
-    runBulk(publishable, (id) => publish.mutateAsync(id));
-  const bulkUnpublish = () =>
-    runBulk(unpublishable, (id) => unpublish.mutateAsync(id));
-  const bulkReject = () =>
-    runBulk(rejectable, (id) => reject.mutateAsync({ id }));
-  const bulkArchive = () =>
-    runBulk(archivable, (id) => archive.mutateAsync(id));
-  const bulkUnarchive = () =>
-    runBulk(unarchivable, (id) => unarchive.mutateAsync(id));
+  async function bulkDelete() {
+    await runBulk(deletable, adminApi.deleteTopic);
+    setConfirmDeleteOpen(false);
+  }
+
+  async function bulkReject() {
+    const reason = rejectReason.trim();
+    await runBulk(rejectable, (id) => adminApi.rejectTopic(id, reason || undefined));
+    setConfirmRejectOpen(false);
+    setRejectReason("");
+  }
+
+  const bulkApprove = () => runBulk(approvable, adminApi.approveTopic);
+  const bulkPublish = () => runBulk(publishable, adminApi.publishTopic);
+  const bulkUnpublish = () => runBulk(unpublishable, adminApi.unpublishTopic);
+  const bulkArchive = () => runBulk(archivable, adminApi.archiveTopic);
+  const bulkUnarchive = () => runBulk(unarchivable, adminApi.unarchiveTopic);
 
   function profName(tp: any) {
     const u = tp.professor?.user;
@@ -502,6 +518,11 @@ export function AdminTopicsPage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/10 px-4 py-3">
           <span className="text-sm font-semibold text-forest">
             {t("admin.selectedN", { n: selected.size })}
+            {bulkBusy && bulkProgress.total > 0 && (
+              <span className="ms-2 font-normal text-clay">
+                {t("admin.bulkProgress", bulkProgress)}
+              </span>
+            )}
           </span>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -529,7 +550,7 @@ export function AdminTopicsPage() {
               {t("admin.unpublish")} ({unpublishable.length})
             </button>
             <button
-              onClick={bulkReject}
+              onClick={() => setConfirmRejectOpen(true)}
               disabled={bulkBusy || rejectable.length === 0}
               className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 px-3.5 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-40"
             >
@@ -550,7 +571,7 @@ export function AdminTopicsPage() {
               className="inline-flex items-center gap-1.5 rounded-xl border border-forest/20 px-3.5 py-2 text-xs font-semibold text-forest transition hover:bg-forest/5 disabled:opacity-40"
             >
               <Undo2 size={14} />
-              {t("admin.unarchive", { defaultValue: t("admin.unarchive") })} (
+              {t("admin.unarchive")} (
               {unarchivable.length})
             </button>
             <button
@@ -559,7 +580,7 @@ export function AdminTopicsPage() {
               className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
             >
               <Trash2 size={14} />
-              {t("admin.delete", { defaultValue: t("pro.delete") })} ({deletable.length})
+              {t("admin.delete")} ({deletable.length})
             </button>
             <button
               onClick={() => setSelected(new Set())}
@@ -574,6 +595,13 @@ export function AdminTopicsPage() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+        {/* Changing a filter refetches while the old rows stay on screen —
+            this hairline says the table is catching up. */}
+        <div className="h-0.5 overflow-hidden bg-transparent">
+          {isFetching && !isLoading && (
+            <div className="h-full w-1/3 animate-[bulkSweep_1s_ease-in-out_infinite] bg-gold" />
+          )}
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-start">
             <thead>
@@ -587,50 +615,85 @@ export function AdminTopicsPage() {
                     aria-label={t("admin.selectAll")}
                   />
                 </th>
-                <th className="px-5 py-3 text-xs font-medium">
+                <th className="px-5 py-3 text-start text-xs font-medium">
                   {t("admin.topicTitle")}
                 </th>
-                <th className="px-5 py-3 text-xs font-medium">
+                <th className="px-5 py-3 text-start text-xs font-medium">
                   {t("admin.supervisor")}
                 </th>
-                <th className="px-5 py-3 text-xs font-medium">
+                <th className="px-5 py-3 text-start text-xs font-medium">
                   {t("admin.specialization")}
                 </th>
-                <th className="px-5 py-3 text-xs font-medium">
+                <th className="px-5 py-3 text-start text-xs font-medium">
                   {t("admin.statusLabel")}
                 </th>
-                <th className="px-5 py-3 text-xs font-medium">
+                <th className="px-5 py-3 text-start text-xs font-medium">
                   {t("admin.applicationsCount")}
                 </th>
-                <th className="px-5 py-3 text-xs font-medium">
-                  {t("admin.actions", { defaultValue: t("admin.actions") })}
+                <th className="px-5 py-3 text-start text-xs font-medium">
+                  {t("admin.actions")}
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-forest/10">
-              {isLoading && (
+              {isLoading &&
+                Array.from({ length: 5 }).map((_, k) => (
+                  <tr key={`sk-${k}`} className="animate-pulse">
+                    <td colSpan={7} className="px-5 py-4">
+                      <div className="h-4 w-full rounded bg-forest/10" />
+                    </td>
+                  </tr>
+                ))}
+
+              {/* A failed request used to fall through to "no topics", so an
+                  outage or a spent rate limit looked like an empty database. */}
+              {!isLoading && isError && (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="px-5 py-10 text-center text-sm text-clay"
-                  >
-                    {"\u2026"}
+                  <td colSpan={7} className="px-5 py-12 text-center">
+                    <AlertTriangle
+                      size={28}
+                      className="mx-auto mb-3 text-red-500"
+                    />
+                    <p className="text-sm font-semibold text-forest">
+                      {t("admin.loadFailed")}
+                    </p>
+                    <p className="mt-1 text-xs text-clay">
+                      {t("admin.loadFailedHint")}
+                    </p>
+                    <button
+                      onClick={() => refetch()}
+                      className="mt-4 inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2 text-xs font-semibold text-forest transition hover:bg-forest/5"
+                    >
+                      <RotateCcw size={14} />
+                      {t("admin.retry")}
+                    </button>
                   </td>
                 </tr>
               )}
 
-              {!isLoading && topics.length === 0 && (
+              {!isLoading && !isError && topics.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="px-5 py-12 text-center text-sm text-clay"
-                  >
-                    {t("admin.noTopics")}
+                  <td colSpan={7} className="px-5 py-12 text-center">
+                    <p className="text-sm text-clay">
+                      {activeFilters > 0
+                        ? t("admin.noResultsFilters")
+                        : t("admin.noTopics")}
+                    </p>
+                    {activeFilters > 0 && (
+                      <button
+                        onClick={clearFilters}
+                        className="mt-4 inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2 text-xs font-semibold text-forest transition hover:bg-forest/5"
+                      >
+                        <FilterX size={14} />
+                        {t("admin.clearFilters")}
+                      </button>
+                    )}
                   </td>
                 </tr>
               )}
 
-              {topics.map((tp) => {
+              {!isError &&
+                topics.map((tp) => {
                 const checked = selected.has(tp.id);
                 return (
                   <tr
@@ -654,9 +717,6 @@ export function AdminTopicsPage() {
                           {tp.title}
                         </p>
                       </button>
-                      <p className="text-[11px] text-clay" dir="ltr">
-                        {tp.academicYear?.title ?? ""}
-                      </p>
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
@@ -676,24 +736,24 @@ export function AdminTopicsPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <span
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[tp.status] ?? "bg-gray-100 text-gray-600"}`}
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusChip(tp.status)}`}
                       >
                         {t(`status.${tp.status}`, { defaultValue: tp.status })}
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
                       <span className="inline-grid min-w-7 place-items-center rounded-full bg-forest/10 px-2 py-0.5 text-xs font-bold text-forest">
-                        {tp._count?.applications ?? 0}
+                        {tp._count?.groupRequests ?? 0}
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
                       <button
                         onClick={() => setEditId(tp.id)}
-                        title={t("admin.edit", { defaultValue: t("pro.edit") })}
+                        title={t("admin.edit")}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-forest/15 px-2.5 py-1.5 text-xs font-medium text-forest/80 transition hover:border-gold hover:bg-gold/10 hover:text-forest"
                       >
                         <Pencil size={13} />
-                        {t("admin.edit", { defaultValue: t("pro.edit") })}
+                        {t("admin.edit")}
                       </button>
                     </td>
                   </tr>
@@ -738,24 +798,50 @@ export function AdminTopicsPage() {
       <AssignedTopicDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onCreated={() => refetch()}
       />
 
       {/* Edit-topic dialog */}
       <EditAssignedTopicDialog
         topicId={editId}
         onClose={() => setEditId(null)}
-        onUpdated={() => refetch()}
       />
+
+      {/* Bulk reject confirm — the reason reaches the professors, so it is
+          collected here instead of sending an empty rejection. */}
+      <ConfirmDialog
+        open={confirmRejectOpen}
+        tone="danger"
+        title={t("admin.bulkRejectTitle")}
+        message={t("admin.bulkRejectMessage", { n: rejectable.length })}
+        confirmLabel={t("admin.reject")}
+        cancelLabel={t("admin.cancel")}
+        loading={bulkBusy}
+        onConfirm={bulkReject}
+        onClose={() => {
+          setConfirmRejectOpen(false);
+          setRejectReason("");
+        }}
+      >
+        <textarea
+          value={rejectReason}
+          onChange={(e) => setRejectReason(e.target.value)}
+          rows={3}
+          placeholder={t("admin.rejectReasonPlaceholder")}
+          className="w-full resize-none rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
+        />
+        <p className="mt-2 text-[11px] text-clay">
+          {t("admin.rejectReasonToProf")}
+        </p>
+      </ConfirmDialog>
 
       {/* Bulk delete confirm */}
       <ConfirmDialog
         open={confirmDeleteOpen}
         tone="danger"
-        title={t("admin.deleteTopicsTitle", { defaultValue: t("admin.deleteTopics") })}
+        title={t("admin.deleteTopicsTitle")}
         message={t("admin.confirmDeleteTopicsLong", { count: deletable.length })}
-        confirmLabel={t("admin.confirmDelete", { defaultValue: t("admin.yesDelete") })}
-        cancelLabel={t("admin.cancel", { defaultValue: t("pro.cancel") })}
+        confirmLabel={t("admin.confirmDelete")}
+        cancelLabel={t("admin.cancel")}
         loading={bulkBusy}
         onConfirm={bulkDelete}
         onClose={() => setConfirmDeleteOpen(false)}

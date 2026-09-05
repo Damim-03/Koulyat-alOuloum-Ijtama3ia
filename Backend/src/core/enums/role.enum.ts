@@ -185,6 +185,13 @@ export const RolePermissions: Record<RoleType, PermissionType[]> = {
     // Projects
     Permissions.VIEW_PROJECT,
 
+    // Milestones — administration maintains the schedule alongside the
+    // supervising professor, so both can shape a project's timeline.
+    Permissions.VIEW_MILESTONES,
+    Permissions.CREATE_MILESTONES,
+    Permissions.UPDATE_MILESTONES,
+    Permissions.DELETE_MILESTONES,
+
     // Defenses
     Permissions.ASSIGN_DEFENSES,
     Permissions.VIEW_DEFENSES,

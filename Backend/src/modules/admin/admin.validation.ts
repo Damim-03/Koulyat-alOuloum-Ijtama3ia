@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { entityId } from "../../core/validation/id";
 
 //
 // ─── SHARED ───────────────────────────────────────────────────
@@ -8,15 +9,15 @@ export const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
   search: z.string().trim().optional(),
-  professorId: z.string().uuid().optional(),
-  facultyId: z.string().uuid().optional(),
-  departmentId: z.string().uuid().optional(),
-  filiereId: z.string().uuid().optional(),
-  specializationId: z.string().uuid().optional(),
+  professorId: entityId.optional(),
+  facultyId: entityId.optional(),
+  departmentId: entityId.optional(),
+  filiereId: entityId.optional(),
+  specializationId: entityId.optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
-  // Generic status filter used by lists that support it (applications,
-  // group-requests). Lists that don't use it simply ignore the field.
+  // Generic status filter used by lists that support it (group-requests,
+  // topics). Lists that don't use it simply ignore the field.
   status: z.string().trim().optional(),
 });
 export type ListQueryDTO = z.infer<typeof listQuerySchema>;
@@ -28,6 +29,17 @@ const LevelEnum = z.enum(["licence", "master", "doctorate"]);
 //
 // ─── USERS ────────────────────────────────────────────────────
 //
+
+/**
+ * Password policy for anything that SETS a password.
+ * - 8 is the practical floor for a human-chosen secret.
+ * - 72 is bcrypt's hard limit: bytes past it are silently ignored, so a
+ *   longer value would look stronger than it is.
+ */
+const passwordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .max(72, "Password must be at most 72 characters");
 
 export const listUsersSchema = listQuerySchema.extend({
   role: RoleEnum.optional(),
@@ -45,7 +57,7 @@ export const createUserSchema = z.object({
   lastName: z.string().trim().min(1).optional(),
   email: z.string().email().optional(),
   username: z.string().trim().min(3).optional(),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: passwordSchema,
   role: RoleEnum,
 });
 export type CreateUserDTO = z.infer<typeof createUserSchema>;
@@ -64,7 +76,7 @@ export const updateUserStatusSchema = z.object({
 export type UpdateUserStatusDTO = z.infer<typeof updateUserStatusSchema>;
 
 export const resetPasswordSchema = z.object({
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: passwordSchema,
 });
 export type ResetPasswordDTO = z.infer<typeof resetPasswordSchema>;
 
@@ -73,16 +85,23 @@ export type ResetPasswordDTO = z.infer<typeof resetPasswordSchema>;
 //
 
 export const listStudentsSchema = listQuerySchema.extend({
-  specializationId: z.string().uuid().optional(),
-  academicYearId: z.string().uuid().optional(),
+  specializationId: entityId.optional(),
+  academicYearId: entityId.optional(),
   // Hierarchical filters — only one level is applied at a time (most
   // specific wins: specializationId > filiereId > departmentId > facultyId).
-  filiereId: z.string().uuid().optional(),
-  departmentId: z.string().uuid().optional(),
-  facultyId: z.string().uuid().optional(),
+  filiereId: entityId.optional(),
+  departmentId: entityId.optional(),
+  facultyId: entityId.optional(),
   unassigned: z.enum(["true", "false"]).optional(),
   // `search` matches the student's name; this one targets the number alone.
   registrationNumber: z.string().trim().optional(),
+  /**
+   * One box that matches name, registration number, university email or
+   * username — for pickers, where the user has a single string and does not
+   * know which field it belongs to. The separate fields above stay as they
+   * are, because the students page deliberately keeps them apart.
+   */
+  quickSearch: z.string().trim().min(1).max(120).optional(),
 });
 export type ListStudentsDTO = z.infer<typeof listStudentsSchema>;
 
@@ -93,14 +112,14 @@ export const createStudentSchema = z.object({
   email: z.string().email().optional(),
   phone: z.string().trim().min(1).optional(),
   avatarUrl: z.string().url().optional(),
-  password: z.string().min(6),
+  password: passwordSchema,
   // student side
   registrationNumber: z.string().trim().min(1),
   // The student is attached to a specialization; the form selects it by
   // cascading faculty → department → filiere → specialization, but only the
   // final specializationId is persisted (the chain is derivable from it).
-  specializationId: z.string().uuid(),
-  academicYearId: z.string().uuid(),
+  specializationId: entityId,
+  academicYearId: entityId,
 });
 export type CreateStudentDTO = z.infer<typeof createStudentSchema>;
 
@@ -113,8 +132,8 @@ export const updateStudentSchema = z.object({
   phone: z.string().trim().min(1).nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
   registrationNumber: z.string().trim().min(1).optional(),
-  specializationId: z.string().uuid().optional(),
-  academicYearId: z.string().uuid().optional(),
+  specializationId: entityId.optional(),
+  academicYearId: entityId.optional(),
 });
 export type UpdateStudentDTO = z.infer<typeof updateStudentSchema>;
 
@@ -122,10 +141,82 @@ export type UpdateStudentDTO = z.infer<typeof updateStudentSchema>;
 // ─── PROFESSORS ───────────────────────────────────────────────
 //
 
+/**
+ * Projects list. The endpoint previously parsed the generic listQuerySchema
+ * and the service used only page/limit, so every filter a caller sent was
+ * silently dropped — the page had no way to find one project among many.
+ */
+/**
+ * Milestones, administration side.
+ *
+ * Deliberately the same shape the professor endpoints accept, so a timeline
+ * built by either party is identical in the database and neither can create
+ * something the other cannot edit.
+ */
+export const adminCreateMilestoneSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(2000).optional(),
+  deadline: z.coerce.date(),
+  /** Position in the timeline; assigned automatically when omitted. */
+  order: z.number().int().min(1).max(200).optional(),
+  status: z
+    .enum(["pending", "in_progress", "completed", "overdue"])
+    .optional(),
+});
+export type AdminCreateMilestoneDTO = z.infer<typeof adminCreateMilestoneSchema>;
+
+export const adminUpdateMilestoneSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    description: z.string().trim().max(2000).optional(),
+    deadline: z.coerce.date().optional(),
+    order: z.number().int().min(1).max(200).optional(),
+    status: z
+      .enum(["pending", "in_progress", "completed", "overdue"])
+      .optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, {
+    message: "لا يوجد ما يُحدَّث",
+  });
+export type AdminUpdateMilestoneDTO = z.infer<typeof adminUpdateMilestoneSchema>;
+
+/** Milestones of one group, optionally narrowed. */
+export const listMilestonesSchema = z.object({
+  search: z.string().trim().max(200).optional(),
+  status: z
+    .enum(["pending", "in_progress", "completed", "overdue"])
+    .optional(),
+});
+export type ListMilestonesDTO = z.infer<typeof listMilestonesSchema>;
+
+export const listProjectsSchema = listQuerySchema.extend({
+  /** Matches the topic title, or a member's name / registration number. */
+  search: z.string().trim().max(200).optional(),
+  professorId: entityId.optional(),
+  specializationId: entityId.optional(),
+  academicYearId: entityId.optional(),
+  filiereId: entityId.optional(),
+  departmentId: entityId.optional(),
+  facultyId: entityId.optional(),
+  /** "scheduled" / "completed" / "cancelled", or "none" for no defense yet. */
+  defense: z
+    .enum(["none", "scheduled", "completed", "cancelled"])
+    .optional(),
+  sort: z.enum(["newest", "oldest", "defenseSoon"]).optional(),
+});
+export type ListProjectsDTO = z.infer<typeof listProjectsSchema>;
+
 export const listProfessorsSchema = listQuerySchema.extend({
-  filiereId: z.string().uuid().optional(),
-  departmentId: z.string().uuid().optional(),
-  facultyId: z.string().uuid().optional(),
+  /**
+   * One box that matches name, university email, username, account email or
+   * employee number. `search` stays name-only, because the professors page
+   * deliberately gives each identifier its own field; this is for pickers
+   * where the user has one string and does not know which field it is.
+   */
+  quickSearch: z.string().trim().min(1).max(120).optional(),
+  filiereId: entityId.optional(),
+  departmentId: entityId.optional(),
+  facultyId: entityId.optional(),
   // exact-tag match over the grade array (optional UI filter)
   grade: z.string().trim().optional(),
   // `search` matches the professor's name; these two target one field each.
@@ -138,7 +229,7 @@ export const createProfessorSchema = z.object({
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
   email: z.string().email().optional(),
-  password: z.string().min(6),
+  password: passwordSchema,
   // اختياري: إن لم يُرسَل، تولّده الخدمة تلقائيًا (13 رقماً فريدة).
   employeeNumber: z
     .string()
@@ -148,7 +239,7 @@ export const createProfessorSchema = z.object({
   // الصيغة فقط هنا؛ النطاق المسموح به يُفرض في الخدمة مقابل جدول
   // UniversityDomain حتى تستطيع الإدارة إضافة نطاقات دون تعديل الشيفرة.
   universityEmail: z.string().email("بريد إلكتروني غير صالح"),
-  departmentId: z.string().uuid(),
+  departmentId: entityId,
   grade: z.array(z.string().trim().min(1)).max(20).optional(), // ← جديد
   tags: z.array(z.string().trim().min(1)).max(20).optional(), // ← جديد
 });
@@ -162,7 +253,7 @@ export const updateProfessorSchema = z.object({
   avatarUrl: z.string().url().nullable().optional(), // ← جديد
   // كما في الإنشاء: النطاق يُفرض في الخدمة مقابل UniversityDomain.
   universityEmail: z.string().email("بريد إلكتروني غير صالح").optional(),
-  departmentId: z.string().uuid().optional(),
+  departmentId: entityId.optional(),
   grade: z.array(z.string().trim().min(1)).max(20).optional(),
   tags: z.array(z.string().trim().min(1)).max(20).optional(),
 });
@@ -172,14 +263,14 @@ export type UpdateProfessorDTO = z.infer<typeof updateProfessorSchema>;
 // ─── DOMAINS ──────────────────────────────────────────────────
 //
 export const listDomainsSchema = z.object({
-  departmentId: z.string().uuid().optional(),
+  departmentId: entityId.optional(),
 });
 export type ListDomainsDTO = z.infer<typeof listDomainsSchema>;
 
 export const createDomainSchema = z.object({
   name: z.string().trim().min(1),
   code: z.string().trim().min(1),
-  departmentId: z.string().uuid(),
+  departmentId: entityId,
   // Optional cover image. An empty string clears it; null is the same,
   // so the client can send either.
   coverUrl: z
@@ -192,7 +283,7 @@ export type CreateDomainDTO = z.infer<typeof createDomainSchema>;
 export const updateDomainSchema = z.object({
   name: z.string().trim().min(1).optional(),
   code: z.string().trim().min(1).optional(),
-  departmentId: z.string().uuid().optional(),
+  departmentId: entityId.optional(),
   // Optional cover image. An empty string clears it; null is the same,
   // so the client can send either.
   coverUrl: z
@@ -227,7 +318,7 @@ const nameCode = {
 export const academicStructureSchema = z.object({
   faculty: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("new"), ...nameCode }),
-    z.object({ kind: z.literal("existing"), id: z.string().uuid() }),
+    z.object({ kind: z.literal("existing"), id: entityId }),
   ]),
 
   departments: z
@@ -307,7 +398,7 @@ export type UpdateFacultyDTO = z.infer<typeof updateFacultySchema>;
 export const createDepartmentSchema = z.object({
   name: z.string().trim().min(1),
   code: z.string().trim().min(1),
-  facultyId: z.string().uuid(),
+  facultyId: entityId,
   // Optional cover image. An empty string clears it; null is the same,
   // so the client can send either.
   coverUrl: z
@@ -320,7 +411,7 @@ export type CreateDepartmentDTO = z.infer<typeof createDepartmentSchema>;
 export const updateDepartmentSchema = z.object({
   name: z.string().trim().min(1).optional(),
   code: z.string().trim().min(1).optional(),
-  facultyId: z.string().uuid().optional(),
+  facultyId: entityId.optional(),
   // Optional cover image. An empty string clears it; null is the same,
   // so the client can send either.
   coverUrl: z
@@ -338,8 +429,8 @@ export const createFiliereSchema = z
   .object({
     name: z.string().trim().min(1),
     code: z.string().trim().min(1),
-    departmentId: z.string().uuid().optional(),
-    domainId: z.string().uuid().optional(),
+    departmentId: entityId.optional(),
+    domainId: entityId.optional(),
     // Optional cover image. An empty string clears it; null is the same,
     // so the client can send either.
     coverUrl: z
@@ -355,8 +446,8 @@ export type CreateFiliereDTO = z.infer<typeof createFiliereSchema>;
 export const updateFiliereSchema = z.object({
   name: z.string().trim().min(1).optional(),
   code: z.string().trim().min(1).optional(),
-  departmentId: z.string().uuid().optional(),
-  domainId: z.string().uuid().optional(),
+  departmentId: entityId.optional(),
+  domainId: entityId.optional(),
   // Optional cover image. An empty string clears it; null is the same,
   // so the client can send either.
   coverUrl: z
@@ -367,8 +458,8 @@ export const updateFiliereSchema = z.object({
 export type UpdateFiliereDTO = z.infer<typeof updateFiliereSchema>;
 
 export const listFilieresSchema = z.object({
-  domainId: z.string().uuid().optional(),
-  departmentId: z.string().uuid().optional(),
+  domainId: entityId.optional(),
+  departmentId: entityId.optional(),
 });
 export type ListFilieresDTO = z.infer<typeof listFilieresSchema>;
 
@@ -379,7 +470,7 @@ export type ListFilieresDTO = z.infer<typeof listFilieresSchema>;
 export const createSpecializationSchema = z.object({
   name: z.string().trim().min(1),
   level: LevelEnum,
-  filiereId: z.string().uuid(),
+  filiereId: entityId,
   // Optional cover image. An empty string clears it; null is the same,
   // so the client can send either.
   coverUrl: z
@@ -394,7 +485,7 @@ export type CreateSpecializationDTO = z.infer<
 export const updateSpecializationSchema = z.object({
   name: z.string().trim().min(1).optional(),
   level: LevelEnum.optional(),
-  filiereId: z.string().uuid().optional(),
+  filiereId: entityId.optional(),
   // Optional cover image. An empty string clears it; null is the same,
   // so the client can send either.
   coverUrl: z
@@ -430,12 +521,12 @@ export const listTopicsSchema = listQuerySchema.extend({
   status: z
     .enum(["pending", "approved", "rejected", "open", "full", "archived"])
     .optional(),
-  professorId: z.string().uuid().optional(),
-  specializationId: z.string().uuid().optional(),
-  academicYearId: z.string().uuid().optional(), // ← أضِف هذا السطر
-  facultyId: z.string().uuid().optional(),
-  departmentId: z.string().uuid().optional(),
-  filiereId: z.string().uuid().optional(),
+  professorId: entityId.optional(),
+  specializationId: entityId.optional(),
+  academicYearId: entityId.optional(), // ← أضِف هذا السطر
+  facultyId: entityId.optional(),
+  departmentId: entityId.optional(),
+  filiereId: entityId.optional(),
 });
 export type ListTopicsDTO = z.infer<typeof listTopicsSchema>;
 
@@ -451,14 +542,14 @@ export const createAssignedTopicSchema = z
     requirements: z.array(z.string().trim().min(1)).max(50).optional(),
     objectives: z.array(z.string().trim().min(1)).max(50).optional(),
     maxStudents: z.number().int().min(1).max(10),
-    professorId: z.string().uuid(),
-    specializationId: z.string().uuid(),
-    academicYearId: z.string().uuid(),
-    memberStudentIds: z.array(z.string().uuid()).min(1).max(10),
-    leaderStudentId: z.string().uuid(),
+    professorId: entityId,
+    specializationId: entityId,
+    academicYearId: entityId,
+    memberStudentIds: z.array(entityId).min(1).max(10),
+    leaderStudentId: entityId,
   })
   .refine((d) => d.memberStudentIds.includes(d.leaderStudentId), {
-    message: "القائد يجب أن يكون ضمن الطلبة المُسنَدين",
+    message: "المرسِل يجب أن يكون ضمن الطلبة المُسنَدين",
     path: ["leaderStudentId"],
   })
   .refine(
@@ -482,11 +573,11 @@ export const updateAssignedTopicSchema = z
     requirements: z.array(z.string().trim().min(1)).max(50).optional(),
     objectives: z.array(z.string().trim().min(1)).max(50).optional(),
     maxStudents: z.number().int().min(1).max(10).optional(),
-    professorId: z.string().uuid().optional(),
-    specializationId: z.string().uuid().optional(),
-    academicYearId: z.string().uuid().optional(),
-    memberStudentIds: z.array(z.string().uuid()).min(1).max(10).optional(),
-    leaderStudentId: z.string().uuid().optional(),
+    professorId: entityId.optional(),
+    specializationId: entityId.optional(),
+    academicYearId: entityId.optional(),
+    memberStudentIds: z.array(entityId).min(1).max(10).optional(),
+    leaderStudentId: entityId.optional(),
   })
   .refine((d) => !d.memberStudentIds || !!d.leaderStudentId, {
     message: "leaderStudentId مطلوب عند تعديل الطلبة",
@@ -495,7 +586,7 @@ export const updateAssignedTopicSchema = z
   .refine(
     (d) =>
       !d.memberStudentIds || d.memberStudentIds.includes(d.leaderStudentId!),
-    { message: "القائد يجب أن يكون ضمن الطلبة", path: ["leaderStudentId"] },
+    { message: "المرسِل يجب أن يكون ضمن الطلبة", path: ["leaderStudentId"] },
   )
   .refine(
     (d) =>
@@ -510,12 +601,12 @@ export type UpdateAssignedTopicDTO = z.infer<typeof updateAssignedTopicSchema>;
 //
 
 export const changeSupervisorSchema = z.object({
-  professorId: z.string().uuid(),
+  professorId: entityId,
 });
 export type ChangeSupervisorDTO = z.infer<typeof changeSupervisorSchema>;
 
 export const assignStudentSchema = z.object({
-  studentId: z.string().uuid(),
+  studentId: entityId,
 });
 export type AssignStudentDTO = z.infer<typeof assignStudentSchema>;
 
@@ -528,12 +619,12 @@ const CommitteeRoleEnum = z.enum(["president", "supervisor", "examiner"]);
 
 // A single committee member entry (professor + their role).
 const committeeMemberSchema = z.object({
-  professorId: z.string().uuid(),
+  professorId: entityId,
   role: CommitteeRoleEnum,
 });
 
 export const createDefenseSchema = z.object({
-  groupId: z.string().uuid(),
+  groupId: entityId,
   date: z.string().datetime({ message: "date must be ISO datetime" }),
   room: z.string().trim().min(1),
   grade: z.number().min(0).max(20).optional(),

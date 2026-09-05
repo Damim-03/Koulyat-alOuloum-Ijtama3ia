@@ -37,10 +37,6 @@ export const updateTopicSchema = z.object({
 });
 
 // ─── APPLICATIONS ──────────────────────────────────────────────
-export const listApplicationsSchema = z.object({
-  topicId: z.string().optional(),
-  status: z.enum(["pending", "accepted", "rejected"]).optional(),
-});
 
 // ─── MILESTONES ────────────────────────────────────────────────
 export const createMilestoneSchema = z.object({
@@ -62,6 +58,5 @@ export const updateMilestoneSchema = z.object({
 export type TopicReference = z.infer<typeof referenceSchema>;
 export type CreateTopicDTO = z.infer<typeof createTopicSchema>;
 export type UpdateTopicDTO = z.infer<typeof updateTopicSchema>;
-export type ListApplicationsDTO = z.infer<typeof listApplicationsSchema>;
 export type CreateMilestoneDTO = z.infer<typeof createMilestoneSchema>;
 export type UpdateMilestoneDTO = z.infer<typeof updateMilestoneSchema>;

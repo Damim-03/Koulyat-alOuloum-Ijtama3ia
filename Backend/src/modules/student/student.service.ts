@@ -6,6 +6,7 @@ import {
 } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { CreateGroupRequestDTO, ListTopicsDTO } from "./student.validation";
+import { publicUser } from "../../core/prisma/selects";
 
 //
 // ─── resolve the Student row for the logged-in user ───────────
@@ -40,7 +41,6 @@ export const browseTopicsService = async (
       status: { in: ["approved", "open"] },
       // محجوز = عليه طلب غير مرفوض ⇒ يختفي من التصفّح؛ ويعود تلقائياً إذا رُفض الطلب.
       groupRequests: { none: { status: { in: ["pending", "accepted"] } } },
-      applications: { none: { status: { in: ["pending", "accepted"] } } },
       ...(filters.specializationId
         ? { specializationId: filters.specializationId }
         : {}),
@@ -61,7 +61,7 @@ export const browseTopicsService = async (
     include: {
       specialization: true,
       academicYear: true,
-      professor: { include: { user: true } },
+      professor: { include: { user: publicUser } },
       _count: { select: { groupRequests: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -76,7 +76,7 @@ export const getTopicByIdService = async (userId: string, topicId: string) => {
     include: {
       specialization: true,
       academicYear: true,
-      professor: { include: { user: true } },
+      professor: { include: { user: publicUser } },
     },
   });
 
@@ -162,12 +162,7 @@ export const createGroupRequestService = async (
   const reserved = await prisma.graduationTopic.findFirst({
     where: {
       id: topic.id,
-      OR: [
-        {
-          groupRequests: { some: { status: { in: ["pending", "accepted"] } } },
-        },
-        { applications: { some: { status: { in: ["pending", "accepted"] } } } },
-      ],
+      groupRequests: { some: { status: { in: ["pending", "accepted"] } } },
     },
     select: { id: true },
   });
@@ -258,7 +253,7 @@ export const createGroupRequestService = async (
     },
     include: {
       topic: { select: { id: true, title: true } },
-      members: { include: { student: { include: { user: true } } } },
+      members: { include: { student: { include: { user: publicUser } } } },
     },
   });
 
@@ -273,7 +268,7 @@ export const getMyGroupRequestsService = async (userId: string) => {
     where: { leaderStudentId: student.id },
     include: {
       topic: { select: { id: true, title: true, status: true } },
-      members: { include: { student: { include: { user: true } } } },
+      members: { include: { student: { include: { user: publicUser } } } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -328,9 +323,9 @@ export const getMyProjectService = async (userId: string) => {
       group: {
         include: {
           topic: {
-            include: { professor: { include: { user: true } } },
+            include: { professor: { include: { user: publicUser } } },
           },
-          members: { include: { student: { include: { user: true } } } },
+          members: { include: { student: { include: { user: publicUser } } } },
           milestones: {
             orderBy: { order: "asc" },
             include: { submissions: true },

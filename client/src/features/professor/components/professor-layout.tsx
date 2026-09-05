@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, ListChecks, Inbox, FolderKanban } from "lucide-react";
+import { LayoutDashboard, ListChecks, FolderKanban } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { PATHS } from "../../../routes/paths";
 import {
@@ -26,11 +26,6 @@ export function ProfessorLayout() {
       to: localePath(`${PATHS.professor.root}/topics`),
       labelKey: "dash.topics",
       icon: ListChecks,
-    },
-    {
-      to: localePath(`${PATHS.professor.root}/applications`),
-      labelKey: "dash.applications",
-      icon: Inbox,
     },
     {
       to: localePath(`${PATHS.professor.root}/groups`),

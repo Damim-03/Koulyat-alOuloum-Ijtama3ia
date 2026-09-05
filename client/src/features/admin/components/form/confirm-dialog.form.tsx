@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,8 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   tone?: "danger" | "default";
   loading?: boolean;
+  /** Optional extra content under the message — e.g. a reason field. */
+  children?: ReactNode;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -27,6 +29,7 @@ export function ConfirmDialog({
   cancelLabel,
   tone = "default",
   loading = false,
+  children,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
@@ -77,6 +80,8 @@ export function ConfirmDialog({
           </div>
           <h3 className="font-serif text-lg font-bold text-forest">{title}</h3>
           <p className="mt-2 text-sm leading-relaxed text-clay">{message}</p>
+
+          {children && <div className="mt-4 text-start">{children}</div>}
 
           <div className="mt-6 flex items-center justify-center gap-3">
             <button

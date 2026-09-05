@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../../core/middleware/auth.middleware";
-import { roleGuard } from "../../core/utils/roleGuard";
+import { roleGuard, requireRole } from "../../core/utils/roleGuard";
 import { Permissions } from "../../core/enums/role.enum";
 import {
   browseTopicsController,
@@ -15,7 +15,7 @@ import {
 const studentRoutes = Router();
 
 studentRoutes.use(authMiddleware);
-studentRoutes.use(roleGuard([Permissions.LOGIN]));
+studentRoutes.use(requireRole("student"));
 
 //
 // Browse published topics

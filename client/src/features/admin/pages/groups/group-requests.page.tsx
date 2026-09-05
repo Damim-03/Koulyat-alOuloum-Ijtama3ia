@@ -5,7 +5,6 @@ import {
   Search,
   Check,
   X,
-  Crown,
   Users,
   ClipboardList,
   Clock,
@@ -233,7 +232,7 @@ export function AdminGroupRequestsPage() {
         <StatTile
           icon={ClipboardList}
           value={pendCount + accCount + rejCount}
-          label={t("admin.totalRequests", { defaultValue: t("admin.totalApplications") })}
+          label={t("admin.totalRequests")}
           tint="bg-soft-sage/30 text-forest"
         />
         <StatTile
@@ -603,8 +602,7 @@ export function AdminGroupRequestsPage() {
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="flex items-center gap-1 truncate text-xs font-semibold text-forest">
-                        <Crown size={11} className="text-gold" />
+                      <p className="truncate text-xs font-semibold text-forest">
                         {personName(r.leader?.user)}
                       </p>
                       <p className="text-[10px] text-clay">{t("admin.leader")}</p>

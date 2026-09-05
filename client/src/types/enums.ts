@@ -21,14 +21,6 @@ export const TopicStatus = {
 } as const;
 export type TopicStatus = (typeof TopicStatus)[keyof typeof TopicStatus];
 
-export const ApplicationStatus = {
-  PENDING: "pending",
-  ACCEPTED: "accepted",
-  REJECTED: "rejected",
-} as const;
-export type ApplicationStatus =
-  (typeof ApplicationStatus)[keyof typeof ApplicationStatus];
-
 export const MilestoneStatus = {
   PENDING: "pending",
   IN_PROGRESS: "in_progress",

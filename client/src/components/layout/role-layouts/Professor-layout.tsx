@@ -3,7 +3,6 @@ import { Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   ListChecks,
-  Inbox,
   Milestone,
   FolderKanban,
 } from "lucide-react";
@@ -18,7 +17,6 @@ const R = PATHS.professor.root;
 const NAV: NavItem[] = [
   { to: R, labelKey: "dash.dashboard", icon: LayoutDashboard, end: true },
   { to: `${R}/topics`, labelKey: "dash.topics", icon: ListChecks },
-  { to: `${R}/applications`, labelKey: "dash.applications", icon: Inbox },
   { to: `${R}/groups`, labelKey: "dash.myProjects", icon: FolderKanban },
   { to: `${R}/milestones`, labelKey: "dash.milestones", icon: Milestone },
 ];

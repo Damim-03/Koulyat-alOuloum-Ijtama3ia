@@ -13,7 +13,7 @@ import {
   Loader2,
   UserX,
   UserPlus,
-  Crown,
+  SendHorizontal,
   Users,
 } from "lucide-react";
 import {
@@ -210,7 +210,7 @@ export function GroupRequestDialog({
           <div className="flex items-center justify-between rounded-2xl border border-soft-sage/40 bg-cream-2 p-5 shadow-sm">
             <div className="flex items-center gap-4">
               <div className="grid size-11 shrink-0 place-items-center rounded-full bg-soft-sage/30 text-forest">
-                <Crown size={22} />
+                <SendHorizontal size={22} />
               </div>
               <div>
                 <p className="font-semibold text-forest">

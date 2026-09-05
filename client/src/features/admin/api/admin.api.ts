@@ -10,7 +10,6 @@ import type {
   Specialization,
   AcademicYear,
   AdminTopic,
-  AdminApplication,
   AdminProject,
   AdminDefense,
   AdminGroupRequest,
@@ -272,17 +271,30 @@ export const adminApi = {
   unarchiveTopic: (id: string) =>
     client.patch(`${BASE}/topics/${id}/unarchive`).then((r) => r.data),
 
-  // ── Applications ──
-  listApplications: (params?: ListParams) =>
+  // ── Milestones (administration side) ──
+  listMilestones: (groupId: string, params?: ListParams) =>
     client
-      .get<Paginated<AdminApplication>>(`${BASE}/applications`, { params })
-      .then((r) => r.data),
-  acceptApplication: (id: string) =>
-    client.patch(`${BASE}/applications/${id}/accept`).then((r) => r.data),
-  rejectApplication: (id: string, reason?: string) =>
+      .get<{ milestones: unknown[] }>(`${BASE}/projects/${groupId}/milestones`, {
+        params,
+      })
+      .then((r) => r.data.milestones),
+
+  createMilestone: (groupId: string, data: unknown) =>
     client
-      .patch(`${BASE}/applications/${id}/reject`, { reason })
-      .then((r) => r.data),
+      .post<{ milestone: unknown }>(
+        `${BASE}/projects/${groupId}/milestones`,
+        data,
+      )
+      .then((r) => r.data.milestone),
+
+  updateMilestone: (id: string, data: unknown) =>
+    client
+      .patch<{ milestone: unknown }>(`${BASE}/milestones/${id}`, data)
+      .then((r) => r.data.milestone),
+
+  deleteMilestone: (id: string) =>
+    client.delete(`${BASE}/milestones/${id}`).then((r) => r.data),
+
 
   // ── Group Requests ──
 

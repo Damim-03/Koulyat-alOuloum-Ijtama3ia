@@ -1,7 +1,6 @@
 import { client } from "../../../lib/api/client";
 import type {
   Topic,
-  Application,
   ProjectGroup,
   Milestone,
   SpecializationLite,
@@ -28,20 +27,6 @@ export const professorApi = {
     client.put<{ topic: Topic }>(`${BASE}/topics/${id}`, data).then((r) => r.data.topic),
   deleteTopic: (id: string) =>
     client.delete(`${BASE}/topics/${id}`).then((r) => r.data),
-
-  // ── Applications ──
-  listApplications: (params?: { topicId?: string; status?: string }) =>
-    client
-      .get<{ applications: Application[] }>(`${BASE}/applications`, { params })
-      .then((r) => r.data.applications),
-  acceptApplication: (id: string) =>
-    client
-      .patch<{ application: Application }>(`${BASE}/applications/${id}/accept`)
-      .then((r) => r.data.application),
-  rejectApplication: (id: string) =>
-    client
-      .patch<{ application: Application }>(`${BASE}/applications/${id}/reject`)
-      .then((r) => r.data.application),
 
   // ── Groups ──
   listGroups: () =>

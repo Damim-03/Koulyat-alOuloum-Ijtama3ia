@@ -126,7 +126,7 @@ export function ProfessorTopicsPage() {
               <div className="mb-4 flex items-center justify-between border-t border-forest/10 pt-3 text-clay">
                 <span className="flex items-center gap-1 text-xs">
                   <FileText size={14} />
-                  {tp._count?.applications ?? 0} {t("pro.applicationsShort")}
+                  {tp._count?.groupRequests ?? 0} {t("pro.applicationsShort")}
                 </span>
                 <span className="flex items-center gap-1 text-xs">
                   <Users2 size={14} />
