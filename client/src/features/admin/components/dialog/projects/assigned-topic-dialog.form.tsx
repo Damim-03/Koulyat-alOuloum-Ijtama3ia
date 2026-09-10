@@ -25,14 +25,14 @@ import {
 } from "../../../hooks/admin-hook";
 import { statusChip } from "../../../utils/status-styles";
 import { ProfessorPicker } from "../../ui/professor-picker";
-import { ListInput } from "../../ui/list-input";
+import { ListInput } from "../../../../../components/ui/list-input";
 import {
   inputCls,
   SectionHead,
   Field,
   StepTab,
   ReviewRow,
-} from "../../ui/form-bits";
+} from "../../../../../components/ui/form-bits";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

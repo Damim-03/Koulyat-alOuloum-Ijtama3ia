@@ -26,6 +26,8 @@ export interface PublicTopic {
   maxStudents: number;
   createdAt: string;
   isAvailable: boolean;
+  /** Taken by a team whose request is live, even while the status is `open`. */
+  isReserved?: boolean;
   specialization?: { id: string; name: string } | null;
   academicYear?: { id: string; title: string } | null;
   professor?: PublicProfessor | null;

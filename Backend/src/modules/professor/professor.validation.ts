@@ -24,6 +24,24 @@ export const createTopicSchema = z.object({
     .default([]),
 });
 
+/**
+ * A topic proposed together with the team meant to take it.
+ *
+ * The members are registration numbers rather than ids: the professor has no
+ * endpoint that lists students, and this is the same shape the student's own
+ * group request uses.
+ */
+export const createTopicWithGroupSchema = createTopicSchema.extend({
+  memberRegistrationNumbers: z
+    .array(z.string().trim().min(1))
+    .min(1, "أضف طالباً واحداً على الأقل")
+    .max(10),
+  leaderRegistrationNumber: z.string().trim().min(1, "اختر المرسِل"),
+});
+export type CreateTopicWithGroupDTO = z.infer<
+  typeof createTopicWithGroupSchema
+>;
+
 export const updateTopicSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
@@ -34,9 +52,28 @@ export const updateTopicSchema = z.object({
     .array(referenceSchema)
     .max(20, "عدد كبير من المراجع")
     .optional(),
+  // The edit dialog has always offered these two, and zod dropped them
+  // silently — the professor moved a topic to another specialization, was
+  // told it was saved, and nothing had changed. A rejected topic is often
+  // rejected for exactly this, so correcting it has to actually work.
+  // `updateTopicService` checks that each id exists before writing.
+  specializationId: z.string().trim().min(1).optional(),
+  academicYearId: z.string().trim().min(1).optional(),
 });
 
 // ─── APPLICATIONS ──────────────────────────────────────────────
+
+/**
+ * Student lookup for the "propose a topic with a team" dialog.
+ *
+ * `q` is required and at least two characters: an empty query must not turn
+ * this into a roster listing.
+ */
+export const searchStudentsSchema = z.object({
+  q: z.string().trim().min(2, "اكتب حرفين على الأقل"),
+  specializationId: z.string().trim().min(1).optional(),
+});
+export type SearchStudentsDTO = z.infer<typeof searchStudentsSchema>;
 
 // ─── MILESTONES ────────────────────────────────────────────────
 export const createMilestoneSchema = z.object({

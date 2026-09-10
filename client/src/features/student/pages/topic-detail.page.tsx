@@ -68,6 +68,9 @@ export function StudentTopicDetailPage() {
 
   const status = v.status ?? "open";
   const isFull = status === "full";
+  // A saved link can reach a topic that is still `open` but already claimed
+  // by a team. Gating on `full` alone offered a request the server refuses.
+  const taken = isFull || v.isAvailable === false;
   // status.* لا يحوي "published" → نعامله كـ open
   const statusKey = status === "published" ? "open" : status;
   const statusLabel = t(`status.${statusKey}`, { defaultValue: status });
@@ -156,12 +159,13 @@ export function StudentTopicDetailPage() {
 
         <button
           type="button"
-          disabled={isFull}
+          disabled={taken}
+          title={taken ? t("stu.topicTaken") : undefined}
           onClick={() => setDialogOpen(true)}
           className="inline-flex shrink-0 items-center gap-3 rounded-xl bg-gold px-8 py-4 font-bold text-forest-deep shadow-lg transition hover:bg-gold-soft active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <UserPlus className="size-5" />
-          {t("stu.submitGroupRequest")}
+          {taken ? t("stu.topicTaken") : t("stu.submitGroupRequest")}
         </button>
       </div>
 

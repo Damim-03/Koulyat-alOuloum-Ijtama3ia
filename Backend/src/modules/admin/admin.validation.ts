@@ -632,6 +632,17 @@ export const assignStudentSchema = z.object({
 });
 export type AssignStudentDTO = z.infer<typeof assignStudentSchema>;
 
+/**
+ * سبب الفسخ اختياريّ في المخطّط ومطلوبٌ في المعنى: يُسجَّل على الطلب المُحرَّر
+ * ويصل الطلبة في إشعارهم، فهو ما يجعل اختفاء مشروعهم مفهوماً لا مفاجئاً.
+ * وليس هنا خيار «تجاهل الحارس»: مشروعٌ عليه تسليمات أو مناقشة لا يُفسَخ بعلَم
+ * يُرفع، بل بإزالة ذلك من شاشته أوّلاً.
+ */
+export const dissolveProjectSchema = z.object({
+  reason: z.string().trim().min(1).max(500).optional(),
+});
+export type DissolveProjectDTO = z.infer<typeof dissolveProjectSchema>;
+
 //
 // ─── DEFENSES ─────────────────────────────────────────────────
 //

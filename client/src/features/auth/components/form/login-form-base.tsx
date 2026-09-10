@@ -129,6 +129,7 @@ export function LoginFormBase({ role, onSuccess }: Props) {
             inputMode={role === "student" ? "numeric" : "email"}
             placeholder={t(cfg.placeholderKey)}
             autoComplete="username"
+            data-testid="login-identifier"
             className={cn(inputBase, "pl-3.5")}
             {...register("identifier")}
           />
@@ -159,6 +160,7 @@ export function LoginFormBase({ role, onSuccess }: Props) {
             type={showPw ? "text" : "password"}
             placeholder="••••••••"
             autoComplete="current-password"
+            data-testid="login-password"
             className={cn(inputBase, "pl-11")}
             {...register("password")}
           />
@@ -180,6 +182,7 @@ export function LoginFormBase({ role, onSuccess }: Props) {
 
       <button
         type="submit"
+        data-testid="login-submit"
         disabled={login.isPending}
         className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-linear-to-br from-forest-soft to-forest p-3 text-[14.5px] font-bold text-cream shadow-[0_10px_24px_rgba(38,66,61,0.30)] ring-1 ring-inset ring-gold/15 transition hover:-translate-y-px hover:shadow-[0_12px_28px_rgba(38,66,61,0.38)] hover:ring-gold/35 disabled:translate-y-0 disabled:cursor-default disabled:opacity-70"
       >

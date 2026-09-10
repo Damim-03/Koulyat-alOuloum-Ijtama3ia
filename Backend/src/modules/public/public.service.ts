@@ -2,6 +2,7 @@ import { prisma } from "../../core/prisma/client";
 import { NotFoundException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { ListPublicTopicsDTO } from "./public.validation";
+import { Prisma } from "../../generated/prisma";
 
 // Public-safe projection of a professor: only the display name, never the
 // account/email internals.
@@ -24,36 +25,54 @@ const publicProfessorSelect = {
 
 const VISIBLE_STATUSES = ["open", "full"] as const;
 
-export const listPublicTopicsService = async (q: ListPublicTopicsDTO) => {
-  // Map the availability filter onto concrete statuses.
-  let statusWhere: { in: string[] } = { in: [...VISIBLE_STATUSES] };
-  if (q.availability === "available") statusWhere = { in: ["open"] };
-  else if (q.availability === "reserved") statusWhere = { in: ["full"] };
+/** الطلب الحيّ هو ما يحجز الموضوع فعلياً — pending أو accepted. */
+const LIVE_REQUEST = { status: { in: ["pending", "accepted"] } as never };
 
-  const where = {
-    status: statusWhere as never,
-    // محجوز = عليه طلب غير مرفوض (pending/accepted) ⇒ يختفي من القائمة العامة؛
-    // ويعود تلقائياً إذا رُفض الطلب.
-    groupRequests: {
-      none: { status: { in: ["pending", "accepted"] } as never },
-    },
-    ...(q.specializationId ? { specializationId: q.specializationId } : {}),
-    // Filter by department through topic → specialization → filiere → department.
-    ...(q.departmentId
-      ? { specialization: { filiere: { departmentId: q.departmentId } } }
-      : {}),
-    ...(q.academicYearId ? { academicYearId: q.academicYearId } : {}),
-    ...(q.search
-      ? {
-          OR: [
-            { title: { contains: q.search } },
-            {
-              description: { contains: q.search },
-            },
-          ],
-        }
-      : {}),
-  };
+/** منشور، ولا مجموعة، ولا طلب حيّ ⇒ يقبل طلباً الآن. */
+const PUBLIC_AVAILABLE: Prisma.GraduationTopicWhereInput = {
+  status: "open",
+  projectGroup: null,
+  groupRequests: { none: LIVE_REQUEST },
+};
+
+/**
+ * ظاهر للعموم لكنه مأخوذ: تشكّلت له مجموعة، أو يحجزه طلب حيّ.
+ *
+ * كان تبويب «محجوز» يطلب `status = full` **و** «لا طلب حيّ» معاً، وهما لا
+ * يجتمعان: كل موضوع اكتمل بطلب يحمل طلباً مقبولاً، فكان التبويب يُخفيه
+ * ويُظهر المواضيع المُسنَدة إدارياً وحدها — وهي التي تصل `full` بلا طلب.
+ */
+const PUBLIC_RESERVED: Prisma.GraduationTopicWhereInput = {
+  status: { in: [...VISIBLE_STATUSES] as never },
+  OR: [
+    { projectGroup: { isNot: null } },
+    { groupRequests: { some: LIVE_REQUEST } },
+  ],
+};
+
+export const listPublicTopicsService = async (q: ListPublicTopicsDTO) => {
+  // تُجمع الشروط بـ AND صريح: التبويب «محجوز» يحتاج OR داخلياً، ولو تُرك
+  // مسطّحاً لابتلع OR الخاص بالبحث.
+  const and: Prisma.GraduationTopicWhereInput[] = [];
+
+  if (q.availability === "available") and.push(PUBLIC_AVAILABLE);
+  else if (q.availability === "reserved") and.push(PUBLIC_RESERVED);
+  else and.push({ status: { in: [...VISIBLE_STATUSES] as never } });
+
+  if (q.specializationId) and.push({ specializationId: q.specializationId });
+  // Filter by department through topic → specialization → filiere → department.
+  if (q.departmentId)
+    and.push({ specialization: { filiere: { departmentId: q.departmentId } } });
+  if (q.academicYearId) and.push({ academicYearId: q.academicYearId });
+  if (q.search)
+    and.push({
+      OR: [
+        { title: { contains: q.search } },
+        { description: { contains: q.search } },
+      ],
+    });
+
+  const where: Prisma.GraduationTopicWhereInput = { AND: and };
 
   const [rows, total] = await Promise.all([
     prisma.graduationTopic.findMany({
@@ -68,6 +87,10 @@ export const listPublicTopicsService = async (q: ListPublicTopicsDTO) => {
         specialization: { select: { id: true, name: true } },
         academicYear: { select: { id: true, title: true } },
         professor: { select: publicProfessorSelect },
+        // الإشغال يُقرأ من صفوفه لا من `status`. المعرّفات لا تُعاد إلى
+        // العميل — تُستهلك أدناه ثم تُسقَط من الحمولة العامّة.
+        projectGroup: { select: { id: true } },
+        groupRequests: { where: LIVE_REQUEST, select: { id: true }, take: 1 },
       },
       orderBy: { createdAt: "desc" },
       skip: (q.page - 1) * q.limit,
@@ -76,10 +99,12 @@ export const listPublicTopicsService = async (q: ListPublicTopicsDTO) => {
     prisma.graduationTopic.count({ where }),
   ]);
 
-  // Derive a simple "isAvailable" flag for the card's apply button.
-  const items = rows.map((t) => ({
+  // زرّ «تقدَّم» يعتمد على الإشغال الحقيقي، لا على الحالة وحدها.
+  const items = rows.map(({ projectGroup, groupRequests, ...t }) => ({
     ...t,
-    isAvailable: t.status === "open",
+    isAvailable:
+      t.status === "open" && !projectGroup && groupRequests.length === 0,
+    isReserved: !!projectGroup || groupRequests.length > 0,
   }));
 
   return { items, total, page: q.page, limit: q.limit };
@@ -90,6 +115,9 @@ export const listPublicTopicsService = async (q: ListPublicTopicsDTO) => {
 export const getPublicTopicService = async (id: string) => {
   const topic = await prisma.graduationTopic.findFirst({
     where: { id, status: { in: [...VISIBLE_STATUSES] as never } },
+    // The lists hide a reserved topic; a saved or shared link still reaches
+    // it, so the answer has to say it is taken rather than let the page
+    // claim it is free and the request fail later.
     select: {
       id: true,
       title: true,
@@ -110,7 +138,25 @@ export const getPublicTopicService = async (id: string) => {
       "Topic not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
-  return { ...topic, isAvailable: topic.status === "open" };
+
+  // المُسنَد إدارياً يصل `full` بلا طلب، فالمجموعة وحدها تكفي لاعتباره محجوزاً.
+  const [liveRequest, group] = await Promise.all([
+    prisma.groupRequest.findFirst({
+      where: { topicId: id, ...LIVE_REQUEST },
+      select: { id: true },
+    }),
+    prisma.projectGroup.findUnique({
+      where: { topicId: id },
+      select: { id: true },
+    }),
+  ]);
+  const reserved = !!liveRequest || !!group;
+
+  return {
+    ...topic,
+    isAvailable: topic.status === "open" && !reserved,
+    isReserved: reserved,
+  };
 };
 
 // Specializations list for the filter dropdown (public, minimal fields).

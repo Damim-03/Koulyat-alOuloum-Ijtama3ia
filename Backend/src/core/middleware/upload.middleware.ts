@@ -1,7 +1,11 @@
-import multer from "multer";
+import type { NextFunction, Request, Response } from "express";
+import multer, { MulterError } from "multer";
 import path from "path";
 import fs from "fs";
 import crypto from "node:crypto";
+
+import { AppError, BadRequestException } from "../utils/appErros";
+import { ErrorCodeEnum } from "../enums/error-code.enum";
 
 /**
  * ============================================================
@@ -62,9 +66,45 @@ export const cardUpload = multer({
   },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_TYPES[file.mimetype]) return cb(null, true);
-    cb(new Error("نوع الملفّ غير مدعوم (PNG/JPG/WEBP فقط)"));
+    // خطأٌ عاديّ هنا كان يسقط إلى الفرع الأخير في معالج الأخطاء فيصير
+    // «خطأ خادم»: الإدارة ترى ٥٠٠ بلا سبب، والسبب الحقيقي في سجلّ لا تراه.
+    cb(
+      new BadRequestException(
+        "نوع الملفّ غير مدعوم (PNG/JPG/WEBP فقط)",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      ),
+    );
   },
 });
+
+/**
+ * يستقبل صورة البطاقة ويُترجم كل تعثّرٍ في مسار الرفع إلى خطأ عميل.
+ *
+ * multer يُمرّر إلى `next` ثلاثة أصنافٍ من الأخطاء: أخطاؤه هو (`MulterError`
+ * للحجم والعدد والحقل غير المتوقَّع)، وما يرميه المُرشِّح، وما يرميه محلّل
+ * `multipart` نفسه — وهذا الأخير خطأٌ عاديّ نصّه مثل «Malformed part header».
+ * والثالث كان يصل إلى الفرع الأخير في معالج الأخطاء فيُجاب عنه بـ٥٠٠، مع أن
+ * جسم الطلب هو المعطوب لا الخادم.
+ */
+export const cardImageUpload = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  cardUpload.single("image")(req, res, (err: unknown) => {
+    if (!err) return next();
+
+    // أخطاء multer لها فرعها في معالج الأخطاء، وأخطاؤنا تحمل رسالتها.
+    if (err instanceof MulterError || err instanceof AppError) return next(err);
+
+    return next(
+      new BadRequestException(
+        "طلب رفعٍ غير صالح",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      ),
+    );
+  });
+};
 
 /** Leading bytes that genuinely identify each accepted format. */
 const MAGIC: { ext: string; test: (b: Buffer) => boolean }[] = [

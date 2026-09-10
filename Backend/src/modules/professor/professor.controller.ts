@@ -5,11 +5,15 @@ import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import {
   createMilestoneSchema,
   createTopicSchema,
+  createTopicWithGroupSchema,
+  searchStudentsSchema,
   updateMilestoneSchema,
   updateTopicSchema,
 } from "./professor.validation";
 import {
   createTopicService,
+  createTopicWithGroupService,
+  searchStudentsService,
   getMyTopicsService,
   getTopicByIdService,
   updateTopicService,
@@ -20,6 +24,7 @@ import {
   deleteMilestoneService,
   getMilestonesService,
   updateMilestoneService,
+  getDashboardService,
 } from "./professor.service";
 
 export const createTopicController = async (
@@ -237,6 +242,63 @@ export const deleteMilestoneController = async (
       req.params.id as string,
     );
     return res.status(HTTPSTATUS.OK).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDashboardController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const dashboard = await getDashboardService(req.user!.userId);
+    return res.status(HTTPSTATUS.OK).json(dashboard);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createTopicWithGroupController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const parsed = createTopicWithGroupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new BadRequestException(
+      parsed.error.issues[0].message,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  }
+  try {
+    const topic = await createTopicWithGroupService(
+      req.user!.userId,
+      parsed.data,
+    );
+    return res
+      .status(HTTPSTATUS.CREATED)
+      .json({ message: "Topic proposed with its team", topic });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const searchStudentsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const parsed = searchStudentsSchema.safeParse(req.query);
+  if (!parsed.success) {
+    // A too-short term is not an error the picker should shout about; it
+    // simply has nothing to offer yet.
+    return res.status(HTTPSTATUS.OK).json({ students: [] });
+  }
+  try {
+    const students = await searchStudentsService(req.user!.userId, parsed.data);
+    return res.status(HTTPSTATUS.OK).json({ students });
   } catch (error) {
     next(error);
   }

@@ -5,9 +5,14 @@ import type {
   Milestone,
   SpecializationLite,
   AcademicYearLite,
+  FacultyLite,
+  DepartmentLite,
+  StudentSearchHit,
+  ProfessorDashboard,
 } from "../../../types/professor.types";
 import type {
   CreateTopicInput,
+  CreateTopicWithGroupInput,
   UpdateTopicInput,
   CreateMilestoneInput,
   UpdateMilestoneInput,
@@ -16,6 +21,10 @@ import type {
 const BASE = "/professor";
 
 export const professorApi = {
+  // ── Dashboard ──
+  getDashboard: () =>
+    client.get<ProfessorDashboard>(`${BASE}/dashboard`).then((r) => r.data),
+
   // ── Topics ──
   listTopics: () =>
     client.get<{ topics: Topic[] }>(`${BASE}/topics`).then((r) => r.data.topics),
@@ -23,6 +32,11 @@ export const professorApi = {
     client.get<{ topic: Topic }>(`${BASE}/topics/${id}`).then((r) => r.data.topic),
   createTopic: (data: CreateTopicInput) =>
     client.post<{ topic: Topic }>(`${BASE}/topics`, data).then((r) => r.data.topic),
+  // Proposed with its team; the administration still approves it.
+  createTopicWithGroup: (data: CreateTopicWithGroupInput) =>
+    client
+      .post<{ topic: Topic }>(`${BASE}/topics/with-group`, data)
+      .then((r) => r.data.topic),
   updateTopic: (id: string, data: UpdateTopicInput) =>
     client.put<{ topic: Topic }>(`${BASE}/topics/${id}`, data).then((r) => r.data.topic),
   deleteTopic: (id: string) =>
@@ -61,4 +75,19 @@ export const professorApi = {
     client
       .get<{ academicYears: AcademicYearLite[] }>(`/common/academic-years`)
       .then((r) => r.data.academicYears),
+  listFaculties: () =>
+    client
+      .get<{ faculties: FacultyLite[] }>(`/common/faculties`)
+      .then((r) => r.data.faculties),
+  // Naming students for a proposed team. A search: the term is required.
+  searchStudents: (q: string, specializationId?: string) =>
+    client
+      .get<{ students: StudentSearchHit[] }>(`${BASE}/students/search`, {
+        params: { q, ...(specializationId ? { specializationId } : {}) },
+      })
+      .then((r) => r.data.students),
+  listDepartments: () =>
+    client
+      .get<{ departments: DepartmentLite[] }>(`/common/departments`)
+      .then((r) => r.data.departments),
 };

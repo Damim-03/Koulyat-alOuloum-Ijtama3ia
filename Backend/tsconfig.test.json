@@ -1,0 +1,20 @@
+{
+  // إعداد الاختبارات وحدها.
+  //
+  // `tsconfig.json` يحصر `types` في `["node"]` عمداً — وهو الصواب للبناء، إذ
+  // لا شأن لشيفرة الإنتاج بعوالم الاختبار. لكن ملفّات الاختبار تحتاج
+  // `describe/it/expect`، فتأتي من هنا. ولهذا أيضاً لا تُستبعد الاختبارات هنا
+  // كما تُستبعد هناك.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "jest"],
+    // مطلوب مع module: Node16 حتى لا يحذّر ts-jest في كل ملفّ.
+    "isolatedModules": true,
+    // `tsconfig.json` يحصر الجذر في `src` لأن ذلك ما يُبنى، واختبارات الـAPI
+    // تعيش في `tests/`. يتّسع الجذر هنا ليشملهما — ولا يُصدَّر شيء أصلاً.
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

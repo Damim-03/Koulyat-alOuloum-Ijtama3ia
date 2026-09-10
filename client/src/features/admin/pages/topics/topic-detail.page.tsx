@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { can, blockReason } from "../../lib/topic-actions";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   ChevronRight,
@@ -139,6 +140,34 @@ export function AdminTopicDetailPage() {
   const groupId = projectGroup?.id ?? null;
   const members = projectGroup?.members ?? [];
 
+  /**
+   * Teams still waiting for a decision on this topic.
+   *
+   * A pending request reserves the topic, so the server refuses to publish,
+   * reject or archive it. The screen used to know nothing about them: it said
+   * "no group has formed yet", offered the three buttons, and all three
+   * failed. Now the team is on the page and the buttons step aside for it.
+   */
+  const pendingRequests =
+    (
+      topic as {
+        groupRequests?: {
+          id: string;
+          createdAt: string;
+          leader?: { id: string } | null;
+          members?: {
+            id: string;
+            student?: {
+              id: string;
+              registrationNumber?: string | null;
+              user?: PersonRef | null;
+            } | null;
+          }[];
+        }[];
+      }
+    ).groupRequests ?? [];
+  const claimed = pendingRequests.length > 0;
+
   function doApprove() {
     approve.mutate(topic!.id, { onSuccess: () => refetch() });
   }
@@ -196,10 +225,18 @@ export function AdminTopicDetailPage() {
           </button>
           {/* This used to open the members dialog whenever a group existed —
               a red "delete" button that showed a member list instead. Deleting
-              is now just deleting; members are managed from their own card. */}
+              is now just deleting; members are managed from their own card.
+
+              It was also offered unconditionally, so on a topic that had
+              formed a group it failed every time, and the hook replaced the
+              server's explanation with "delete failed" — leaving no way to
+              learn that archiving was the answer. The server's verdict drives
+              it now, and its reason is the tooltip. */}
           <button
             onClick={() => setConfirmOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-50"
+            disabled={!can(topic, "delete")}
+            title={blockReason(topic, "delete", t)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
           >
             <Trash2 size={14} />
             {t("admin.delete", { defaultValue: t("pro.delete") })}
@@ -319,6 +356,63 @@ export function AdminTopicDetailPage() {
               </div>
             )}
           </section>
+
+          {/* A team waiting for a decision. Placed above the content
+              because it is the reason the buttons on the right are missing. */}
+          {claimed && (
+            <section className="rounded-2xl border-2 border-gold/50 bg-gold/5 p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-gold/30 pb-3">
+                <div className="flex items-center gap-2">
+                  <Users size={18} className="text-gold" />
+                  <h2 className="font-serif text-lg font-bold text-forest">
+                    {t("admin.teamWaiting")}
+                  </h2>
+                </div>
+                <Link
+                  to={`/${lang}/admin/group-requests`}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3 py-1.5 text-xs font-bold text-forest-deep transition hover:bg-gold-soft"
+                >
+                  <Gavel size={14} />
+                  {t("admin.decideOnRequest")}
+                </Link>
+              </div>
+
+              <p className="mb-4 text-xs leading-relaxed text-clay">
+                {t("admin.teamWaitingNote")}
+              </p>
+
+              {pendingRequests.map((r) => (
+                <div key={r.id} className="mb-3 last:mb-0">
+                  <p className="mb-2 text-[11px] text-clay">
+                    {t("admin.sentOn", { date: fmtDate(r.createdAt) })}
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {(r.members ?? []).map((m) => (
+                      <div
+                        key={m.id}
+                        className="flex items-center gap-3 rounded-xl border border-forest/10 bg-cream-card p-3"
+                      >
+                        <UserAvatar user={m.student?.user} size={38} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-forest">
+                            {nameOf(m.student?.user)}
+                            {m.student?.id === r.leader?.id && (
+                              <span className="ms-2 rounded-full bg-gold/15 px-1.5 py-0.5 text-[9px] font-bold text-gold">
+                                {t("admin.leader")}
+                              </span>
+                            )}
+                          </p>
+                          <p className="truncate text-[11px] text-clay" dir="ltr">
+                            {m.student?.registrationNumber ?? ""}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
 
           {/* Requirements */}
           {requirements.length > 0 ? (
@@ -541,19 +635,44 @@ export function AdminTopicDetailPage() {
                   </p>
                 )}
 
-                {/* contextual, reversible actions */}
-                {(topic.status === "pending" || topic.status === "rejected") &&
-                  !hasGroup && (
-                    <ActBtn
-                      onClick={doApprove}
-                      disabled={approve.isPending}
-                      variant="approve"
+                {/* Says why three buttons are missing, instead of leaving a
+                    gap the reader has to explain to themselves. */}
+                {claimed && (
+                  <div className="rounded-lg border border-gold/40 bg-gold/10 px-3 py-2.5">
+                    <p className="mb-2 text-xs leading-relaxed text-forest">
+                      {t("admin.blockedByRequest")}
+                    </p>
+                    <Link
+                      to={`/${lang}/admin/group-requests`}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-gold transition hover:opacity-80"
                     >
-                      <Check size={18} />
-                      {t("admin.approveTopicBtn")}
-                    </ActBtn>
-                  )}
-                {topic.status === "approved" && !hasGroup && (
+                      <Gavel size={13} />
+                      {t("admin.decideOnRequest")}
+                    </Link>
+                  </div>
+                )}
+
+                {/*
+                  Contextual actions.
+
+                  Each of these used to carry its own copy of the server's
+                  rules — a status list plus a `!hasGroup` here and a
+                  `!claimed` there — and the copies drifted. They read the
+                  server's verdict now, and when it says no, the button stays
+                  visible but disabled with the reason on hover: an action that
+                  simply vanishes teaches nothing about why.
+                */}
+                {can(topic, "approve") && (
+                  <ActBtn
+                    onClick={doApprove}
+                    disabled={approve.isPending}
+                    variant="approve"
+                  >
+                    <Check size={18} />
+                    {t("admin.approveTopicBtn")}
+                  </ActBtn>
+                )}
+                {can(topic, "publish") && (
                   <ActBtn
                     onClick={doPublish}
                     disabled={publish.isPending}
@@ -563,7 +682,7 @@ export function AdminTopicDetailPage() {
                     {t("admin.publish", { defaultValue: t("admin.publishTopic") })}
                   </ActBtn>
                 )}
-                {topic.status === "open" && (
+                {can(topic, "unpublish") && (
                   <ActBtn
                     onClick={doUnpublish}
                     disabled={unpublish.isPending}
@@ -573,33 +692,36 @@ export function AdminTopicDetailPage() {
                     {t("admin.unpublish", { defaultValue: t("admin.unpublish") })}
                   </ActBtn>
                 )}
-                {(topic.status === "pending" ||
-                  topic.status === "approved" ||
-                  topic.status === "open") &&
-                  !hasGroup && (
-                    <ActBtn onClick={() => setRejecting(true)} variant="reject">
-                      <X size={18} />
-                      {t("admin.rejectTopicBtn")}
-                    </ActBtn>
-                  )}
+                {can(topic, "reject") && (
+                  <ActBtn onClick={() => setRejecting(true)} variant="reject">
+                    <X size={18} />
+                    {t("admin.rejectTopicBtn")}
+                  </ActBtn>
+                )}
                 {topic.status === "archived" ? (
                   <ActBtn
                     onClick={doUnarchive}
-                    disabled={unarchive.isPending}
+                    disabled={unarchive.isPending || !can(topic, "unarchive")}
+                    title={blockReason(topic, "unarchive", t)}
                     variant="publish"
                   >
                     <Undo2 size={18} />
                     {t("admin.unarchive", { defaultValue: t("admin.unarchive") })}
                   </ActBtn>
                 ) : (
-                  <ActBtn
-                    onClick={doArchive}
-                    disabled={archive.isPending}
-                    variant="neutral"
-                  >
-                    <Archive size={18} />
-                    {t("admin.archive", { defaultValue: t("admin.archive") })}
-                  </ActBtn>
+                  // Archiving is offered on every decided topic, and refused
+                  // with its reason when a team is still waiting on it.
+                  ["approved", "open", "full"].includes(topic.status) && (
+                    <ActBtn
+                      onClick={doArchive}
+                      disabled={archive.isPending || !can(topic, "archive")}
+                      title={blockReason(topic, "archive", t)}
+                      variant="neutral"
+                    >
+                      <Archive size={18} />
+                      {t("admin.archive", { defaultValue: t("admin.archive") })}
+                    </ActBtn>
+                  )
                 )}
 
                 {topic.status === "rejected" && topic.rejectionReason && (
@@ -682,11 +804,14 @@ const ACT_VARIANTS: Record<string, string> = {
 function ActBtn({
   onClick,
   disabled,
+  title,
   variant,
   children,
 }: {
   onClick: () => void;
   disabled?: boolean;
+  /** سبب التعطيل — يظهر عند المرور، فلا يبقى الزرّ مطفأً بلا تفسير. */
+  title?: string;
   variant: "approve" | "publish" | "reject" | "neutral";
   children: React.ReactNode;
 }) {
@@ -694,6 +819,7 @@ function ActBtn({
     <button
       onClick={onClick}
       disabled={disabled}
+      title={disabled ? title : undefined}
       className={`flex w-full items-center justify-center gap-3 rounded-xl py-3.5 font-bold transition active:scale-95 disabled:opacity-60 ${ACT_VARIANTS[variant]}`}
     >
       {children}

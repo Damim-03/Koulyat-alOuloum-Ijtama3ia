@@ -25,11 +25,14 @@ export function Field({
   label,
   note,
   hint,
+  error,
   children,
 }: {
   label: string;
   note?: string;
   hint?: string;
+  /** Validation message; it replaces the hint rather than stacking on it. */
+  error?: string;
   children: ReactNode;
 }) {
   return (
@@ -43,10 +46,16 @@ export function Field({
         )}
       </span>
       {children}
-      {hint && (
-        <span className="mt-1 block text-[10.5px] leading-relaxed text-clay/80">
-          {hint}
+      {error ? (
+        <span className="mt-1 block text-[10.5px] leading-relaxed text-brick">
+          {error}
         </span>
+      ) : (
+        hint && (
+          <span className="mt-1 block text-[10.5px] leading-relaxed text-clay/80">
+            {hint}
+          </span>
+        )
       )}
     </label>
   );

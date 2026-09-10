@@ -85,6 +85,39 @@ export const notifyAdmins = (
   db: Db = prisma,
 ) => notifyRoles(["admin", "owner"], input, db);
 
+/**
+ * إشعارُ الإدارة لا يُفشِل ما تسبّب فيه.
+ *
+ * حين يُنادى هذا يكون الموضوع أو الطلب قد كُتب وثبت. فلو سقط الإشعار — قاعدةٌ
+ * تعثّرت، أو مديرٌ حُذف بين الاستعلام والكتابة — لعاد فعلٌ **ناجح** إلى صاحبه
+ * بـ٥٠٠، فأعاد المحاولة، فأنشأ الشيء مرّتين. والإشعار الضائع أهون من موضوعٍ
+ * مكرّر بكثير.
+ *
+ * ويُسجَّل السقوط ولا يُبتلع صامتاً: جرسٌ توقّف عن العمل بلا أثرٍ في السجلّ
+ * لا يلاحظه أحد حتى تسأل الإدارة لماذا لا يصلها شيء.
+ *
+ * و`await` مقصود رغم أن النتيجة مُهمَلة: الترتيب يبقى محدَّداً، فيقرأ
+ * الاختبار الأثر بعد الردّ مباشرةً بلا انتظارٍ عشوائي.
+ */
+export const notifyAdminsQuietly = async (
+  input: Omit<NotifyInput, "userId">,
+  db: Db = prisma,
+) => {
+  try {
+    return await notifyAdmins(input, db);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        scope: "notifyAdmins",
+        title: input.title,
+        message: (error as Error)?.message,
+      }),
+    );
+    return { count: 0 };
+  }
+};
+
 //
 // ─── READ SIDE (the bell) ─────────────────────────────────────
 //

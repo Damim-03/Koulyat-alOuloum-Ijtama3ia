@@ -126,10 +126,26 @@ function parseOrigins(): string[] {
   ];
 }
 
+/**
+ * `PORT=0` تعني «أعطني أي منفذٍ حرّ» — وهي قيمة صالحة يستعملها الخادم في
+ * الاختبار كي لا ينازع خادم التطوير على منفذه. والصيغة السابقة
+ * `Number(process.env.PORT) || 3000` كانت تُسقطها بصمت لأن الصفر كاذبٌ في
+ * جافاسكربت، فتعود إلى ٣٠٠٠ وكأن شيئاً لم يُطلب.
+ *
+ * وما هو خارج المدى أو ليس عدداً يعود إلى ٣٠٠٠ كما كان: الخطأ في متغيّر بيئة
+ * لا ينبغي أن يمنع الخادم من العمل.
+ */
+const readPort = (): number => {
+  const raw = process.env.PORT?.trim();
+  if (!raw) return 3000;
+  const port = Number(raw);
+  return Number.isInteger(port) && port >= 0 && port <= 65535 ? port : 3000;
+};
+
 const appConfig = () => ({
   NODE_ENV,
   IS_PRODUCTION,
-  PORT: Number(process.env.PORT) || 3000,
+  PORT: readPort(),
   BASE_PATH: getEnv("BASE_PATH", "/"),
 
   DATABASE_URL: process.env.DATABASE_URL,
@@ -146,12 +162,17 @@ const appConfig = () => ({
   SESSION_SECRET,
   SESSION_EXPIRES_IN: getEnv("SESSION_EXPIRES_IN", "1d"),
 
+  // أقصى عدد محاولات دخول فاشلة لكل عنوان في نافذة الحدّ. قابل للضبط
+  // لأن الاختبارات تُفشل الدخول عمداً مراراً، فتُشعل الحدّ وتفشل لسببٍ
+  // لا علاقة له بما تختبره. تُختبَر آليّة الحدّ نفسها على حدة.
+  AUTH_RATE_LIMIT_MAX: Number(getEnv("AUTH_RATE_LIMIT_MAX", "10")),
+
   FRONTEND_ORIGIN: getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
 
   /** This API's own public base URL. Used to mint upload URLs without
       trusting the request's Host header. */
   PUBLIC_API_URL: (
-    process.env.PUBLIC_API_URL ?? `http://localhost:${Number(process.env.PORT) || 3000}`
+    process.env.PUBLIC_API_URL ?? `http://localhost:${readPort()}`
   ).replace(/\/+$/, ""),
   CORS_ORIGINS: parseOrigins(),
 

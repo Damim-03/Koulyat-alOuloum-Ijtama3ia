@@ -1,4 +1,5 @@
 import { prisma } from "../../core/prisma/client";
+import { AVAILABLE_TO_STUDENTS } from "../../core/topic/topic-status";
 import {
   NotFoundException,
   UnauthorizedException,
@@ -7,6 +8,7 @@ import {
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { CreateGroupRequestDTO, ListTopicsDTO } from "./student.validation";
 import { publicUser } from "../../core/prisma/selects";
+import { notifyAdminsQuietly } from "../notification/notification.service";
 
 //
 // ─── resolve the Student row for the logged-in user ───────────
@@ -38,9 +40,9 @@ export const browseTopicsService = async (
 
   return prisma.graduationTopic.findMany({
     where: {
-      status: { in: ["approved", "open"] },
-      // محجوز = عليه طلب غير مرفوض ⇒ يختفي من التصفّح؛ ويعود تلقائياً إذا رُفض الطلب.
-      groupRequests: { none: { status: { in: ["pending", "accepted"] } } },
+      // «متاح» يُعرَّف في مكان واحد (core/topic/topic-status) وتستورده كل
+      // شاشة تعرض المواضيع، بدل أن تشتقّه كل واحدة بطريقتها.
+      ...AVAILABLE_TO_STUDENTS,
       ...(filters.specializationId
         ? { specializationId: filters.specializationId }
         : {}),
@@ -135,6 +137,23 @@ export const lookupStudentByRegistrationService = async (
 // ═══════════════════════════════════════════════════════════════
 //
 
+/**
+ * True when a write lost the race for a topic — the unique index on
+ * `GroupRequest.activeTopicId` refused it.
+ *
+ * The index name reaches us in different shapes depending on the driver: as
+ * `meta.target` on some, nested under the adapter's error on the MariaDB one.
+ * It is always in the message, so both are searched rather than picking one
+ * and hoping.
+ */
+const isReservationClash = (e: unknown) => {
+  const err = e as { code?: string; meta?: unknown; message?: string };
+  if (err.code !== "P2002") return false;
+  return `${JSON.stringify(err.meta ?? "")} ${err.message ?? ""}`.includes(
+    "activeTopicId",
+  );
+};
+
 export const createGroupRequestService = async (
   userId: string,
   data: CreateGroupRequestDTO,
@@ -158,15 +177,12 @@ export const createGroupRequestService = async (
     );
   }
 
-  // 1.b الموضوع يُحجز عند أول طلب: امنع أي طلب جديد إن كان عليه طلب غير مرفوض.
-  const reserved = await prisma.graduationTopic.findFirst({
-    where: {
-      id: topic.id,
-      groupRequests: { some: { status: { in: ["pending", "accepted"] } } },
-    },
+  // 1.b الموضوع يُحجز عند أول طلب: امنع أي طلب جديد إن لم يعد متاحاً.
+  const available = await prisma.graduationTopic.findFirst({
+    where: { id: topic.id, ...AVAILABLE_TO_STUDENTS },
     select: { id: true },
   });
-  if (reserved) {
+  if (!available) {
     throw new BadRequestException(
       "هذا الموضوع محجوز بالفعل",
       ErrorCodeEnum.VALIDATION_ERROR,
@@ -241,9 +257,17 @@ export const createGroupRequestService = async (
   }
 
   // 7. Create the request with its members (status forced to pending).
-  const request = await prisma.groupRequest.create({
+  // Two teams can still arrive together — the read above cannot prevent
+  // that, only give a clear message in the ordinary case. The unique index
+  // is what settles it, and this turns its error into the same sentence.
+  let request;
+  try {
+    request = await prisma.groupRequest.create({
     data: {
       topicId: topic.id,
+      // Reserves the topic. The read above is only there to give a clear
+      // message first; this is what actually settles a race.
+      activeTopicId: topic.id,
       leaderStudentId: leader.id,
       priority: data.priority,
       status: "pending",
@@ -255,6 +279,23 @@ export const createGroupRequestService = async (
       topic: { select: { id: true, title: true } },
       members: { include: { student: { include: { user: publicUser } } } },
     },
+    });
+  } catch (e) {
+    if (isReservationClash(e))
+      throw new BadRequestException(
+        "هذا الموضوع محجوز بالفعل",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+    throw e;
+  }
+
+  // الطلب يحجز الموضوع ويقف بانتظار قرار الإدارة. وكلّما طال انتظاره تعطّل
+  // فريقٌ كامل عن موضوعٍ آخر — فالتبليغ هنا ليس ترفاً.
+  await notifyAdminsQuietly({
+    type: "general",
+    title: "طلبُ مجموعة جديد",
+    message: `وصل طلبُ مجموعة على موضوع: «${request.topic.title}».`,
+    link: "/admin/group-requests",
   });
 
   return request;

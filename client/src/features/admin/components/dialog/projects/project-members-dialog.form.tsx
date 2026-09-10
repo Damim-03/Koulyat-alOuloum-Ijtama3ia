@@ -21,6 +21,7 @@ import {
 import {
   useProject,
   useRemoveProjectMember,
+  useDissolveProject,
   useArchiveTopic,
   useDeleteTopic,
   useStudents,
@@ -163,6 +164,7 @@ function MembersEditor({
 }: Props & { serverMembers: any[]; refetchProject: () => void }) {
   const { t } = useTranslation();
   const remove = useRemoveProjectMember();
+  const dissolveProject = useDissolveProject();
   const archive = useArchiveTopic();
   const del = useDeleteTopic();
   const updateTopic = useUpdateAssignedTopic();
@@ -223,6 +225,7 @@ function MembersEditor({
 
   const busy =
     remove.isPending ||
+    dissolveProject.isPending ||
     archive.isPending ||
     del.isPending ||
     updateTopic.isPending;
@@ -277,16 +280,27 @@ function MembersEditor({
     );
   }
 
-  /** Removes every member; the server dissolves the group on the last one. */
+  /**
+   * Dissolves the project in one server call.
+   *
+   * This used to loop over the members and delete them one by one, letting
+   * the last deletion dissolve the group as a side effect — and it swallowed
+   * every error on the way, so a refusal left the dialog reporting success
+   * over a project that was still there. Dissolving is now a single guarded
+   * action: the server refuses outright when the group carries submissions or
+   * a scheduled defence, and says which, so that message can be shown instead
+   * of a cheerful lie.
+   */
   async function dissolve() {
     if (!groupId) return;
     setError(null);
-    for (const m of serverMembers) {
-      try {
-        await remove.mutateAsync({ groupId, studentId: m.student.id });
-      } catch {
-        // keep going; whatever survives is reflected on the next refetch
-      }
+    try {
+      await dissolveProject.mutateAsync({ groupId });
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? e?.message ?? "—");
+      setConfirmDissolve(false);
+      refetchProject();
+      return;
     }
     setEmptied(true);
     setRows([]);
