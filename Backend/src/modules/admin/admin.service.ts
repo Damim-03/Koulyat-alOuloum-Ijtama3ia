@@ -1,4 +1,15 @@
 import { prisma } from "../../core/prisma/client";
+import {
+  computeTopicStatus,
+  setTopicDecision,
+  setTopicPublished,
+  readOccupancy,
+  topicActions,
+  occupancyFromRelations,
+  OCCUPANCY_INCLUDE,
+  type TopicDecision,
+  type TopicActionKey,
+} from "../../core/topic/topic-status";
 import bcrypt from "bcryptjs";
 import { config } from "../../core/config/app.config";
 import {
@@ -34,6 +45,7 @@ import {
   RejectTopicDTO,
   ChangeSupervisorDTO,
   AssignStudentDTO,
+  DissolveProjectDTO,
   CreateDefenseDTO,
   UpdateDefenseDTO,
   ListProfessorsDTO,
@@ -47,7 +59,7 @@ import {
   CreateAssignedTopicDTO,
   UpdateAssignedTopicDTO,
 } from "./admin.validation";
-import { Role } from "../../generated/prisma";
+import { Prisma, Role } from "../../generated/prisma";
 import { createNotification } from "../notification/notification.service";
 
 // Cost factor is configurable and defaults to 12. bcrypt stores the cost in
@@ -548,7 +560,7 @@ export const createAssignedTopicService = async (
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
-  // 4) أنشئ الموضوع + المجموعة + الأعضاء (مع المرسِل) + اضبط الحالة full — في معاملة واحدة.
+  // 4) أنشئ الموضوع + المجموعة + الأعضاء (مع المرسِل) — في معاملة واحدة.
   const topic = await prisma.$transaction(async (tx) => {
     const created = await tx.graduationTopic.create({
       data: {
@@ -557,7 +569,10 @@ export const createAssignedTopicService = async (
         requirements,
         objectives,
         maxStudents,
-        status: "full", // محجوز، مقبول، لا يُنشَر
+        // قرار الإدارة: معتمَد. و«محجوز» ليست قراراً بل نتيجة المجموعة التي
+        // تُنشأ بعد سطرين، فيقرأ الإسقاط `full` من تلقائه. و`publishedAt`
+        // يبقى NULL: الموضوع المُسنَد لم يُعرَض على الطلبة قطّ.
+        status: "approved",
         professorId,
         specializationId,
         academicYearId,
@@ -577,7 +592,8 @@ export const createAssignedTopicService = async (
       skipDuplicates: true,
     });
 
-    return created;
+    await computeTopicStatus(tx, created.id);
+    return tx.graduationTopic.findUniqueOrThrow({ where: { id: created.id } });
   });
 
   // 5) أعلِم الطلبة المُسنَدين.
@@ -621,6 +637,13 @@ export const updateAssignedTopicService = async (
       "Topic not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+
+  // 1.b إسناد مجموعة إلى موضوع فريقٌ ينتظر قراره يتخطّى الفريق بلا ردّ: تُنشأ
+  // المجموعة، ويصير الموضوع `full`، ويبقى طلبهم معلّقاً على موضوع مأخوذ. ولا
+  // يُفحص هذا إلا حين تُسنَد مجموعة فعلاً — تعديل العنوان أو المشرف لا يمسّ
+  // الفريق المنتظر في شيء.
+  if (memberStudentIds && !topic.projectGroup)
+    await gateTopicAction(id, "assignGroup");
 
   // 2) تحقّق من المراجع المُرسَلة.
   if (professorId) {
@@ -788,6 +811,10 @@ export const updateAssignedTopicService = async (
         data: { isLeader: true },
       });
     }
+
+    // This path can create the group for a topic that did not have one, so
+    // the occupancy it projects has to be rewritten with it.
+    await computeTopicStatus(tx, id);
   });
 
   // 5) أعلِم الطلبة المُضافين حديثاً.
@@ -2250,7 +2277,14 @@ export const createAcademicYearService = async (
       "Academic year already exists",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
-  return prisma.academicYear.create({ data });
+
+  // «النشطة واحدة» شرطٌ على الجدول كلّه لا على الصفّ، فلا يُكتب `isActive`
+  // من هنا مباشرةً: نُنشئ الصفّ مطفأً ثم نمرّ بنقطة التفعيل الوحيدة.
+  const { isActive, ...rest } = data;
+  const created = await prisma.academicYear.create({
+    data: { ...rest, isActive: false },
+  });
+  return isActive ? activateAcademicYearService(created.id) : created;
 };
 
 export const updateAcademicYearService = async (
@@ -2263,7 +2297,16 @@ export const updateAcademicYearService = async (
       "Academic year not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
-  return prisma.academicYear.update({ where: { id }, data });
+
+  // وكذلك في التعديل: رفع العلم يمرّ بالتفعيل حتى تُطفأ البقيّة معه. أما
+  // خفضه فيبقى كما كان — إطفاء الكلّ ليس خرقاً للشرط، وتحريمه تضييقٌ جديد
+  // على واجهةٍ تعمل اليوم.
+  const { isActive, ...rest } = data;
+  const updated = await prisma.academicYear.update({
+    where: { id },
+    data: { ...rest, ...(isActive === false ? { isActive: false } : {}) },
+  });
+  return isActive === true ? activateAcademicYearService(id) : updated;
 };
 
 export const activateAcademicYearService = async (id: string) => {
@@ -2330,7 +2373,7 @@ export const listTopicsService = async (q: ListTopicsDTO) => {
     ];
   }
 
-  const [items, total] = await Promise.all([
+  const [rows, total] = await Promise.all([
     prisma.graduationTopic.findMany({
       where,
       include: {
@@ -2338,6 +2381,8 @@ export const listTopicsService = async (q: ListTopicsDTO) => {
         specialization: true,
         academicYear: true,
         _count: { select: { groupRequests: true } },
+        // الإشغال يأتي مع الصفّ في نفس الاستعلام، فلا استعلام لكل موضوع.
+        ...OCCUPANCY_INCLUDE,
       },
       orderBy: { createdAt: "desc" },
       skip: (q.page - 1) * q.limit,
@@ -2345,6 +2390,24 @@ export const listTopicsService = async (q: ListTopicsDTO) => {
     }),
     prisma.graduationTopic.count({ where }),
   ]);
+
+  // كل صفّ يحمل حكم الخادم على ما يجوز عليه ولماذا لا. القائمة كانت تستنتج
+  // ذلك بنفسها من `status` وحده، فتعرض حذفاً مستحيلاً على موضوع مؤرشف له
+  // مجموعة، وتُخفي حذفاً جائزاً عن غيره.
+  const items = rows.map(({ projectGroup, groupRequests, ...t }) => {
+    const occ = occupancyFromRelations({ projectGroup, groupRequests });
+    return {
+      ...t,
+      occupancy: {
+        hasGroup: occ.hasGroup,
+        groupMemberCount: occ.groupMemberCount,
+        hasPendingRequest: occ.hasPendingRequest,
+        pendingRequestMemberCount: occ.pendingRequestMemberCount,
+        hasAcceptedRequest: occ.hasAcceptedRequest,
+      },
+      actions: topicActions(t, occ),
+    };
+  });
 
   return { items, total, page: q.page, limit: q.limit };
 };
@@ -2366,6 +2429,28 @@ export const getTopicByIdService = async (id: string) => {
           },
         },
       },
+      // A pending request now blocks publishing, rejecting and archiving, so
+      // the page has to show what it is being blocked by. Without this the
+      // screen said "no group has formed yet", offered three buttons, and all
+      // three failed — with no way to see that a team was waiting.
+      groupRequests: {
+        where: { status: "pending" },
+        orderBy: { createdAt: "desc" },
+        include: {
+          leader: { select: { id: true, registrationNumber: true } },
+          members: {
+            include: {
+              student: {
+                select: {
+                  id: true,
+                  registrationNumber: true,
+                  user: { select: userSelect },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
   if (!topic)
@@ -2373,32 +2458,93 @@ export const getTopicByIdService = async (id: string) => {
       "Topic not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
-  return topic;
+
+  // نفس حكم القائمة على صفحة التفصيل، من نفس الجدول. الصفحة كانت تعرض زرّ
+  // الحذف بلا أي شرط، فيفشل ولا يعرف المستخدم أن البديل هو الأرشفة.
+  const occ = await readOccupancy(prisma, id);
+  return {
+    ...topic,
+    occupancy: {
+      hasGroup: occ.hasGroup,
+      groupMemberCount: occ.groupMemberCount,
+      hasPendingRequest: !!occ.pendingRequestId,
+      pendingRequestMemberCount: occ.pendingRequestMemberCount,
+      hasAcceptedRequest: !!occ.acceptedRequestId,
+    },
+    actions: topicActions(topic, occ),
+  };
 };
 
-const setTopicStatus = async (
-  id: string,
-  status: string,
-  rejectionReason?: string | null,
-) => {
-  const found = await prisma.graduationTopic.findUnique({ where: { id } });
-  if (!found)
+/**
+ * Refuses to move a topic while a team is still waiting on it.
+ *
+ * A pending request holds a real claim: it reserves the topic (see
+ * `GroupRequest.activeTopicId`), so the topic is already spoken for even
+ * though no group has formed yet. Publishing it puts a topic on the students'
+ * list that nobody else can take; rejecting or archiving it strands the team's
+ * request on a topic that no longer exists as an option — pending forever,
+ * still holding the reservation.
+ *
+ * The request is decided first, on the screen built for it. Rejecting a
+ * request deletes it and frees the topic, so this is never a dead end.
+ *
+ * Only `pending` is checked. An `accepted` request always sits on a `full`
+ * topic — accepting creates the group and sets `full` in one transaction —
+ * and the status rules already say what may happen to a `full` topic, which
+ * includes archiving it. Checking `accepted` here would forbid that.
+ */
+/**
+ * يمنع الإجراء إن كان جدول القواعد يمنعه، برسالة الجدول نفسها.
+ *
+ * كان كل إجراء يحمل حارسه الخاصّ — قائمة حالات مسموحة هنا، وفحص طلب حيّ
+ * هناك — والواجهة تُقلّد هذه القواعد بشرطٍ ثالث عندها. ثلاث نسخ تتباعد عند
+ * أول تعديل. الحارس والعرض يقرآن الآن من `topicActions` وحدها.
+ */
+const gateTopicAction = async (id: string, action: TopicActionKey) => {
+  const topic = await prisma.graduationTopic.findUnique({ where: { id } });
+  if (!topic)
     throw new NotFoundException(
       "Topic not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
-  return prisma.graduationTopic.update({
-    where: { id },
-    data: {
-      status: status as never,
-      // Persist the reason on reject; clear it otherwise.
-      rejectionReason: status === "rejected" ? (rejectionReason ?? null) : null,
-    },
-  });
+
+  const occ = await readOccupancy(prisma, id);
+  const actions = topicActions(topic, occ);
+  const allowed = {
+    approve: actions.canApprove,
+    reject: actions.canReject,
+    publish: actions.canPublish,
+    unpublish: actions.canUnpublish,
+    archive: actions.canArchive,
+    unarchive: actions.canUnarchive,
+    delete: actions.canDelete,
+    assignGroup: actions.canAssignGroup,
+  }[action];
+
+  if (!allowed)
+    throw new BadRequestException(
+      actions.blockedReasons[action] ?? "هذا الإجراء غير متاح على هذا الموضوع.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  return topic;
+};
+
+/** يسجّل القرار بعد أن يتأكّد أنه جائز. */
+const setTopicStatus = async (
+  id: string,
+  action: TopicActionKey,
+  decision: TopicDecision,
+  rejectionReason?: string | null,
+) => {
+  await gateTopicAction(id, action);
+  await setTopicDecision(prisma, id, decision, { rejectionReason });
+  return prisma.graduationTopic.findUniqueOrThrow({ where: { id } });
 };
 
 export const approveTopicService = async (id: string) => {
-  const topic = await setTopicStatus(id, "approved");
+  // Approval is a decision on a proposal, so it starts from an undecided one.
+  const topic = await setTopicStatus(id, "approve", "approved");
   const userId = await getTopicProfessorUserId(topic.id);
   if (userId)
     await createNotification({
@@ -2411,53 +2557,55 @@ export const approveTopicService = async (id: string) => {
   return topic;
 };
 
-export const archiveTopicService = (id: string) =>
-  setTopicStatus(id, "archived");
+/**
+ * Archiving takes a *decided* topic out of circulation.
+ *
+ * A `pending` or `rejected` topic is refused because unarchiving cannot know
+ * where it came from: it restores `full` when a group exists and `approved`
+ * otherwise, so an unreviewed proposal would return approved — approved
+ * without anyone having read it. Those are decided by approving or rejecting
+ * them, not by filing them away.
+ *
+ * One consequence is deliberate: an archived `open` topic comes back
+ * `approved`, not published. That is the safe direction — it must be
+ * published again on purpose.
+ */
+export const archiveTopicService = async (id: string) =>
+  setTopicStatus(id, "archive", "archived");
 
+/**
+ * Brings an archived topic back.
+ *
+ * This used to guess where the topic had come from — `full` when a group
+ * existed, `approved` otherwise — which silently unpublished every archived
+ * topic that had been open. It no longer guesses: archiving never cleared
+ * `publishedAt`, so projecting the "approved" decision over it restores the
+ * exact state the topic was filed away in.
+ */
 export const unarchiveTopicService = async (id: string) => {
-  const found = await prisma.graduationTopic.findUnique({
-    where: { id },
-    include: { projectGroup: { select: { id: true } } },
-  });
-  if (!found)
-    throw new NotFoundException(
-      "Topic not found",
-      ErrorCodeEnum.RESOURCE_NOT_FOUND,
-    );
-  if (found.status !== "archived")
-    throw new BadRequestException(
-      "لا يمكن إلغاء الأرشفة إلا لموضوع مؤرشف",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  // إن كان للموضوع مجموعة طلبة فهو مكتمل؛ وإلا يعود «معتمداً».
-  return prisma.graduationTopic.update({
-    where: { id },
-    data: { status: found.projectGroup ? "full" : "approved" },
-  });
+  await gateTopicAction(id, "unarchive");
+  await setTopicDecision(prisma, id, "approved");
+  return prisma.graduationTopic.findUniqueOrThrow({ where: { id } });
 };
 
+/**
+ * يحذف موضوعاً لا يُفقِد حذفُه شيئاً.
+ *
+ * الحارس على المجموعة كان قائماً، لكن الطلب الحيّ لم يكن محروساً: كان الحذف
+ * يمسح `groupRequest`s جملةً — بما فيها طلب فريقٍ ينتظر قراراً — فيختفي الطلب
+ * من صفحة الطلبة بلا رفض ولا سبب ولا إشعار. `topicActions` يمنع الحالتين
+ * الآن، ويقول أيّهما.
+ *
+ * ويبقى الحذف يمسح الطلبات المرفوضة والتطبيقات القديمة: تلك سجلّات ميّتة على
+ * موضوع لم يعد له وجود، ولا شاشة تعرضها بعد أن يذهب.
+ */
 export const deleteTopicService = async (id: string) => {
-  const topic = await prisma.graduationTopic.findUnique({
-    where: { id },
-    include: { projectGroup: { select: { id: true } } },
-  });
-  if (!topic)
-    throw new NotFoundException(
-      "Topic not found",
-      ErrorCodeEnum.RESOURCE_NOT_FOUND,
-    );
-
-  // حارس: لا يُحذف موضوع تشكّلت له مجموعة مشروع — يُؤرشَف بدلاً من ذلك.
-  if (topic.projectGroup)
-    throw new BadRequestException(
-      "لا يمكن حذف موضوع تشكّلت له مجموعة مشروع؛ أرشفه بدلاً من ذلك.",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
+  await gateTopicAction(id, "delete");
 
   await prisma.$transaction(async (tx) => {
     // التطبيقات الفردية (لا cascade على علاقة الموضوع).
     await tx.topicApplication.deleteMany({ where: { topicId: id } });
-    // طلبات الفرق (أعضاؤها يُحذفون تلقائياً عبر cascade على GroupRequestMember).
+    // طلبات الفرق المنتهية (أعضاؤها يُحذفون بالـ cascade على GroupRequestMember).
     await tx.groupRequest.deleteMany({ where: { topicId: id } });
     // وأخيراً الموضوع نفسه.
     await tx.graduationTopic.delete({ where: { id } });
@@ -2467,7 +2615,10 @@ export const deleteTopicService = async (id: string) => {
 };
 
 export const rejectTopicService = async (id: string, data: RejectTopicDTO) => {
-  const topic = await setTopicStatus(id, "rejected", data.reason);
+  // `full` is excluded by the rules table on purpose: a project has formed on
+  // it, with members, milestones and possibly a defence. Rejecting the topic
+  // would not undo any of that — it would only mislabel it. Archive it instead.
+  const topic = await setTopicStatus(id, "reject", "rejected", data.reason);
   const userId = await getTopicProfessorUserId(topic.id);
   if (userId)
     await createNotification({
@@ -2487,42 +2638,22 @@ export const rejectTopicService = async (id: string, data: RejectTopicDTO) => {
 // publish = move approved → open, which makes it appear on the public
 // landing page and opens it for student requests.
 export const publishTopicService = async (id: string) => {
-  const found = await prisma.graduationTopic.findUnique({ where: { id } });
-  if (!found)
-    throw new NotFoundException(
-      "Topic not found",
-      ErrorCodeEnum.RESOURCE_NOT_FOUND,
-    );
-  // Only an approved topic may be published.
-  if (found.status !== "approved")
-    throw new BadRequestException(
-      "يجب قبول الموضوع أوّلاً قبل نشره",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  return prisma.graduationTopic.update({
-    where: { id },
-    data: { status: "open" },
-  });
+  // The rules table refuses anything but `approved`, and refuses a topic a
+  // team has already claimed — publishing that offers students something none
+  // of them can take, since the reservation turns down every further request.
+  await gateTopicAction(id, "publish");
+  // `publishedAt` is what survives `full` and `archived`, so the topic can
+  // come back to "published" later instead of to a guess.
+  await setTopicPublished(prisma, id, true);
+  return prisma.graduationTopic.findUniqueOrThrow({ where: { id } });
 };
 
 // Pull a published topic back to approved-but-hidden (only if no group has
 // formed yet, i.e. it's still "open", not "full").
 export const unpublishTopicService = async (id: string) => {
-  const found = await prisma.graduationTopic.findUnique({ where: { id } });
-  if (!found)
-    throw new NotFoundException(
-      "Topic not found",
-      ErrorCodeEnum.RESOURCE_NOT_FOUND,
-    );
-  if (found.status !== "open")
-    throw new BadRequestException(
-      "لا يمكن إلغاء النشر إلا لموضوع منشور ولم تُشكّل له مجموعة",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  return prisma.graduationTopic.update({
-    where: { id },
-    data: { status: "approved" },
-  });
+  await gateTopicAction(id, "unpublish");
+  await setTopicPublished(prisma, id, false);
+  return prisma.graduationTopic.findUniqueOrThrow({ where: { id } });
 };
 
 //
@@ -2813,13 +2944,50 @@ export const assignStudentService = async (
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
+  // طالب واحد لمشروع واحد — نفس القاعدة التي يفرضها مسار الإسناد.
+  const elsewhere = await prisma.projectMember.findFirst({
+    where: { studentId: data.studentId, groupId: { not: id } },
+  });
+  if (elsewhere)
+    throw new BadRequestException(
+      "هذا الطالب عضو في مشروع آخر بالفعل",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  // والحدّ الأقصى للموضوع يُحترم هنا كما يُحترم عند قبول الطلب.
+  const [count, topic] = await Promise.all([
+    prisma.projectMember.count({ where: { groupId: id } }),
+    prisma.graduationTopic.findUnique({
+      where: { id: group.topicId },
+      select: { maxStudents: true },
+    }),
+  ]);
+  if (topic && count >= topic.maxStudents)
+    throw new BadRequestException(
+      `المشروع مكتمل: الحدّ الأقصى لهذا الموضوع ${topic.maxStudents} طلبة.`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
   await prisma.projectMember.create({
-    data: { groupId: id, studentId: data.studentId },
+    data: {
+      groupId: id,
+      studentId: data.studentId,
+      // أوّل عضو في مجموعة بلا قائد يصير قائدها؛ وإلا فعضو عادي.
+      isLeader: count === 0,
+    },
   });
   return getProjectByIdService(id);
 };
 
-export const removeProjectMemberService = async (
+/**
+ * يعيّن قائد المشروع — وهو الإجراء الذي لم يكن موجوداً.
+ *
+ * تصحيح المرسِل كان ممكناً على الطلب وحده وقبل القبول فقط، فإذا تشكّلت
+ * المجموعة أُغلق البابان: `setGroupRequestLeaderService` يرفض بعد القبول، ولا
+ * نظير له على المشروع. وهذا يعمل على أي مجموعة مهما تشكّلت — من طلب فريق أو
+ * بإسناد إداري — لأن القائد صفة المجموعة القائمة لا صفة الطلب الذي مضى.
+ */
+export const setProjectLeaderService = async (
   groupId: string,
   studentId: string,
 ) => {
@@ -2834,27 +3002,198 @@ export const removeProjectMemberService = async (
     );
   if (!group.members.some((m) => m.studentId === studentId))
     throw new BadRequestException(
+      "القائد يجب أن يكون أحد أعضاء المشروع",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  // في معاملة واحدة، وإلا مرّت لحظة بقائدين أو بلا قائد.
+  await prisma.$transaction(async (tx) => {
+    await tx.projectMember.updateMany({
+      where: { groupId },
+      data: { isLeader: false },
+    });
+    await tx.projectMember.update({
+      where: { groupId_studentId: { groupId, studentId } },
+      data: { isLeader: true },
+    });
+  });
+
+  return getProjectByIdService(groupId);
+};
+
+/**
+ * ينهي الطلب المقبول الذي أنشأ المجموعة، ثم يُعيد حساب حالة الموضوع.
+ *
+ * المجموعة والطلب الذي أنشأها واقعة واحدة مسجَّلة مرّتين: المجموعة تحمل
+ * الطلبة، والطلب يحمل الحجز — `activeTopicId` وفهرسه الفريد هو ما يمنع فريقاً
+ * ثانياً من أخذ الموضوع. وحذف المجموعة دون إنهاء الطلب كان يترك الحجز قائماً
+ * فوق لا شيء: الموضوع يقول «معتمد» وهو محجوب عن كل طالب، ويرفض كل فريق جديد،
+ * ولا شاشة تستطيع تحريره. وحتى نشره لم يكن يُجدي — يصير `open` ويبقى غير مرئي.
+ *
+ * يُعلَّم الطلب `rejected` لا يُحذف: هذا ما يُفرِغ `activeTopicId` (الفهرس لا
+ * يقارن NULL)، ويُبقي للفريق أثر ما طلبوه وما آل إليه. والسبب المسجَّل يقول
+ * إن المجموعة فُسخت، فلا تُقرأ «مرفوض» على أنها ردّ على طلبهم.
+ */
+const releaseTopicOccupancy = async (
+  tx: Prisma.TransactionClient,
+  topicId: string,
+  reason: string,
+) => {
+  await tx.groupRequest.updateMany({
+    where: { topicId, status: "accepted" },
+    data: { status: "rejected", activeTopicId: null, rejectionReason: reason },
+  });
+  return computeTopicStatus(tx, topicId);
+};
+
+export const removeProjectMemberService = async (
+  groupId: string,
+  studentId: string,
+) => {
+  const group = await prisma.projectGroup.findUnique({
+    where: { id: groupId },
+    include: {
+      members: {
+        select: { studentId: true, isLeader: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+  if (!group)
+    throw new NotFoundException(
+      "Project not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+  const target = group.members.find((m) => m.studentId === studentId);
+  if (!target)
+    throw new BadRequestException(
       "الطالب ليس عضواً في هذا المشروع",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
   const remaining = group.members.length - 1;
 
+  /**
+   * إزالة آخر عضو ليست إزالة عضو، بل فسخٌ للمشروع كلّه.
+   *
+   * كانت تفعل ذلك ضمناً: تُحذف المجموعة ومراحلها ومناقشتها لأن الإدارة ضغطت
+   * «إزالة» على اسم طالب — بلا سؤال، وبلا سبب مسجَّل، وبلا إشعار لأحد. الفسخ
+   * الآن إجراء قائم بذاته، محروسٌ بما يمنع ضياع عمل قائم، ويُطلب بالاسم.
+   */
+  if (remaining === 0)
+    throw new BadRequestException(
+      "هذا آخر عضو في المشروع، وإزالته تعني فسخ المشروع كلّه. استعمل «فسخ المشروع» — فهو يسجّل السبب ويُعلم الطلبة ويُعيد الموضوع للتداول.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
   await prisma.$transaction(async (tx) => {
     await tx.projectMember.delete({
       where: { groupId_studentId: { groupId, studentId } },
     });
-    if (remaining === 0) {
-      // آخر طالب → فُكّ المجموعة وأعِد الموضوع «معتمداً» ليصبح قابلاً للحذف/الأرشفة.
-      await tx.projectGroup.delete({ where: { id: groupId } });
-      await tx.graduationTopic.update({
-        where: { id: group.topicId },
-        data: { status: "approved" },
-      });
+
+    // إخراج القائد يترك المجموعة بلا قائد، وهي حالة لا تعرف الشاشة كيف تعرضها
+    // ولا الخادم من يخاطب. أقدم الباقين يخلفه، والإدارة تغيّره بعدها إن شاءت.
+    if (target.isLeader) {
+      const heir = group.members.find((m) => m.studentId !== studentId);
+      if (heir)
+        await tx.projectMember.update({
+          where: { groupId_studentId: { groupId, studentId: heir.studentId } },
+          data: { isLeader: true },
+        });
     }
   });
 
-  return { remaining, dissolved: remaining === 0, topicId: group.topicId };
+  return {
+    remaining,
+    dissolved: false,
+    topicId: group.topicId,
+    leaderChanged: target.isLeader,
+  };
+};
+
+/**
+ * يفسخ مشروعاً قائماً: يحذف المجموعة، ويحرّر الموضوع، ويُعلم الطلبة.
+ *
+ * هذا هو الباب الوحيد للتراجع عن اكتمال وقع بالخطأ. وهو مُحكَم عمداً: يرفض
+ * الفسخ إن كان للمجموعة تسليمات أو مناقشة، لأن تلك أعمال طلبة وقرارات لجان
+ * لا يصحّ أن تختفي في إجراء واحد. إزالتها تسبق الفسخ وتُطلب من شاشاتها، فلا
+ * يقع الفقدان سهواً في نقرة واحدة.
+ *
+ * أمّا المراحل بلا تسليمات فهي خطّة لا عمل، وتُحذف مع المجموعة، ويُبلَّغ
+ * عددها في الردّ حتى لا يختفي شيء بلا ذكر.
+ */
+export const dissolveProjectService = async (
+  groupId: string,
+  data: DissolveProjectDTO = {},
+) => {
+  const group = await prisma.projectGroup.findUnique({
+    where: { id: groupId },
+    include: {
+      members: { select: { studentId: true } },
+      topic: { select: { id: true, title: true } },
+      defense: { select: { id: true } },
+      milestones: { select: { id: true } },
+    },
+  });
+  if (!group)
+    throw new NotFoundException(
+      "Project not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+
+  const submissions = await prisma.submission.count({
+    where: { milestone: { groupId } },
+  });
+
+  const blockers: string[] = [];
+  if (submissions > 0) blockers.push(`${submissions} تسليماً من الطلبة`);
+  if (group.defense) blockers.push("مناقشة مبرمجة");
+  if (blockers.length)
+    throw new BadRequestException(
+      `لا يمكن فسخ هذا المشروع: عليه ${blockers.join(" و")}. احذف ذلك أوّلاً من شاشته إن كنت متأكّداً — لا يُفسَخ مشروع يحمل عملاً قائماً في خطوة واحدة.`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  const reason = data.reason?.trim()
+    ? data.reason.trim()
+    : "فسخت الإدارة المشروع.";
+
+  await prisma.$transaction(async (tx) => {
+    await tx.milestone.deleteMany({ where: { groupId } });
+    await tx.projectMember.deleteMany({ where: { groupId } });
+    await tx.projectGroup.delete({ where: { id: groupId } });
+    await releaseTopicOccupancy(tx, group.topic.id, reason);
+  });
+
+  // أعلِم كل عضو — المشروع اختفى من صفحته، فلا يصحّ أن يختفي بلا خبر.
+  const memberUserIds = (
+    await prisma.student.findMany({
+      where: { id: { in: group.members.map((m) => m.studentId) } },
+      select: { userId: true },
+    })
+  ).map((s) => s.userId);
+  for (const userId of memberUserIds) {
+    await createNotification({
+      userId,
+      type: "general",
+      title: "فُسخت مجموعتكم",
+      message: `فُسخت مجموعتكم على موضوع «${group.topic.title}». السبب: ${reason}`,
+      link: "/student/requests",
+    });
+  }
+
+  const topic = await prisma.graduationTopic.findUnique({
+    where: { id: group.topic.id },
+    select: { id: true, status: true },
+  });
+
+  return {
+    dissolved: true,
+    topicId: group.topic.id,
+    topicStatus: topic?.status,
+    removedMembers: group.members.length,
+    removedMilestones: group.milestones.length,
+  };
 };
 
 //
@@ -3356,7 +3695,13 @@ export const acceptGroupRequestService = async (id: string) => {
     );
 
   const topic = request.topic;
+  // `pending` is here because a professor may propose a topic together with
+  // its team: the request then carries the topic's approval too, and
+  // accepting it below moves the topic straight to `full`. A student can
+  // never produce this state — student requests are refused on a topic that
+  // is not already approved or open.
   if (
+    topic.status !== "pending" &&
     topic.status !== "approved" &&
     topic.status !== "open" &&
     topic.status !== "full"
@@ -3383,7 +3728,8 @@ export const acceptGroupRequestService = async (id: string) => {
     });
     if (
       !fresh ||
-      (fresh.status !== "approved" &&
+      (fresh.status !== "pending" &&
+        fresh.status !== "approved" &&
         fresh.status !== "open" &&
         fresh.status !== "full")
     )
@@ -3401,10 +3747,16 @@ export const acceptGroupRequestService = async (id: string) => {
       data: { topicId: topic.id },
     });
 
+    // المرسِل ينتقل مع الفريق قائداً للمجموعة.
+    //
+    // كان هذا السطر ينسخ الأعضاء بلا `isLeader`، فتنشأ كل مجموعة من طلبٍ بلا
+    // قائد إطلاقاً — والمرسِل مسجَّل في الطلب وحده حيث لا تقرؤه شاشة المشروع.
+    // ثم لا سبيل لتصحيحه: تعديل مرسِل الطلب ممنوع بعد القبول.
     await tx.projectMember.createMany({
       data: request.members.map((m) => ({
         groupId: group.id,
         studentId: m.studentId,
+        isLeader: m.studentId === request.leaderStudentId,
       })),
       skipDuplicates: true,
     });
@@ -3414,14 +3766,16 @@ export const acceptGroupRequestService = async (id: string) => {
       data: { status: "accepted" },
     });
 
-    await tx.graduationTopic.update({
-      where: { id: topic.id },
-      data: { status: "full" },
-    });
+    // The group now exists, so the projection reads `full` on its own. The
+    // literal that used to be written here is what erased "was it published?"
+    // and left every exit from `full` guessing.
+    await computeTopicStatus(tx, topic.id);
 
+    // The losing requests stop being live, which releases their hold on the
+    // reservation column. (The accepted one keeps it: `accepted` is live.)
     await tx.groupRequest.updateMany({
       where: { topicId: topic.id, status: "pending", id: { not: request.id } },
-      data: { status: "rejected" },
+      data: { status: "rejected", activeTopicId: null },
     });
 
     return updated;
@@ -3453,7 +3807,7 @@ export const rejectGroupRequestService = async (
 ) => {
   const request = await prisma.groupRequest.findUnique({
     where: { id },
-    include: { topic: true },
+    include: { topic: { include: { projectGroup: { select: { id: true } } } } },
   });
   if (!request)
     throw new NotFoundException(
@@ -3461,33 +3815,34 @@ export const rejectGroupRequestService = async (
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
+  /**
+   * رفض طلب صار مشروعاً قائماً ليس رفضاً، بل حذفٌ للأثر من تحت مشروع حيّ.
+   *
+   * كان هذا ينجح بصمت: يُحذف الطلب، وتبقى المجموعة بأعضائها ومراحلها
+   * ومناقشتها، ويبقى الموضوع `full` — بلا أي سجلّ يشرح من أين جاء هذا
+   * المشروع، ويفقد الطلبة كل أثر للطلب الذي أنشأه.
+   *
+   * الشرط على المجموعة لا على حالة الطلب: طلبٌ `accepted` فُسخت مجموعته
+   * (حالة عالقة من بيانات قديمة) يجب أن يبقى رفضه ممكناً — فهو الإصلاح.
+   */
+  if (request.status === "accepted" && request.topic.projectGroup)
+    throw new BadRequestException(
+      "لا يمكن رفض طلب تشكّل له مشروع بالفعل. إن أردت التراجع عن الاكتمال فافسخ المشروع من صفحة «المشاريع» — عندها يتحرّر الموضوع ويعود قابلاً للتداول.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
   // نلتقط بيانات الإشعار قبل الحذف.
   const leaderUserId = await getStudentUserId(request.leaderStudentId);
   const topicId = request.topicId;
 
   await prisma.$transaction(async (tx) => {
-    // إن كان الموضوع محجوزاً (full) ولم تبقَ مجموعة ولا طلب نشط آخر → أعِده مفتوحاً.
-    if (request.topic.status === "full") {
-      const projectGroup = await tx.projectGroup.findUnique({
-        where: { topicId },
-      });
-      const otherActive = await tx.groupRequest.findFirst({
-        where: {
-          topicId,
-          status: { in: ["pending", "accepted"] },
-          id: { not: id },
-        },
-      });
-      if (!projectGroup && !otherActive) {
-        await tx.graduationTopic.update({
-          where: { id: topicId },
-          data: { status: "open" },
-        });
-      }
-    }
-
     // احذف الطلب — أعضاؤه (GroupRequestMember) يُحذفون تلقائياً بالـ cascade ⇒ الطلاب يعودون إلى 0.
     await tx.groupRequest.delete({ where: { id } });
+
+    // ثم أعِد حساب الحالة من الإشغال الباقي. كان هنا فرعٌ يكتب "open"
+    // حرفياً، وبشرط أن يكون الموضوع `full` — فكان الباب الآخر (فسخ
+    // المجموعة) يكتب "approved" لنفس الموقف. البابان الآن يمرّان من هنا.
+    await computeTopicStatus(tx, topicId);
   });
 
   // أعلِم مرسِل الفريق بالرفض.

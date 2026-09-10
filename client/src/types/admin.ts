@@ -185,6 +185,68 @@ export interface Professor {
 }
 
 // ── Topics / Projects / Defenses ──
+
+/**
+ * سبب منع إجراء، كما يرسله الخادم.
+ *
+ * `code` هو ما تترجمه الواجهة عبر `topicBlocked.<code>`؛ و`reason` نصّ عربيّ
+ * جاهز يُعرض حين لا ترجمة للرمز. الاثنان يأتيان معاً دائماً.
+ */
+export type TopicBlockCode =
+  | "notUndecided"
+  | "teamWaiting"
+  | "notRejectable"
+  | "notApproved"
+  | "reserved"
+  | "notOpen"
+  | "notArchivable"
+  | "notArchived"
+  | "hasGroup";
+
+export type TopicActionKey =
+  | "approve"
+  | "reject"
+  | "publish"
+  | "unpublish"
+  | "archive"
+  | "unarchive"
+  | "delete"
+  | "assignGroup";
+
+/**
+ * حكم الخادم على ما يجوز لهذا الموضوع.
+ *
+ * كانت الواجهة تستنتج هذا من `status` وحده — `deletable = status !== "full"` —
+ * بينما الحارس الحقيقي في الخادم يسأل عن المجموعة والطلبات. فتُعرض عمليات
+ * مستحيلة وتُخفى عمليات جائزة. لا تشتقّ هذه القيم من `status`: اقرأها.
+ */
+export interface TopicActions {
+  canApprove: boolean;
+  canReject: boolean;
+  canPublish: boolean;
+  canUnpublish: boolean;
+  canArchive: boolean;
+  canUnarchive: boolean;
+  canDelete: boolean;
+  canAssignGroup: boolean;
+  blockedReasons: Partial<Record<TopicActionKey, string>>;
+  blockedCodes: Partial<
+    Record<
+      TopicActionKey,
+      { code: TopicBlockCode; params?: Record<string, string | number> }
+    >
+  >;
+}
+
+/** الإشغال الفعليّ، مقروءاً من الصفوف لا من `status`. */
+export interface TopicOccupancy {
+  hasGroup: boolean;
+  groupMemberCount: number;
+  hasPendingRequest: boolean;
+  pendingRequestMemberCount: number;
+  hasAcceptedRequest: boolean;
+}
+
 export interface AdminTopic {
   references: TopicReference[];
   id: string;
@@ -199,6 +261,9 @@ export interface AdminTopic {
   specialization?: Specialization;
   academicYear?: AcademicYear;
   _count?: { groupRequests: number };
+  /** يأتيان من القائمة وصفحة التفصيل معاً. */
+  actions?: TopicActions;
+  occupancy?: TopicOccupancy;
   createdAt: string;
 }
 

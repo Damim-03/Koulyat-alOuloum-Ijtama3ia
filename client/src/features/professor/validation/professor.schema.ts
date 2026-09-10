@@ -26,10 +26,33 @@ export const createTopicSchema = z.object({
     .optional()
     .default([]),
   references: z.array(topicReferenceSchema).max(20).optional().default([]),
+  // Placement helpers. Only `specializationId` is persisted; these three
+  // narrow a long list down to it and are stripped before the request.
+  facultyId: z.string().optional(),
+  departmentId: z.string().optional(),
+  filiereId: z.string().optional(),
 });
 export type CreateTopicInput = z.infer<typeof createTopicSchema>;
 // ما يمسكه النموذج قبل التحويل (coerce / default).
 export type CreateTopicFormValues = z.input<typeof createTopicSchema>;
+
+/**
+ * A topic proposed together with the team meant to take it. Students are
+ * named by registration number — the professor has no endpoint that lists
+ * them, and this is the shape the student's own group request uses.
+ */
+export const createTopicWithGroupSchema = createTopicSchema.extend({
+  memberRegistrationNumbers: z
+    .array(z.string().trim().min(1))
+    .min(1, { error: () => t("validation.atLeastOneStudent") }),
+  leaderRegistrationNumber: z
+    .string()
+    .trim()
+    .min(1, { error: () => t("validation.pickLeader") }),
+});
+export type CreateTopicWithGroupInput = z.infer<
+  typeof createTopicWithGroupSchema
+>;
 
 export const updateTopicSchema = z.object({
   title: z.string().min(1).optional(),

@@ -1,62 +1,111 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import {
   X,
-  Type,
   FileText,
-  Users2,
+  FilePlus2,
+  Users,
+  UserPlus,
+  Star,
+  SendHorizontal,
+  ChevronLeft,
+  IdCard,
   Layers,
-  CalendarDays,
-  ListChecks,
-  Target,
   Link2,
   Plus,
   Trash2,
   Save,
-  Info,
+  Loader2,
+  UserCog,
+  Send,
 } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
+import { useAuth } from "../../../hooks/use-auth";
 import {
   useCreateTopic,
+  useCreateTopicWithGroup,
   useUpdateTopic,
   useSpecializations,
   useAcademicYears,
+  useFaculties,
+  useDepartments,
 } from "../hooks/Professor-hook";
 import {
   createTopicSchema,
   type CreateTopicInput,
   type CreateTopicFormValues,
 } from "../validation/professor.schema";
+import { useState } from "react";
 import type { Topic } from "../../../types/professor.types";
+import {
+  inputCls,
+  SectionHead,
+  Field,
+  StepTab,
+} from "../../../components/ui/form-bits";
+import { ListInput } from "../../../components/ui/list-input";
+import { StudentPicker, type PickedStudent } from "./student-picker";
+import { UserAvatar } from "../../../components/ui/user-avatar";
+
+/**
+ * Proposing a topic, in the same room the administration proposes one in.
+ *
+ * The professor's dialog was a single narrow column that scrolled: what the
+ * topic *is* and where it *sits* were the same list of fields, one after the
+ * other. This is the two-panel layout the admin dialogs settled on — content
+ * on one side, placement on the other — so both sides of the university are
+ * filling in the same form.
+ *
+ * The API is untouched: the same fields go to POST /professor/topics.
+ */
 
 interface Props {
   open: boolean;
   onClose: () => void;
   topic?: Topic | null; // set → edit mode
+  /** Also propose the team for it — adds a second step. */
+  withGroup?: boolean;
 }
 
-const field =
-  "w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30 placeholder:text-clay/50";
-
-export function TopicFormDialog({ open, onClose, topic }: Props) {
+export function TopicFormDialog({
+  open,
+  onClose,
+  topic,
+  withGroup = false,
+}: Props) {
   const { t } = useTranslation();
   const { dir } = useLanguage();
+  const { user } = useAuth();
   const editing = !!topic;
 
   const { data: specializations } = useSpecializations();
   const { data: academicYears } = useAcademicYears();
+  const { data: faculties } = useFaculties();
+  const { data: departments } = useDepartments();
   const create = useCreateTopic();
+  const createWithGroup = useCreateTopicWithGroup();
   const update = useUpdateTopic();
-  const busy = create.isPending || update.isPending;
+  const busy =
+    create.isPending || createWithGroup.isPending || update.isPending;
+
+  // ── step two: the proposed team ──
+  // Registration numbers, not ids: a professor has no endpoint that lists
+  // students, and the backend resolves the numbers exactly as it does for a
+  // student's own group request.
+  const [step, setStep] = useState<1 | 2>(1);
+  const [members, setMembers] = useState<PickedStudent[]>([]);
+  const [leader, setLeader] = useState("");
 
   const {
     register,
     control,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<CreateTopicFormValues, unknown, CreateTopicInput>({
     resolver: zodResolver(createTopicSchema),
@@ -72,39 +121,96 @@ export function TopicFormDialog({ open, onClose, topic }: Props) {
     },
   });
 
-  const reqArray = useFieldArray({ control, name: "requirements" as never });
-  const objArray = useFieldArray({ control, name: "objectives" as never });
   const refArray = useFieldArray({ control, name: "references" as never });
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const title = watch("title") ?? "";
+  const description = watch("description") ?? "";
+  const requirements = watch("requirements") ?? [];
+  const objectives = watch("objectives") ?? [];
+  const specializationId = watch("specializationId");
+  const academicYearId = watch("academicYearId");
+  const maxStudents = Number(watch("maxStudents")) || 1;
+
+  // ── the placement cascade ──
+  // Only `specializationId` is persisted; faculty, department and filiere
+  // are here to narrow a long list down to the right one. They are derived
+  // from the specialization rows themselves, which carry the whole chain.
+  const chosenSpec = useMemo(
+    () => (specializations ?? []).find((s) => s.id === specializationId),
+    [specializations, specializationId],
+  );
+  const [facultyId, departmentId, filiereId] = [
+    watch("facultyId"),
+    watch("departmentId"),
+    watch("filiereId"),
+  ];
+
+  const deptOptions = useMemo(
+    () =>
+      (departments ?? []).filter((d) => !facultyId || d.facultyId === facultyId),
+    [departments, facultyId],
+  );
+  const filiereOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of specializations ?? []) {
+      if (!s.filiere) continue;
+      if (departmentId && s.departmentId !== departmentId) continue;
+      if (facultyId && !departmentId) {
+        const d = (departments ?? []).find((dd) => dd.id === s.departmentId);
+        if (d && d.facultyId !== facultyId) continue;
+      }
+      seen.set(s.filiere.id, s.filiere.name);
+    }
+    return [...seen].map(([id, name]) => ({ id, name }));
+  }, [specializations, departmentId, facultyId, departments]);
+  const specOptions = useMemo(
+    () =>
+      (specializations ?? []).filter((s) => {
+        if (filiereId && s.filiereId !== filiereId) return false;
+        if (departmentId && !filiereId && s.departmentId !== departmentId)
+          return false;
+        if (facultyId && !departmentId && !filiereId) {
+          const d = (departments ?? []).find((dd) => dd.id === s.departmentId);
+          if (d && d.facultyId !== facultyId) return false;
+        }
+        return true;
+      }),
+    [specializations, filiereId, departmentId, facultyId, departments],
+  );
 
   useEffect(() => {
     if (!open) return;
-    if (topic) {
-      reset({
-        title: topic.title,
-        description: topic.description,
-        maxStudents: topic.maxStudents,
-        specializationId: topic.specializationId ?? "",
-        academicYearId: topic.academicYearId ?? "",
-        requirements: topic.requirements ?? [],
-        objectives: topic.objectives ?? [],
-        references: topic.references ?? [],
-      });
-    } else {
-      reset({
-        title: "",
-        description: "",
-        maxStudents: 1,
-        specializationId: "",
-        academicYearId: "",
-        requirements: [],
-        objectives: [],
-        references: [],
-      });
-    }
+    setStep(1);
+    setMembers([]);
+    setLeader("");
+    reset(
+      topic
+        ? {
+            title: topic.title,
+            description: topic.description,
+            maxStudents: topic.maxStudents,
+            specializationId: topic.specializationId ?? "",
+            academicYearId: topic.academicYearId ?? "",
+            requirements: topic.requirements ?? [],
+            objectives: topic.objectives ?? [],
+            references: topic.references ?? [],
+          }
+        : {
+            title: "",
+            description: "",
+            maxStudents: 1,
+            specializationId: "",
+            academicYearId: "",
+            requirements: [],
+            objectives: [],
+            references: [],
+          },
+    );
   }, [open, topic, reset]);
 
   function onSubmit(values: CreateTopicInput) {
-    // Strip empty rows from the repeatable lists.
+    // Strip empty rows and the helper-only placement fields.
     const clean = {
       ...values,
       requirements: (values.requirements ?? []).filter((r) => r.trim() !== ""),
@@ -114,348 +220,580 @@ export function TopicFormDialog({ open, onClose, topic }: Props) {
         (r) => r.title.trim() !== "" && r.url.trim() !== "",
       ),
     };
+    delete (clean as Record<string, unknown>).facultyId;
+    delete (clean as Record<string, unknown>).departmentId;
+    delete (clean as Record<string, unknown>).filiereId;
+
     if (editing && topic) {
       update.mutate({ id: topic.id, data: clean }, { onSuccess: onClose });
+    } else if (withGroup) {
+      createWithGroup.mutate(
+        {
+          ...clean,
+          memberRegistrationNumbers: members.map((m) => m.registrationNumber),
+          leaderRegistrationNumber: leader,
+        },
+        { onSuccess: onClose },
+      );
     } else {
       create.mutate(clean, { onSuccess: onClose });
     }
   }
 
+  // Step one has to stand on its own before the team screen is reachable.
+  const step1Valid = Boolean(
+    title.trim() && description.trim() && specializationId && academicYearId,
+  );
+  const teamValid =
+    members.length > 0 && members.length <= maxStudents && !!leader;
+
   if (!open) return null;
+
+  const professorName =
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
+    user?.universityEmail ||
+    "—";
 
   return createPortal(
     <div
-      className="fixed inset-0 z-100 flex items-center justify-center p-4"
-      onMouseDown={onClose}
+      className="fixed inset-0 z-100 grid place-items-center p-4"
+      role="dialog"
+      aria-modal="true"
     >
-      <div className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm" />
+      <div
+        onClick={() => !busy && onClose()}
+        className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm"
+      />
+
       <div
         dir={dir}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-cream-card shadow-2xl"
+        className="animate-[fadeIn_0.15s_ease-out] relative flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-cream-card shadow-[0_20px_60px_rgba(38,66,61,0.25)]"
       >
-        {/* Header */}
-        <div className="relative bg-forest px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="grid size-11 place-items-center rounded-full bg-cream/15 text-cream">
-                <FileText size={20} />
-              </div>
-              <div>
-                <h2 className="font-serif text-lg font-bold text-cream">
-                  {editing ? t("pro.editTopic") : t("pro.newTopic")}
-                </h2>
-                <p className="text-xs text-cream/70">
-                  {t("pro.topicDialogSubtitle")}
-                </p>
-              </div>
+        {/* ── header ── */}
+        <header className="relative flex shrink-0 items-center justify-between bg-forest px-6 py-4 text-cream">
+          <div className="flex items-center gap-3">
+            <div className="grid size-10 place-items-center rounded-xl bg-cream/10">
+              {editing ? <FileText size={20} /> : <FilePlus2 size={20} />}
             </div>
-            <button
-              onClick={onClose}
-              className="grid size-8 place-items-center rounded-full text-cream/80 transition hover:bg-cream/15 hover:text-cream"
-            >
-              <X size={18} />
-            </button>
+            <div>
+              <h2 className="font-serif text-lg font-bold">
+                {editing ? t("pro.editTopic") : t("pro.newTopic")}
+              </h2>
+              <p className="text-xs text-cream/70">
+                {withGroup && !editing
+                  ? t("pro.stepOf", { current: step, total: 2 })
+                  : t("pro.topicDialogSubtitle")}
+              </p>
+            </div>
           </div>
+          <button
+            onClick={() => !busy && onClose()}
+            aria-label={t("pro.cancel")}
+            className="grid size-8 place-items-center rounded-lg text-cream/80 transition hover:bg-cream/10"
+          >
+            <X size={18} />
+          </button>
           <div className="absolute inset-x-0 bottom-0 h-1 bg-linear-to-l from-gold to-gold-soft" />
-        </div>
+        </header>
 
-        {/* Body (scrollable) */}
+        {/* ── stepper ── */}
+        {withGroup && (
+          <div className="grid shrink-0 grid-cols-2 border-b border-forest/10 bg-cream">
+            <StepTab
+              n={1}
+              active={step === 1}
+              done={step > 1 && step1Valid}
+              title={t("pro.stepTopicTitle")}
+              hint={t("pro.stepTopicHint")}
+              onClick={() => setStep(1)}
+            />
+            <StepTab
+              n={2}
+              active={step === 2}
+              done={false}
+              disabled={!step1Valid}
+              title={t("pro.stepTeamTitle")}
+              hint={step1Valid ? t("pro.stepTeamHint") : t("pro.completeStepFirst")}
+              onClick={() => step1Valid && setStep(2)}
+            />
+          </div>
+        )}
+
+        {/* ── body: content beside placement ── */}
         <form
           id="topic-form"
           onSubmit={handleSubmit(onSubmit)}
-          className="max-h-[60vh] space-y-4 overflow-y-auto px-6 py-5"
+          className="min-h-0 flex-1 overflow-y-auto p-6 lg:p-7"
         >
-          {/* Title */}
-          <Field
-            label={t("pro.title")}
-            icon={Type}
-            error={errors.title?.message}
+          <div
+            className="grid grid-cols-1 gap-6 lg:grid-cols-[1.55fr_1fr]"
+            hidden={withGroup && step === 2}
           >
-            <input
-              {...register("title")}
-              className={field}
-              placeholder={t("pro.titlePlaceholder")}
-            />
-          </Field>
-
-          {/* Description */}
-          <Field
-            label={t("pro.description")}
-            icon={FileText}
-            error={errors.description?.message}
-          >
-            <textarea
-              {...register("description")}
-              className={`${field} min-h-24 resize-y`}
-              placeholder={t("pro.descriptionPlaceholder")}
-            />
-          </Field>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {/* Max students */}
-            <Field
-              label={t("pro.maxStudents")}
-              icon={Users2}
-              error={errors.maxStudents?.message}
-            >
-              <input
-                type="number"
-                min={1}
-                max={10}
-                {...register("maxStudents")}
-                className={field}
+            {/* ══ what the topic says ══ */}
+            <section className="space-y-5">
+              <SectionHead
+                title={t("pro.topicContent")}
+                hint={t("pro.topicContentHint")}
               />
-            </Field>
 
-            {/* Specialization */}
-            <Field
-              label={t("pro.specialization")}
-              icon={Layers}
-              error={errors.specializationId?.message}
-            >
-              <select {...register("specializationId")} className={field}>
-                <option value="">{t("pro.selectSpecialization")}</option>
-                {specializations?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+              <Field label={t("pro.title")} error={errors.title?.message}>
+                <input
+                  autoFocus
+                  {...register("title")}
+                  className={inputCls}
+                  placeholder={t("pro.titlePlaceholder")}
+                />
+              </Field>
 
-            {/* Academic year */}
-            <Field
-              label={t("pro.academicYear")}
-              icon={CalendarDays}
-              error={errors.academicYearId?.message}
-            >
-              <select {...register("academicYearId")} className={field}>
-                <option value="">{t("pro.selectYear")}</option>
-                {academicYears?.map((y) => (
-                  <option key={y.id} value={y.id}>
-                    {y.title}
-                    {y.isActive ? " ●" : ""}
-                  </option>
-                ))}
-              </select>
-            </Field>
+              <Field
+                label={t("pro.description")}
+                error={errors.description?.message}
+              >
+                <textarea
+                  {...register("description")}
+                  rows={7}
+                  className={`${inputCls} resize-y`}
+                  placeholder={t("pro.descriptionPlaceholder")}
+                />
+              </Field>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field
+                  label={t("pro.requirements")}
+                  note={t("pro.optional")}
+                  hint={t("pro.requirementsHint")}
+                >
+                  <ListInput
+                    value={requirements}
+                    onChange={(v) =>
+                      setValue("requirements", v, { shouldDirty: true })
+                    }
+                    placeholder={t("pro.requirementItemPlaceholder")}
+                  />
+                </Field>
+                <Field
+                  label={t("pro.objectives")}
+                  note={t("pro.optional")}
+                  hint={t("pro.objectivesHint")}
+                >
+                  <ListInput
+                    value={objectives}
+                    onChange={(v) =>
+                      setValue("objectives", v, { shouldDirty: true })
+                    }
+                    placeholder={t("pro.objectiveItemPlaceholder")}
+                  />
+                </Field>
+              </div>
+
+              {/* ── references: a title and a link, so they cannot be typed
+                     as one chip like the two lists above ── */}
+              <div className="rounded-2xl border border-forest/10 bg-cream p-4">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-forest">
+                    <Link2 size={14} className="text-clay" />
+                    {t("pro.references")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      refArray.append({ title: "", url: "" } as never)
+                    }
+                    className="inline-flex items-center gap-1 rounded-lg bg-forest/10 px-2.5 py-1 text-[11px] font-semibold text-forest transition hover:bg-forest/15"
+                  >
+                    <Plus size={12} />
+                    {t("pro.addReference")}
+                  </button>
+                </div>
+                <p className="mb-2.5 text-[11px] text-clay">
+                  {t("pro.referencesHint")}
+                </p>
+
+                {refArray.fields.length === 0 ? (
+                  <p className="rounded-lg bg-cream-card px-3 py-2 text-[11px] text-clay">
+                    {t("pro.noReferencesYet")}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {refArray.fields.map((f, i) => (
+                      <div
+                        key={f.id}
+                        className="flex flex-col gap-2 rounded-xl bg-cream-card p-2 sm:flex-row sm:items-center"
+                      >
+                        <input
+                          {...register(`references.${i}.title` as const)}
+                          className={`${inputCls} sm:flex-1`}
+                          placeholder={t("pro.referenceTitlePlaceholder")}
+                        />
+                        <input
+                          {...register(`references.${i}.url` as const)}
+                          dir="ltr"
+                          className={`${inputCls} sm:flex-1`}
+                          placeholder="https://…"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => refArray.remove(i)}
+                          className="grid size-9 shrink-0 place-items-center rounded-lg text-clay transition hover:bg-brick/10 hover:text-brick"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* ══ where the topic sits ══ */}
+            <section className="space-y-4 rounded-2xl border border-forest/10 bg-cream p-5">
+              <SectionHead
+                title={t("pro.placement")}
+                hint={t("pro.placementHint")}
+              />
+
+              {/* The supervisor is not a choice here — it is whoever is
+                  proposing. Shown, not asked. */}
+              <Field label={t("pro.supervisor")}>
+                <div className="flex items-center gap-2.5 rounded-xl border border-forest/15 bg-cream-2 px-3 py-2">
+                  <UserAvatar user={user} size={28} />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-forest">
+                    {professorName}
+                  </span>
+                  <UserCog size={14} className="shrink-0 text-clay" />
+                </div>
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field
+                  label={t("pro.academicYear")}
+                  error={errors.academicYearId?.message}
+                >
+                  <select {...register("academicYearId")} className={inputCls}>
+                    <option value="">{t("pro.selectYear")}</option>
+                    {academicYears?.map((y) => (
+                      <option key={y.id} value={y.id}>
+                        {y.title}
+                        {y.isActive ? " ●" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field
+                  label={t("pro.maxStudents")}
+                  error={errors.maxStudents?.message}
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    {...register("maxStudents")}
+                    className={inputCls}
+                    dir="ltr"
+                  />
+                </Field>
+              </div>
+
+              <div className="space-y-3 border-t border-forest/10 pt-4">
+                <Field label={t("pro.faculty")}>
+                  <select
+                    {...register("facultyId", {
+                      onChange: () => {
+                        setValue("departmentId", "");
+                        setValue("filiereId", "");
+                        setValue("specializationId", "");
+                      },
+                    })}
+                    className={inputCls}
+                  >
+                    <option value="">{t("pro.allFaculties")}</option>
+                    {faculties?.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label={t("pro.department")}>
+                  <select
+                    {...register("departmentId", {
+                      onChange: () => {
+                        setValue("filiereId", "");
+                        setValue("specializationId", "");
+                      },
+                    })}
+                    className={inputCls}
+                  >
+                    <option value="">{t("pro.allDepartments")}</option>
+                    {deptOptions.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label={t("pro.filiere")}>
+                  <select
+                    {...register("filiereId", {
+                      onChange: () => setValue("specializationId", ""),
+                    })}
+                    className={inputCls}
+                  >
+                    <option value="">{t("pro.allFilieres")}</option>
+                    {filiereOptions.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field
+                  label={t("pro.specialization")}
+                  error={errors.specializationId?.message}
+                >
+                  <select
+                    {...register("specializationId")}
+                    className={inputCls}
+                  >
+                    <option value="">{t("pro.selectSpecialization")}</option>
+                    {specOptions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              {/* the chain the selects resolve to, spelled out */}
+              <div className="rounded-xl bg-cream-2/70 px-3 py-2">
+                <p className="flex items-center gap-1.5 text-[10px] font-bold text-clay">
+                  <Layers size={11} />
+                  {t("pro.academicPath")}
+                </p>
+                <p className="text-[11px] leading-relaxed text-forest">
+                  {[
+                    faculties?.find((f) => f.id === facultyId)?.name,
+                    deptOptions.find((d) => d.id === departmentId)?.name,
+                    filiereOptions.find((f) => f.id === filiereId)?.name ??
+                      chosenSpec?.filiere?.name,
+                    chosenSpec?.name,
+                  ]
+                    .filter(Boolean)
+                    .join(" ← ") || "—"}
+                </p>
+              </div>
+            </section>
           </div>
 
-          {/* Requirements builder */}
-          <ListBuilder
-            label={t("pro.requirements")}
-            icon={ListChecks}
-            addLabel={t("pro.addRequirement")}
-            fields={reqArray.fields}
-            register={register}
-            name="requirements"
-            onAdd={() => reqArray.append("" as never)}
-            onRemove={(i) => reqArray.remove(i)}
-            field={field}
-          />
+          {/* ══════════ STEP 2 — the proposed team ══════════ */}
+          {withGroup && step === 2 && (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_1fr]">
+              <div className="rounded-2xl border border-forest/10 bg-cream p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="flex items-center gap-1.5 text-sm font-semibold text-forest">
+                    <UserPlus size={16} />
+                    {t("pro.proposedTeam")}
+                  </p>
+                  <span className="rounded-full bg-forest/10 px-2 py-0.5 text-[11px] font-bold text-forest tabular-nums">
+                    {members.length} / {maxStudents}
+                  </span>
+                </div>
 
-          {/* Objectives builder */}
-          <ListBuilder
-            label={t("pro.objectives")}
-            icon={Target}
-            addLabel={t("pro.addObjective")}
-            fields={objArray.fields}
-            register={register}
-            name="objectives"
-            onAdd={() => objArray.append("" as never)}
-            onRemove={(i) => objArray.remove(i)}
-            field={field}
-          />
+                <Field
+                  label={t("pro.registrationNumbers")}
+                  hint={t("pro.registrationNumbersHint")}
+                >
+                  <StudentPicker
+                    value={members}
+                    max={maxStudents}
+                    specializationId={specializationId || undefined}
+                    onChange={(v) => {
+                      setMembers(v);
+                      const numbers = v.map((m) => m.registrationNumber);
+                      // A leader who was removed cannot stay the leader.
+                      if (leader && !numbers.includes(leader))
+                        setLeader(numbers[0] ?? "");
+                      else if (!leader && numbers.length === 1)
+                        setLeader(numbers[0]);
+                    }}
+                  />
+                </Field>
 
-          {/* References builder (title + url) — helps students */}
-          <div className="rounded-xl bg-cream-2 p-3">
-            <div className="mb-1 flex items-center justify-between">
-              <label className="flex items-center gap-1.5 text-xs font-bold text-forest">
-                <Link2 size={14} className="text-clay" />
-                {t("pro.references")}
-              </label>
-              <button
-                type="button"
-                onClick={() => refArray.append({ title: "", url: "" } as never)}
-                className="inline-flex items-center gap-1 rounded-lg bg-forest/10 px-2.5 py-1 text-[11px] font-semibold text-forest transition hover:bg-forest/15"
-              >
-                <Plus size={12} />
-                {t("pro.addReference")}
-              </button>
-            </div>
-            <p className="mb-2.5 text-[11px] text-clay">
-              {t("pro.referencesHint")}
-            </p>
+                {members.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-[11px] font-medium text-clay">
+                      {t("pro.pickLeader")}
+                    </p>
+                    {members.map((m) => {
+                      const reg = m.registrationNumber;
+                      const isLeader = leader === reg;
+                      return (
+                        <button
+                          key={reg}
+                          type="button"
+                          onClick={() => setLeader(reg)}
+                          className={`flex w-full items-center gap-2.5 rounded-xl border px-3 py-2 text-start transition ${
+                            isLeader
+                              ? "border-gold bg-gold/5"
+                              : "border-forest/10 bg-cream-card hover:border-gold/40"
+                          }`}
+                        >
+                          <span
+                            className={`grid size-7 shrink-0 place-items-center rounded-lg ${
+                              isLeader
+                                ? "bg-gold/20 text-gold"
+                                : "text-clay"
+                            }`}
+                          >
+                            {isLeader ? (
+                              <SendHorizontal size={15} />
+                            ) : (
+                              <Star size={15} />
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-forest">
+                              {m.name}
+                            </span>
+                            <span
+                              className="block truncate text-[11px] text-clay"
+                              dir="ltr"
+                            >
+                              {reg}
+                            </span>
+                          </span>
+                          {isLeader && (
+                            <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[9px] font-bold text-gold">
+                              {t("pro.leader")}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
-            {refArray.fields.length === 0 ? (
-              <p className="rounded-lg bg-cream-card px-3 py-2 text-[11px] text-clay">
-                {t("pro.noReferencesYet")}
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {refArray.fields.map((f, i) => (
-                  <div
-                    key={f.id}
-                    className="flex flex-col gap-2 rounded-lg bg-cream-card p-2 sm:flex-row sm:items-start"
-                  >
-                    <div className="flex-1">
-                      <input
-                        {...register(`references.${i}.title` as const)}
-                        className={field}
-                        placeholder={t("pro.referenceTitlePlaceholder")}
-                      />
-                      {errors.references?.[i]?.title && (
-                        <p className="mt-1 text-[11px] text-red-500">
-                          {errors.references[i]?.title?.message}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <input
-                        {...register(`references.${i}.url` as const)}
-                        dir="ltr"
-                        className={field}
-                        placeholder="https://..."
-                      />
-                      {errors.references?.[i]?.url && (
-                        <p className="mt-1 text-[11px] text-red-500">
-                          {errors.references[i]?.url?.message}
-                        </p>
-                      )}
-                    </div>
+                <p className="mt-2.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-clay">
+                  <IdCard size={12} className="mt-0.5 shrink-0 text-gold" />
+                  {t("pro.numbersCheckedOnSubmit")}
+                </p>
+              </div>
+
+              {/* what the administration will receive */}
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-forest/10 bg-cream p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-forest">
+                      {t("pro.reviewTopic")}
+                    </p>
                     <button
                       type="button"
-                      onClick={() => refArray.remove(i)}
-                      className="grid size-9 shrink-0 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
+                      onClick={() => setStep(1)}
+                      className="rounded-lg px-2 py-1 text-[11px] font-semibold text-forest/70 transition hover:bg-forest/5 hover:text-forest"
                     >
-                      <Trash2 size={15} />
+                      {t("pro.editStep")}
                     </button>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  <p className="mb-3 line-clamp-2 font-serif text-[15px] leading-snug font-bold text-forest">
+                    {title.trim() || t("pro.notSet")}
+                  </p>
+                  <dl className="space-y-2 text-[12px]">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <dt className="text-clay">{t("pro.specialization")}</dt>
+                      <dd className="truncate font-medium text-forest">
+                        {chosenSpec?.name ?? t("pro.notSet")}
+                      </dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <dt className="text-clay">{t("pro.academicYear")}</dt>
+                      <dd className="truncate font-medium text-forest">
+                        {academicYears?.find((y) => y.id === academicYearId)
+                          ?.title ?? t("pro.notSet")}
+                      </dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <dt className="text-clay">{t("pro.maxStudents")}</dt>
+                      <dd className="font-medium text-forest tabular-nums">
+                        {maxStudents}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
 
-          {/* Send-to-admin note */}
-          <div className="flex items-start gap-2 rounded-xl bg-cream-2 px-4 py-3">
-            <Info size={16} className="mt-0.5 shrink-0 text-gold" />
-            <p className="text-[11px] leading-relaxed text-clay">
-              {t("pro.sendToAdminNote")}
-            </p>
-          </div>
+                {/* the consequence of sending, said before sending */}
+                <div className="rounded-2xl border border-forest/10 bg-cream p-4">
+                  <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-forest">
+                    <Users size={15} />
+                    {t("pro.whatHappensNext")}
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-clay">
+                    {t("pro.withGroupFlowNote")}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </form>
 
-        {/* Footer */}
-        <div className="flex items-center gap-3 border-t border-forest/10 bg-cream-2 px-6 py-4">
-          <button
-            type="submit"
-            form="topic-form"
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:opacity-60"
-          >
-            <Save size={16} />
-            {busy
-              ? t("pro.saving")
-              : editing
-                ? t("pro.save")
-                : t("pro.sendToAdmin")}
-          </button>
+        {/* ── footer ── */}
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-forest/10 bg-cream-card px-6 py-4">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-forest/20 px-5 py-2.5 text-sm font-semibold text-forest transition hover:bg-forest/5"
+            disabled={busy}
+            className="rounded-xl border border-forest/15 px-5 py-2.5 text-sm font-medium text-clay transition hover:bg-forest/5 disabled:opacity-60"
           >
             {t("pro.cancel")}
           </button>
-        </div>
+
+          <div className="flex items-center gap-2">
+            {withGroup && step === 2 && (
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-forest/15 px-4 py-2.5 text-sm font-medium text-forest transition hover:bg-forest/5"
+              >
+                <ChevronLeft size={16} className="ltr:rotate-180" />
+                {t("pro.back")}
+              </button>
+            )}
+
+            {withGroup && step === 1 ? (
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                disabled={!step1Valid}
+                className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t("pro.next")}
+                <ChevronLeft size={16} className="rtl:rotate-180" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                form="topic-form"
+                disabled={busy || (withGroup && !teamValid)}
+                className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {busy ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : editing ? (
+                  <Save size={16} />
+                ) : (
+                  <Send size={16} />
+                )}
+                {editing ? t("pro.saveChanges") : t("pro.sendToAdmin")}
+              </button>
+            )}
+          </div>
+        </footer>
       </div>
     </div>,
     document.body,
-  );
-}
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-function ListBuilder({
-  label,
-  icon: Icon,
-  addLabel,
-  fields,
-  register,
-  name,
-  onAdd,
-  onRemove,
-  field,
-}: {
-  label: string;
-  icon: typeof ListChecks;
-  addLabel: string;
-  fields: { id: string }[];
-  register: any;
-  name: "requirements" | "objectives";
-  onAdd: () => void;
-  onRemove: (i: number) => void;
-  field: string;
-}) {
-  return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
-        <label className="flex items-center gap-1.5 text-xs font-medium text-forest">
-          <Icon size={14} className="text-clay" />
-          {label}
-        </label>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="inline-flex items-center gap-1 rounded-lg bg-forest/10 px-2.5 py-1 text-[11px] font-semibold text-forest transition hover:bg-forest/15"
-        >
-          <Plus size={12} />
-          {addLabel}
-        </button>
-      </div>
-      {fields.length === 0 ? (
-        <p className="rounded-lg bg-cream-2 px-3 py-2 text-[11px] text-clay">
-          {"\u2014"}
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {fields.map((f, i) => (
-            <div key={f.id} className="flex items-center gap-2">
-              <input {...register(`${name}.${i}` as const)} className={field} />
-              <button
-                type="button"
-                onClick={() => onRemove(i)}
-                className="grid size-9 shrink-0 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Field({
-  label,
-  icon: Icon,
-  error,
-  children,
-}: {
-  label: string;
-  icon?: typeof Type;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-forest">
-        {Icon && <Icon size={14} className="text-clay" />}
-        {label}
-      </label>
-      {children}
-      {error && <p className="mt-1 text-[11px] text-red-500">{error}</p>}
-    </div>
   );
 }

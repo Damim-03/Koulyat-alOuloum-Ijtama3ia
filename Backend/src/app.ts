@@ -1,13 +1,23 @@
+/**
+ * The Express application — built here, listened to in `server.ts`.
+ *
+ * This file used to do both: it created the app, attached Socket.IO, and
+ * called `listen()` at the bottom. Importing it for any reason therefore
+ * started a server, which made the whole HTTP surface untestable: a test that
+ * imported the app to send a request through it would instead try to bind the
+ * real port and fail against the running dev server.
+ *
+ * Building and listening are separate concerns now. `app` is a plain object
+ * any test can hand to supertest, which opens an ephemeral port of its own.
+ */
 import "dotenv/config";
 import express, { Request, Response } from "express";
-import http from "http";
 import path from "node:path";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import morgan from "morgan";
-import { Server } from "socket.io";
 
 import { config } from "./core/config/app.config";
 import { errorHandler } from "./core/middleware/errorHandler.middleware";
@@ -15,12 +25,9 @@ import { asyncHandler } from "./core/middleware/asyncHandler.middleware";
 import { HTTPSTATUS } from "./core/config/http/http.config";
 import { globalLimiter } from "./core/middleware/rateLimit.middleware";
 import mainRoute from "./routes/mainRoutes";
-import { setRealtimeServer } from "./core/realtime/realtime";
-import { installSocketSecurity } from "./core/realtime/socket-auth";
 import { prisma } from "./core/prisma/client";
 
-const app = express();
-const server = http.createServer(app);
+export const app = express();
 
 /* ============================================================
    TRUST PROXY
@@ -32,22 +39,6 @@ const server = http.createServer(app);
    ============================================================ */
 app.set("trust proxy", config.TRUST_PROXY_HOPS);
 app.disable("x-powered-by");
-
-/* ============================================================
-   SOCKET.IO — same origin policy as the HTTP API
-   ============================================================ */
-export const io = new Server(server, {
-  cors: {
-    origin: config.CORS_ORIGINS,
-    credentials: true,
-  },
-  maxHttpBufferSize: 1e6, // 1 MB: realtime payloads are tiny invalidations
-});
-
-setRealtimeServer(io);
-
-// Authenticates the handshake and assigns rooms server-side.
-installSocketSecurity(io);
 
 /* ============================================================
    SECURITY HEADERS
@@ -142,7 +133,8 @@ app.use(
       ? ":remote-addr :method :safe-url :status :res[content-length] - :response-time ms"
       : "dev",
     {
-      skip: (req) => req.method === "OPTIONS",
+      // سجلّ لكل طلب يُغرق مخرجات الاختبارات فيُخفي الفشل بينه.
+      skip: (req) => req.method === "OPTIONS" || config.NODE_ENV === "test",
     },
   ),
 );
@@ -209,11 +201,7 @@ if (config.IS_PRODUCTION) {
   });
 }
 
+// Last, so it sees errors thrown by everything above it.
 app.use(errorHandler);
 
-const PORT = config.PORT;
-
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} in ${config.NODE_ENV}`);
-  console.log("Socket.IO ready (authenticated handshake required)");
-});
+export default app;

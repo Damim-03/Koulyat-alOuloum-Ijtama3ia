@@ -52,11 +52,23 @@ const checkSuspended = (status: string) => {
   }
 };
 
+/**
+ * الرسالة الوحيدة لكل صور فشل الدخول.
+ *
+ * كانت الرسائل مختلفة: «Invalid email or password» حين لا وجود للحساب،
+ * و«Invalid credentials» حين تخطئ كلمة السرّ. كلاهما 401، لكن الفرق بينهما
+ * يكفي لعدّ الحسابات: يُجرَّب بريد فتُقرأ الرسالة، فيُعرف أمسجَّل هو أم لا.
+ *
+ * والشيفرة تحرس من هذا في الزمن أصلاً (`burnPasswordTime` تُنفق نفس الوقت على
+ * حساب غير موجود) — فكان النصّ يُفشي ما أخفاه الزمن. رسالة واحدة تُغلق البابين.
+ */
+const INVALID_CREDENTIALS = "Invalid credentials";
+
 const checkPassword = async (plain: string, hashed: string) => {
   const isMatch = await bcrypt.compare(plain, hashed);
   if (!isMatch) {
     throw new UnauthorizedException(
-      "Invalid credentials",
+      INVALID_CREDENTIALS,
       ErrorCodeEnum.AUTH_INVALID_CREDENTIALS,
     );
   }
@@ -83,7 +95,7 @@ export const studentLoginService = async (data: StudentLoginDTO) => {
   if (!student) {
     await burnPasswordTime(data.password);
     throw new UnauthorizedException(
-      "Invalid registration number or password",
+      INVALID_CREDENTIALS,
       ErrorCodeEnum.AUTH_INVALID_CREDENTIALS,
     );
   }
@@ -125,7 +137,7 @@ export const professorLoginService = async (data: ProfessorLoginDTO) => {
   if (!professor) {
     await burnPasswordTime(data.password);
     throw new UnauthorizedException(
-      "Invalid university email or password",
+      INVALID_CREDENTIALS,
       ErrorCodeEnum.AUTH_INVALID_CREDENTIALS,
     );
   }
@@ -165,7 +177,7 @@ export const adminLoginService = async (data: AdminLoginDTO) => {
   if (!user) {
     await burnPasswordTime(data.password);
     throw new UnauthorizedException(
-      "Invalid email or password",
+      INVALID_CREDENTIALS,
       ErrorCodeEnum.AUTH_INVALID_CREDENTIALS,
     );
   }

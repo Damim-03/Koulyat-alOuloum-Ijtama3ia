@@ -517,7 +517,13 @@ export function useApproveTopic() {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
       toast.success(t("toast.topicApproved"));
     },
-    onError: () => toast.error(t("toast.approveFailed")),
+    onError: (e: unknown) => {
+      // الخادم يشرح المنع (فريق ينتظر، مجموعة تشكّلت، أرشفه بدل حذفه)؛
+      // النصّ العام يمحو ذلك ويترك المستخدم بلا مخرج.
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.approveFailed"));
+    },
   });
 }
 export function useRejectTopic() {
@@ -529,7 +535,13 @@ export function useRejectTopic() {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
       toast.success(t("toast.topicRejected"));
     },
-    onError: () => toast.error(t("toast.rejectFailed")),
+    onError: (e: unknown) => {
+      // الخادم يشرح المنع (فريق ينتظر، مجموعة تشكّلت، أرشفه بدل حذفه)؛
+      // النصّ العام يمحو ذلك ويترك المستخدم بلا مخرج.
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.rejectFailed"));
+    },
   });
 }
 export function useArchiveTopic() {
@@ -540,7 +552,13 @@ export function useArchiveTopic() {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
       toast.success(t("toast.topicArchived"));
     },
-    onError: () => toast.error(t("toast.archiveFailed")),
+    onError: (e: unknown) => {
+      // الخادم يشرح المنع (فريق ينتظر، مجموعة تشكّلت، أرشفه بدل حذفه)؛
+      // النصّ العام يمحو ذلك ويترك المستخدم بلا مخرج.
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.archiveFailed"));
+    },
   });
 }
 
@@ -552,7 +570,13 @@ export function useUnarchiveTopic() {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
       toast.success(t("toast.topicUnarchived"));
     },
-    onError: () => toast.error(t("toast.unarchiveFailed")),
+    onError: (e: unknown) => {
+      // الخادم يشرح المنع (فريق ينتظر، مجموعة تشكّلت، أرشفه بدل حذفه)؛
+      // النصّ العام يمحو ذلك ويترك المستخدم بلا مخرج.
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.unarchiveFailed"));
+    },
   });
 }
 
@@ -562,9 +586,16 @@ export function useDeleteTopic() {
     mutationFn: (id: string) => adminApi.deleteTopic(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "topic"] });
       toast.success(t("toast.topicDeleted"));
     },
-    onError: () => toast.error(t("toast.deleteFailed")),
+    onError: (e: unknown) => {
+      // الخادم يشرح المنع (فريق ينتظر، مجموعة تشكّلت، أرشفه بدل حذفه)؛
+      // النصّ العام يمحو ذلك ويترك المستخدم بلا مخرج.
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.deleteFailed"));
+    },
   });
 }
 
@@ -577,7 +608,13 @@ export function usePublishTopic() {
       qc.invalidateQueries({ queryKey: ["admin", "topic"] });
       toast.success(t("toast.topicPublished"));
     },
-    onError: () => toast.error(t("toast.publishFailed")),
+    onError: (e: unknown) => {
+      // الخادم يشرح المنع (فريق ينتظر، مجموعة تشكّلت، أرشفه بدل حذفه)؛
+      // النصّ العام يمحو ذلك ويترك المستخدم بلا مخرج.
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.publishFailed"));
+    },
   });
 }
 export function useUnpublishTopic() {
@@ -589,7 +626,13 @@ export function useUnpublishTopic() {
       qc.invalidateQueries({ queryKey: ["admin", "topic"] });
       toast.success(t("toast.topicUnpublished"));
     },
-    onError: () => toast.error(t("toast.unpublishFailed")),
+    onError: (e: unknown) => {
+      // الخادم يشرح المنع (فريق ينتظر، مجموعة تشكّلت، أرشفه بدل حذفه)؛
+      // النصّ العام يمحو ذلك ويترك المستخدم بلا مخرج.
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.unpublishFailed"));
+    },
   });
 }
 
@@ -755,7 +798,40 @@ export function useRemoveProjectMember() {
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
       toast.success(t("toast.studentRemovedFromProject"));
     },
-    onError: () => toast.error(t("toast.removeFailed")),
+    // الخادم يرفض إزالة آخر عضو ويشرح أن الإجراء المقصود هو «فسخ المشروع».
+    // نصّ عام هنا يُخفي ذلك ويترك المستخدم أمام «فشلت الإزالة» بلا مخرج.
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.removeFailed"));
+    },
+  });
+}
+
+export function useDissolveProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, reason }: { groupId: string; reason?: string }) =>
+      adminApi.dissolveProject(groupId, reason),
+    onSuccess: () => {
+      // الفسخ يمسّ المشروع والموضوع والطلبة والعدّادات معاً.
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      qc.invalidateQueries({ queryKey: ["admin", "project"] });
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "topic"] });
+      qc.invalidateQueries({ queryKey: ["admin", "students"] });
+      qc.invalidateQueries({ queryKey: ["admin", "dashboard"] });
+      toast.success(
+        t("toast.projectDissolved", { defaultValue: "فُسخ المشروع" }),
+      );
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(
+        msg || t("toast.dissolveFailed", { defaultValue: "تعذّر فسخ المشروع" }),
+      );
+    },
   });
 }
 

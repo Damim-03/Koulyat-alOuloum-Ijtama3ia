@@ -21,6 +21,10 @@ export function RoleSwitcher({ value, onChange }: Props) {
           <button
             key={key}
             type="button"
+            // مِقبضٌ ثابت لاختبارات المتصفّح: النصّ مترجَمٌ بثلاث لغات،
+            // فاختبارٌ يبحث عنه ينكسر بتحرير ملفّ ترجمة لا علاقة له بالسلوك.
+            data-testid={`role-${key}`}
+            aria-pressed={active}
             onClick={() => onChange(key)}
             className={cn(
               "flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[13.5px] font-medium transition",

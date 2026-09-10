@@ -49,6 +49,7 @@ import {
   createTopicSchema,
   createAssignedTopicSchema,
   updateAssignedTopicSchema,
+  dissolveProjectSchema,
 } from "./admin.validation";
 import * as svc from "./admin.service";
 import {
@@ -1112,6 +1113,43 @@ export const removeProjectMemberController = async (
       req.params.studentId as string,
     );
     return res.status(HTTPSTATUS.OK).json(result);
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const setProjectLeaderController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const project = await svc.setProjectLeaderService(
+      req.params.id as string,
+      req.params.studentId as string,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Project leader updated", project });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const dissolveProjectController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(dissolveProjectSchema, req.body ?? {});
+    const result = await svc.dissolveProjectService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Project dissolved", ...result });
   } catch (e) {
     next(e);
   }

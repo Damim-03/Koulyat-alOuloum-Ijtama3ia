@@ -26,7 +26,7 @@ import {
   useStudents,
 } from "../../../hooks/admin-hook";
 import { ProfessorPicker } from "../../ui/professor-picker";
-import { ListInput } from "../../ui/list-input";
+import { ListInput } from "../../../../../components/ui/list-input";
 import { statusChip } from "../../../utils/status-styles";
 import {
   inputCls,
@@ -34,7 +34,7 @@ import {
   Field,
   StepTab,
   ReviewRow,
-} from "../../ui/form-bits";
+} from "../../../../../components/ui/form-bits";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

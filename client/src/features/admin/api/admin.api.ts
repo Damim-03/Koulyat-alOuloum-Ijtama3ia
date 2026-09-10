@@ -349,6 +349,14 @@ export const adminApi = {
     client
       .delete(`${BASE}/projects/${groupId}/members/${studentId}`)
       .then((r) => r.data),
+  // فسخ المشروع كلّه. الخادم يرفض إن كان عليه تسليمات أو مناقشة، ويردّ
+  // برسالة تقول ما الذي يمنع — فتُعرض كما هي بدل نصّ عام.
+  dissolveProject: (groupId: string, reason?: string) =>
+    client
+      .delete(`${BASE}/projects/${groupId}`, {
+        data: reason ? { reason } : {},
+      })
+      .then((r) => r.data),
 
   // ── Academic structure wizard (whole tree in one transaction) ──
   createAcademicStructure: (payload: AcademicStructurePayload) =>

@@ -375,6 +375,23 @@ model GraduationTopic {
 
   status TopicStatus @default(pending)
 
+  /// When the administration published this topic — the one piece of the
+  /// decision that `status` cannot hold on its own.
+  ///
+  /// `status` carries two different things at once: the administration's
+  /// decision (pending → approved → open, or rejected / archived) and the
+  /// fact of occupancy (`full`). Writing `full` over `open` erases the
+  /// decision, so nothing can tell afterwards whether the topic had been
+  /// published or was merely approved. Every path out of `full` therefore
+  /// guessed, and they guessed differently: rejecting the request returned
+  /// the topic to `open`, dissolving the group returned it to `approved`.
+  ///
+  /// This column keeps that one bit safe across `full` and `archived`, so a
+  /// topic returns to exactly where it was instead of to a guess. It is set
+  /// on publish, cleared on unpublish, and read only when recomputing
+  /// `status` — never rendered on its own.
+  publishedAt DateTime?
+
   // Stored as JSON: [{ "title": "...", "url": "https://..." }]
   references Json @default("[]")
 
@@ -458,6 +475,13 @@ model GroupRequest {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /// Holds `topicId` while this request is live (pending or accepted) and
+  /// NULL once it is rejected. The unique index below is what actually
+  /// reserves a topic for the first team: a second live request cannot be
+  /// written at all, however close together the two arrive. Several NULLs
+  /// are allowed, so rejecting a request frees the topic again.
+  activeTopicId String? @unique
 
   // A leader can submit only one request per topic.
   @@unique([leaderStudentId, topicId])

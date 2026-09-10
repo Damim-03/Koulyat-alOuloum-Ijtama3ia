@@ -1,0 +1,238 @@
+name: tests
+
+# يعمل على كل دفع وكل طلب دمج نحو main.
+#
+# القصد ليس التزيين: ٨٠٠ اختبار تعمل على جهاز واحد لا تحمي شيئاً إن نُسي
+# تشغيلها قبل الدفع. هنا تعمل وحدها، وعلى بيئة نظيفة لا تحمل شيئاً من
+# إعدادات جهاز المطوّر.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# دفعتان متتاليتان على نفس الفرع: تُلغى الأولى. لا معنى لانتظار نتيجة
+# شيفرة تجاوزتها شيفرة أحدث.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: الخلفية — ٧٩١ اختباراً
+    runs-on: ubuntu-latest
+
+    # قاعدة حقيقية لا محاكاة: اختبارات التكامل والـAPI تكتب فيها فعلاً،
+    # والإصدار مطابق لما يعمل عليه المشروع محلّياً.
+    services:
+      mariadb:
+        image: mariadb:10.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-password
+          MARIADB_DATABASE: kouliate_ouloum_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      # اسم القاعدة ينتهي بـ`_test` عمداً: الحارس في `tests/load-env.ts`
+      # يرفض التشغيل على غيرها، وهو نفس الحارس الذي يحمي جهاز المطوّر.
+      DATABASE_URL: "mysql://root:ci-root-password@127.0.0.1:3306/kouliate_ouloum_test"
+      NODE_ENV: test
+      # أسرار للتشغيل الآلي وحده. لا قيمة لها خارج هذه الحاوية، ولا يجوز
+      # أن تشبه أسرار الإنتاج — تلك تعيش في أسرار المستودع لا في ملفّ.
+      JWT_ACCESS_SECRET: ci-access-secret-not-used-anywhere-else-0123456789
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-used-anywhere-else-9876543210
+      SESSION_SECRET: ci-session-secret-not-used-anywhere-else-0246813579
+      FRONTEND_ORIGIN: http://localhost:5173
+      # الاختبارات تُفشل الدخول عمداً عشرات المرّات؛ آليّة الحدّ نفسها
+      # تُختبَر في `rateLimit.test.ts` بسقف صغير خاصّ بها.
+      AUTH_RATE_LIMIT_MAX: "200"
+      # اختبارات السوكيت ترفع الخادم الحقيقي؛ منفذٌ عابر لئلّا يتنازع مع شيء.
+      PORT: "0"
+      PUBLIC_API_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - name: تثبيت الاعتماديات
+        working-directory: Backend
+        run: npm ci
+
+      - name: توليد عميل Prisma
+        working-directory: Backend
+        run: npm run prisma:generate
+
+      # لا يُنشأ `.env.test` هنا: هو ملفّ محلّي خارج git، و`tests/load-env.ts`
+      # يتجاوزه بصمت حين لا يجده فتُقرأ متغيّرات البيئة أعلاه. جُرّب هذا
+      # المسار محلّياً بإخفاء الملفّ: ١٧٤ اختباراً خضراء.
+
+      - name: تطبيق الهجرات على قاعدة الاختبار
+        working-directory: Backend
+        run: npm run prisma:migrate
+
+      - name: فحص الأنواع — الإنتاج
+        working-directory: Backend
+        run: npm run typecheck
+
+      - name: فحص الأنواع — الاختبارات
+        working-directory: Backend
+        run: npx tsc --project tsconfig.test.json # لا سكربت له، والأمر واضح
+
+      # عبر سكربت `npm` لا استدعاء مباشر: طريقة تشغيل الاختبارات معرَّفة في
+      # `package.json` وحده، فإن تغيّرت تبعها هذا الملفّ بلا تعديل.
+      - name: الاختبارات مع التغطية
+        working-directory: Backend
+        run: npm run test:cov -- --ci
+
+      # تقرير التغطية يبقى متاحاً للتنزيل من صفحة التشغيل، فلا يُقرأ الرقم
+      # من السجلّ وحده.
+      - name: رفع تقرير التغطية
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: Backend/coverage/
+          retention-days: 14
+
+      - name: البناء
+        working-directory: Backend
+        run: npm run build
+
+  client:
+    name: الواجهة — وحدات
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: تثبيت الاعتماديات
+        working-directory: client
+        run: npm ci
+
+      - name: فحص الأنواع
+        working-directory: client
+        run: npx tsc -b --noEmit # لا سكربت له في package.json
+
+      - name: الاختبارات
+        working-directory: client
+        run: npm run test:run
+
+      - name: البناء
+        working-directory: client
+        run: npm run build
+
+
+  e2e:
+    name: المتصفّح — Playwright
+    runs-on: ubuntu-latest
+
+    # المتصفّح يحتاج الطرفين معاً: خادمٌ يردّ، وواجهةٌ تعرض. فالقاعدة هنا
+    # كما في وظيفة الخلفية — حقيقية، واسمها ينتهي بـ`_test` فيقبلها الحارس.
+    services:
+      mariadb:
+        image: mariadb:10.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-password
+          MARIADB_DATABASE: kouliate_ouloum_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: "mysql://root:ci-root-password@127.0.0.1:3306/kouliate_ouloum_test"
+      NODE_ENV: test
+      JWT_ACCESS_SECRET: ci-access-secret-not-used-anywhere-else-0123456789
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-used-anywhere-else-9876543210
+      SESSION_SECRET: ci-session-secret-not-used-anywhere-else-0246813579
+      FRONTEND_ORIGIN: http://127.0.0.1:5173
+      AUTH_RATE_LIMIT_MAX: "200"
+      # المتصفّح يفتح `127.0.0.1` لا `localhost`، والقائمة الافتراضية لا
+      # تحوي إلّا الثاني — فيُردّ كل نداءٍ بـCORS قبل أن يصل الخادم.
+      CORS_ORIGINS: "http://127.0.0.1:5173,http://localhost:5173"
+      PORT: "3000"
+      PUBLIC_API_URL: http://localhost:3000
+      CI: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: تثبيت اعتماديات الخلفية
+        working-directory: Backend
+        run: npm ci
+
+      - name: توليد عميل Prisma
+        working-directory: Backend
+        run: npm run prisma:generate
+
+      - name: تطبيق الهجرات
+        working-directory: Backend
+        run: npm run prisma:migrate
+
+      - name: تثبيت اعتماديات الواجهة
+        working-directory: client
+        run: npm ci
+
+      # المتصفّح وحده لا الثلاثة: التشغيل أسرع، والتغطية عبر المتصفّحات
+      # مسألةٌ أخرى تُقرَّر حين تُطلب.
+      - name: تنزيل متصفّح Playwright
+        working-directory: client
+        run: npx playwright install --with-deps chromium
+
+      # الإعداد يبني الواجهة ويُشغّل الخادمين بنفسه — لا خطوة تشغيلٍ هنا.
+      - name: اختبارات المتصفّح
+        working-directory: client
+        run: npm run e2e
+
+      - name: رفع أثر الفشل
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            client/e2e/.artifacts/
+            client/playwright-report/
+          retention-days: 14
+
+  # يبقى المستودع محروساً بالثوابت نفسها التي بُني عليها الإصلاح: لا يمرّ
+  # دمجٌ إلا إذا نجح الطرفان.
+  all-green:
+    name: كل شيء أخضر
+    runs-on: ubuntu-latest
+    needs: [backend, client, e2e]
+    if: always()
+    steps:
+      - name: التحقّق من نتائج الوظائف
+        run: |
+          echo "backend: ${{ needs.backend.result }}"
+          echo "client:  ${{ needs.client.result }}"
+          if [ "${{ needs.backend.result }}" != "success" ] || \
+             [ "${{ needs.client.result }}" != "success" ]; then
+            echo "::error::فشلت إحدى الوظيفتين."
+            exit 1
+          fi
+          echo "الطرفان ناجحان."

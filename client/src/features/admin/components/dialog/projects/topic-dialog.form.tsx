@@ -13,8 +13,8 @@ import {
 } from "../../../hooks/admin-hook";
 import { statusChip } from "../../../utils/status-styles";
 import { ProfessorPicker } from "../../ui/professor-picker";
-import { ListInput } from "../../ui/list-input";
-import { inputCls, SectionHead, Field } from "../../ui/form-bits";
+import { ListInput } from "../../../../../components/ui/list-input";
+import { inputCls, SectionHead, Field } from "../../../../../components/ui/form-bits";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

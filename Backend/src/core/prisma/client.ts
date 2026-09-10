@@ -16,4 +16,16 @@ const adapter = new PrismaMariaDb(config.DATABASE_URL);
 
 export const prisma = new PrismaClient({
   adapter,
+  /**
+   * صيغة الخطأ.
+   *
+   * الصيغة الافتراضية تطبع مقتطفاً من «الشيفرة المحيطة» بموضع الخطأ — وموضع
+   * الخطأ داخل عميل Prisma المولَّد، وهو ملفّ مصغَّر بأسطر طولها آلاف
+   * الأحرف. فخطأٌ واحد في اختبار يُغرق المخرجات بثلاث شاشات من شيفرة لا
+   * تخصّك، ويدفن السبب الحقيقي بينها.
+   *
+   * `minimal` تطبع الرسالة والرمز فقط: «Foreign key constraint violated on
+   * the fields: (userId)» — وهو كل ما يلزم.
+   */
+  errorFormat: config.NODE_ENV === "test" ? "minimal" : "colorless",
 });

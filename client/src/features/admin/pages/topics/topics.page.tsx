@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { filterByAction } from "../../lib/topic-actions";
 import { useTranslation } from "react-i18next";
 import { useLangNavigate } from "../../../../hooks/useLangNavigate";
 import {
@@ -242,22 +243,23 @@ export function AdminTopicsPage() {
   }
 
   const selectedTopics = topics.filter((tp) => selected.has(tp.id));
-  const approvable = selectedTopics.filter(
-    (tp) => tp.status === "pending" || tp.status === "rejected",
-  );
-  const publishable = selectedTopics.filter((tp) => tp.status === "approved");
-  const unpublishable = selectedTopics.filter((tp) => tp.status === "open");
-  const rejectable = selectedTopics.filter(
-    (tp) =>
-      tp.status === "pending" ||
-      tp.status === "approved" ||
-      tp.status === "open",
-  );
-  const archivable = selectedTopics.filter((tp) => tp.status !== "archived");
-  const unarchivable = selectedTopics.filter((tp) => tp.status === "archived");
-  // A "full" topic already has a formed project group → the backend blocks its
-  // deletion, so we exclude it from the deletable set up front.
-  const deletable = selectedTopics.filter((tp) => tp.status !== "full");
+
+  /*
+   * Every one of these used to be a status test written here — a second copy
+   * of the server's rules, kept in step by hand. They drifted, as copies do:
+   * `deletable` asked `status !== "full"` while the server asked whether a
+   * project group existed, so an archived topic that had completed offered a
+   * delete that could never succeed.
+   *
+   * The server now sends its own verdict with every topic. These read it.
+   */
+  const approvable = filterByAction(selectedTopics, "approve");
+  const publishable = filterByAction(selectedTopics, "publish");
+  const unpublishable = filterByAction(selectedTopics, "unpublish");
+  const rejectable = filterByAction(selectedTopics, "reject");
+  const archivable = filterByAction(selectedTopics, "archive");
+  const unarchivable = filterByAction(selectedTopics, "unarchive");
+  const deletable = filterByAction(selectedTopics, "delete");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
 

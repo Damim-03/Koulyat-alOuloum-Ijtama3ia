@@ -35,15 +35,18 @@ export const globalLimiter = rateLimit({
  * Credential endpoints. Counts only failures, so a user who signs in
  * correctly is never penalised for a colleague on the same NAT address.
  */
-export const authLimiter = rateLimit({
-  ...shared,
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  skipSuccessfulRequests: true,
-  message: {
-    message: "Too many failed attempts. Please try again in a few minutes.",
-  },
-});
+export const makeAuthLimiter = (max: number) =>
+  rateLimit({
+    ...shared,
+    windowMs: 15 * 60 * 1000,
+    max,
+    skipSuccessfulRequests: true,
+    message: {
+      message: "Too many failed attempts. Please try again in a few minutes.",
+    },
+  });
+
+export const authLimiter = makeAuthLimiter(config.AUTH_RATE_LIMIT_MAX);
 
 /** Token refresh: frequent for legitimate clients, but not unbounded. */
 export const refreshLimiter = rateLimit({

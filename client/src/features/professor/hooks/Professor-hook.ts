@@ -10,6 +10,7 @@ import type {
 } from "../validation/professor.schema";
 
 const KEYS = {
+  dashboard: ["professor", "dashboard"] as const,
   topics: ["professor", "topics"] as const,
   topic: (id: string) => ["professor", "topic", id] as const,
   groups: ["professor", "groups"] as const,
@@ -18,7 +19,22 @@ const KEYS = {
     ["professor", "milestones", groupId] as const,
   specializations: ["common", "specializations"] as const,
   academicYears: ["common", "academic-years"] as const,
+  faculties: ["common", "faculties"] as const,
+  studentSearch: (q: string, spec?: string) =>
+    ["professor", "student-search", q, spec ?? ""] as const,
+  departments: ["common", "departments"] as const,
 };
+
+// ── Dashboard ──
+export function useProfessorDashboard() {
+  return useQuery({
+    queryKey: KEYS.dashboard,
+    queryFn: professorApi.getDashboard,
+    // The screen reports deadlines, so it should not show yesterday's answer
+    // after a milestone was ticked off in another tab.
+    staleTime: 30 * 1000,
+  });
+}
 
 // ── Lookups ──
 export function useSpecializations() {
@@ -32,6 +48,32 @@ export function useAcademicYears() {
   return useQuery({
     queryKey: KEYS.academicYears,
     queryFn: professorApi.listAcademicYears,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Debounce before calling this — every keystroke would otherwise be a query. */
+export function useSearchStudents(q: string, specializationId?: string) {
+  return useQuery({
+    queryKey: KEYS.studentSearch(q, specializationId),
+    queryFn: () => professorApi.searchStudents(q, specializationId),
+    // The endpoint refuses a shorter term anyway; not asking is cheaper.
+    enabled: q.trim().length >= 2,
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useFaculties() {
+  return useQuery({
+    queryKey: KEYS.faculties,
+    queryFn: professorApi.listFaculties,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+export function useDepartments() {
+  return useQuery({
+    queryKey: KEYS.departments,
+    queryFn: professorApi.listDepartments,
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -58,6 +100,23 @@ export function useCreateTopic() {
     onError: () => toast.error(t("toast.topicSendFailed")),
   });
 }
+export function useCreateTopicWithGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: professorApi.createTopicWithGroup,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEYS.topics });
+      qc.invalidateQueries({ queryKey: KEYS.dashboard });
+      toast.success(t("toast.topicProposedWithTeam"));
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error(msg || t("toast.topicCreateFailed"));
+    },
+  });
+}
+
 export function useUpdateTopic() {
   const qc = useQueryClient();
   return useMutation({

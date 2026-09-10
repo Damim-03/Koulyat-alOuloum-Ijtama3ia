@@ -80,6 +80,8 @@ import {
   updateGroupMilestoneController,
   deleteGroupMilestoneController,
   removeProjectMemberController,
+  dissolveProjectController,
+  setProjectLeaderController,
   // defenses
   listDefensesController,
   createDefenseController,
@@ -102,7 +104,7 @@ import {
   removeGroupRequestMemberController,
   setGroupRequestLeaderController,
 } from "./admin.controller";
-import { cardUpload } from "../../core/middleware/upload.middleware";
+import { cardImageUpload } from "../../core/middleware/upload.middleware";
 
 const adminRoutes = Router();
 
@@ -157,7 +159,7 @@ adminRoutes.delete("/students/:id", ownerOnly(), deleteStudentController);
 
 adminRoutes.post(
   "/uploads/image",
-  cardUpload.single("image"),
+  cardImageUpload,
   uploadImageController,
 );
 
@@ -288,6 +290,13 @@ adminRoutes.delete(
   "/projects/:id/members/:studentId",
   removeProjectMemberController,
 );
+// تعيين قائد المشروع — يعمل في أي مرحلة، بما فيها بعد الاكتمال.
+adminRoutes.patch(
+  "/projects/:id/leader/:studentId",
+  setProjectLeaderController,
+);
+// فسخ المشروع: الباب الوحيد للتراجع عن اكتمال وقع بالخطأ.
+adminRoutes.delete("/projects/:id", dissolveProjectController);
 
 //
 // ─── DEFENSES ─────────────────────────────────────────────────

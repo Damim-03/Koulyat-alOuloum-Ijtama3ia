@@ -4,6 +4,8 @@ import { roleGuard, requireRole } from "../../core/utils/roleGuard";
 import { Permissions } from "../../core/enums/role.enum";
 import {
   createTopicController,
+  createTopicWithGroupController,
+  searchStudentsController,
   getMyTopicsController,
   getTopicByIdController,
   updateTopicController,
@@ -14,6 +16,7 @@ import {
   getMilestonesController,
   updateMilestoneController,
   deleteMilestoneController,
+  getDashboardController,
 } from "./professor.controller";
 
 const professorRoutes = Router();
@@ -22,12 +25,37 @@ professorRoutes.use(authMiddleware);
 professorRoutes.use(requireRole("professor"));
 
 //
+// Dashboard — one read for the whole first screen
+//
+professorRoutes.get(
+  "/dashboard",
+  roleGuard([Permissions.VIEW_SUPERVISED_PROJECTS]),
+  getDashboardController,
+);
+
+//
 // Topics
 //
 professorRoutes.post(
   "/topics",
   roleGuard([Permissions.CREATE_TOPICS]),
   createTopicController,
+);
+
+// Naming the students for a proposed team. A search, not a listing —
+// see searchStudentsService.
+professorRoutes.get(
+  "/students/search",
+  roleGuard([Permissions.CREATE_TOPICS]),
+  searchStudentsController,
+);
+
+// A topic proposed together with its team. Still needs approval — see
+// createTopicWithGroupService.
+professorRoutes.post(
+  "/topics/with-group",
+  roleGuard([Permissions.CREATE_TOPICS]),
+  createTopicWithGroupController,
 );
 
 professorRoutes.get(

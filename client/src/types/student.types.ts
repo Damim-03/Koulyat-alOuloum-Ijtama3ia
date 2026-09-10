@@ -173,6 +173,10 @@ export interface TopicView {
   objectives?: string | null; // الأهداف
   requirements?: string[] | null; // المتطلبات (chips)
   status?: string | null; // open / published / full / in_progress
+  // A topic can be `open` and still taken: the first team's request reserves
+  // it before the project group exists. The endpoint answers with both.
+  isAvailable?: boolean;
+  isReserved?: boolean;
   maxStudents?: number | null; // عدد الطلاب
   type?: string | null; // نوع المشروع (تطبيقي/بحثي)
   code?: string | null; // رقم الموضوع
