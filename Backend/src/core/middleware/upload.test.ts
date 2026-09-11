@@ -124,12 +124,10 @@ describe("safeUploadPath", () => {
   });
 
   /**
-   * كل صيغ التسلّق تُجرَّد إلى اسمها الأخير قبل الدمج، فلا تخرج من المجلّد.
-   * والفحص بعدها ليس زائداً: هو ما يمسك ما لا يُجرَّد — مثل «..» وحدها.
+   * الشرطة المائلة فاصلٌ في كل نظام، فما بعدها هو الاسم أينما شُغِّل.
    */
   it.each([
     ["../../../etc/passwd", "passwd"],
-    ["..\\..\\windows\\system32\\cmd.exe", "cmd.exe"],
     ["/etc/shadow", "shadow"],
     ["dir/sub/a.png", "a.png"],
   ])("و«%s» يُجرَّد إلى «%s» داخل المجلّد", (input, expected) => {
@@ -137,6 +135,29 @@ describe("safeUploadPath", () => {
 
     expect(resolved).not.toBeNull();
     expect(path.basename(resolved!)).toBe(expected);
+    expect(resolved).toContain(path.join("uploads", "cards"));
+  });
+
+  /**
+   * أمّا الشرطة العكسية فليست فاصلاً إلّا على ويندوز — وهي على لينكس محرفٌ
+   * صالحٌ في اسم الملفّ. فـ`path.basename` يُجرّدها هنا ولا يُجرّدها هناك،
+   * والنتيجة تختلف باختلاف النظام.
+   *
+   * وهذا ما أوقع الاختبار: كنتُ أؤكّد «يصير `cmd.exe`» — وهو صحيحٌ على
+   * ويندوز وحده، فاحمرّ أوّل ما عمل على لينكس في التشغيل الآلي.
+   *
+   * والوعد الذي يهمّ لا يتغيّر بينهما: **لا يخرج المسار من مجلّد الرفع**.
+   * على ويندوز يُجرَّد الاسم فيبقى داخله، وعلى لينكس يبقى اسماً واحداً
+   * غريباً — داخله أيضاً. فهذا ما يُؤكَّد، لا الشكل الذي يتّخذه.
+   */
+  it("والشرطة العكسية: النتيجة تختلف بالنظام، والاحتواء لا يختلف", () => {
+    const resolved = safeUploadPath("..\\..\\windows\\system32\\cmd.exe");
+
+    expect(resolved).not.toBeNull();
+    const uploadDir = path.join(process.cwd(), "uploads", "cards");
+    expect(path.resolve(resolved!).startsWith(path.resolve(uploadDir))).toBe(
+      true,
+    );
     expect(resolved).toContain(path.join("uploads", "cards"));
   });
 
