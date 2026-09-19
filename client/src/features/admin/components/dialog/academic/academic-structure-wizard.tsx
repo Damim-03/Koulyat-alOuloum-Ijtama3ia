@@ -278,7 +278,7 @@ export function AcademicStructureWizard({
       title={t("admin.addAcademicStructure")}
       subtitle={t("admin.structureWizardSubtitle")}
       icon={Building2}
-      size="xl"
+      size="2xl"
       footer={
         <>
           <button
@@ -452,8 +452,11 @@ export function AcademicStructureWizard({
 
           {departments.map((d) => (
             <div key={d.key} className="flex items-start gap-2">
-              <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3">
-                <div className="md:col-span-2">
+              <div className="grid flex-1 grid-cols-1 gap-x-3 gap-y-2 md:grid-cols-3">
+                <Labeled
+                  label={t("admin.departmentName")}
+                  className="md:col-span-2"
+                >
                   <NameInput
                     value={d.name}
                     onChange={(v) => patch(setDepartments, d.key, { name: v })}
@@ -462,25 +465,31 @@ export function AcademicStructureWizard({
                       !!d.name.trim() && existingDeptNames.has(norm(d.name))
                     }
                   />
-                </div>
-                <CodeInput
-                  value={d.code}
-                  onChange={(v) => patch(setDepartments, d.key, { code: v })}
-                  onGenerate={() =>
-                    patch(setDepartments, d.key, {
-                      code: suggestCode(d.name, "DEP"),
-                    })
-                  }
-                />
+                </Labeled>
+                <Labeled label={t("admin.departmentCode")}>
+                  <CodeInput
+                    value={d.code}
+                    onChange={(v) => patch(setDepartments, d.key, { code: v })}
+                    onGenerate={() =>
+                      patch(setDepartments, d.key, {
+                        code: suggestCode(d.name, "DEP"),
+                      })
+                    }
+                  />
+                </Labeled>
               </div>
-              <RemoveButton
-                onClick={() => {
-                  const ref = encodeRef("new", d.key);
-                  setDepartments((p) => p.filter((x) => x.key !== d.key));
-                  setDomains((p) => p.filter((x) => x.departmentRef !== ref));
-                  setFilieres((p) => p.filter((x) => x.departmentRef !== ref));
-                }}
-              />
+              <Labeled label="" className="shrink-0">
+                <RemoveButton
+                  onClick={() => {
+                    const ref = encodeRef("new", d.key);
+                    setDepartments((p) => p.filter((x) => x.key !== d.key));
+                    setDomains((p) => p.filter((x) => x.departmentRef !== ref));
+                    setFilieres((p) =>
+                      p.filter((x) => x.departmentRef !== ref),
+                    );
+                  }}
+                />
+              </Labeled>
             </div>
           ))}
 
@@ -519,43 +528,60 @@ export function AcademicStructureWizard({
 
             {domains.map((d) => (
               <div key={d.key} className="flex items-start gap-2">
-                <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3">
-                  <NameInput
-                    value={d.name}
-                    onChange={(v) => patch(setDomains, d.key, { name: v })}
-                    placeholder={t("admin.domainExamplePlaceholder")}
-                    duplicate={
-                      !!d.name.trim() && existingDomainNames.has(norm(d.name))
-                    }
-                  />
-                  <CodeInput
-                    value={d.code}
-                    onChange={(v) => patch(setDomains, d.key, { code: v })}
-                    onGenerate={() =>
-                      patch(setDomains, d.key, {
-                        code: suggestCode(d.name, "DOM"),
-                      })
-                    }
-                  />
-                  <RefSelect
-                    value={d.departmentRef}
-                    onChange={(v) =>
-                      patch(setDomains, d.key, { departmentRef: v })
-                    }
-                    options={departmentOptions}
-                  />
+                <div className="grid flex-1 grid-cols-1 gap-x-3 gap-y-2 md:grid-cols-12">
+                  <Labeled
+                    label={t("admin.domainName")}
+                    className="md:col-span-4"
+                  >
+                    <NameInput
+                      value={d.name}
+                      onChange={(v) => patch(setDomains, d.key, { name: v })}
+                      placeholder={t("admin.domainExamplePlaceholder")}
+                      duplicate={
+                        !!d.name.trim() && existingDomainNames.has(norm(d.name))
+                      }
+                    />
+                  </Labeled>
+                  <Labeled
+                    label={t("admin.domainCode")}
+                    className="md:col-span-3"
+                  >
+                    <CodeInput
+                      value={d.code}
+                      onChange={(v) => patch(setDomains, d.key, { code: v })}
+                      onGenerate={() =>
+                        patch(setDomains, d.key, {
+                          code: suggestCode(d.name, "DOM"),
+                        })
+                      }
+                    />
+                  </Labeled>
+                  <Labeled
+                    label={t("admin.department")}
+                    className="md:col-span-5"
+                  >
+                    <RefSelect
+                      value={d.departmentRef}
+                      onChange={(v) =>
+                        patch(setDomains, d.key, { departmentRef: v })
+                      }
+                      options={departmentOptions}
+                    />
+                  </Labeled>
                 </div>
-                <RemoveButton
-                  onClick={() => {
-                    const ref = encodeRef("new", d.key);
-                    setDomains((p) => p.filter((x) => x.key !== d.key));
-                    setFilieres((p) =>
-                      p.map((f) =>
-                        f.domainRef === ref ? { ...f, domainRef: "" } : f,
-                      ),
-                    );
-                  }}
-                />
+                <Labeled label="" className="shrink-0">
+                  <RemoveButton
+                    onClick={() => {
+                      const ref = encodeRef("new", d.key);
+                      setDomains((p) => p.filter((x) => x.key !== d.key));
+                      setFilieres((p) =>
+                        p.map((f) =>
+                          f.domainRef === ref ? { ...f, domainRef: "" } : f,
+                        ),
+                      );
+                    }}
+                  />
+                </Labeled>
               </div>
             ))}
 
@@ -601,46 +627,71 @@ export function AcademicStructureWizard({
                 className="rounded-2xl border border-forest/15 bg-cream-2/50 p-3"
               >
                 <div className="flex items-start gap-2">
-                  <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-4">
-                    <NameInput
-                      value={f.name}
-                      onChange={(v) => patch(setFilieres, f.key, { name: v })}
-                      placeholder={t("admin.filiereExamplePlaceholder")}
-                      duplicate={
-                        !!f.name.trim() && existingFiliereNames.has(norm(f.name))
-                      }
-                    />
-                    <CodeInput
-                      value={f.code}
-                      onChange={(v) => patch(setFilieres, f.key, { code: v })}
-                      onGenerate={() =>
-                        patch(setFilieres, f.key, {
-                          code: suggestCode(f.name, "FIL"),
-                        })
-                      }
-                    />
-                    <RefSelect
-                      value={f.departmentRef}
-                      onChange={(v) =>
-                        patch(setFilieres, f.key, {
-                          departmentRef: v,
-                          domainRef: "", // the old domain belongs to another department
-                        })
-                      }
-                      options={departmentOptions}
-                    />
-                    <RefSelect
-                      value={f.domainRef}
-                      onChange={(v) => patch(setFilieres, f.key, { domainRef: v })}
-                      options={domainOptionsFor(f.departmentRef)}
-                      emptyLabel={t("admin.noDomain")}
-                    />
+                  <div className="grid flex-1 grid-cols-1 gap-x-3 gap-y-2 md:grid-cols-12">
+                    <Labeled
+                      label={t("admin.filiereName")}
+                      className="md:col-span-3"
+                    >
+                      <NameInput
+                        value={f.name}
+                        onChange={(v) => patch(setFilieres, f.key, { name: v })}
+                        placeholder={t("admin.filiereExamplePlaceholder")}
+                        duplicate={
+                          !!f.name.trim() &&
+                          existingFiliereNames.has(norm(f.name))
+                        }
+                      />
+                    </Labeled>
+                    <Labeled
+                      label={t("admin.filiereCode")}
+                      className="md:col-span-2"
+                    >
+                      <CodeInput
+                        value={f.code}
+                        onChange={(v) => patch(setFilieres, f.key, { code: v })}
+                        onGenerate={() =>
+                          patch(setFilieres, f.key, {
+                            code: suggestCode(f.name, "FIL"),
+                          })
+                        }
+                      />
+                    </Labeled>
+                    <Labeled
+                      label={t("admin.department")}
+                      className="md:col-span-4"
+                    >
+                      <RefSelect
+                        value={f.departmentRef}
+                        onChange={(v) =>
+                          patch(setFilieres, f.key, {
+                            departmentRef: v,
+                            domainRef: "", // the old domain belongs to another department
+                          })
+                        }
+                        options={departmentOptions}
+                      />
+                    </Labeled>
+                    <Labeled
+                      label={t("admin.domainLabel")}
+                      className="md:col-span-3"
+                    >
+                      <RefSelect
+                        value={f.domainRef}
+                        onChange={(v) =>
+                          patch(setFilieres, f.key, { domainRef: v })
+                        }
+                        options={domainOptionsFor(f.departmentRef)}
+                        emptyLabel={t("admin.noDomain")}
+                      />
+                    </Labeled>
                   </div>
-                  <RemoveButton
-                    onClick={() =>
-                      setFilieres((p) => p.filter((x) => x.key !== f.key))
-                    }
-                  />
+                  <Labeled label="" className="shrink-0">
+                    <RemoveButton
+                      onClick={() =>
+                        setFilieres((p) => p.filter((x) => x.key !== f.key))
+                      }
+                    />
+                  </Labeled>
                 </div>
 
                 {/* nested specializations */}
@@ -648,46 +699,55 @@ export function AcademicStructureWizard({
                   <p className="mb-2 text-[11px] font-bold text-clay">{t("admin.specializationsWord")}</p>
                   <div className="space-y-2">
                     {f.specializations.map((s, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <input
-                          value={s.name}
-                          onChange={(e) =>
-                            patchSpec(setFilieres, f.key, i, {
-                              name: e.target.value,
-                            })
-                          }
-                          className={inputClass}
-                          placeholder={t("admin.specializationExamplePlaceholder")}
-                        />
-                        <Select
-                          value={s.level}
-                          onChange={(v) =>
-                            patchSpec(setFilieres, f.key, i, {
-                              level: v as StructureSpecialization["level"],
-                            })
-                          }
-                          className="w-32 shrink-0"
-                          options={LEVELS.map((l) => ({
-                            value: l.value,
-                            label: t(l.labelKey),
-                          }))}
-                        />
-                        <RemoveButton
-                          onClick={() =>
-                            setFilieres((p) =>
-                              p.map((x) =>
-                                x.key === f.key
-                                  ? {
-                                      ...x,
-                                      specializations: x.specializations.filter(
-                                        (_, j) => j !== i,
-                                      ),
-                                    }
-                                  : x,
-                              ),
-                            )
-                          }
-                        />
+                      <div key={i} className="flex items-start gap-2">
+                        <Labeled
+                          label={t("admin.specializationName")}
+                          className="flex-1"
+                        >
+                          <input
+                            value={s.name}
+                            onChange={(e) =>
+                              patchSpec(setFilieres, f.key, i, {
+                                name: e.target.value,
+                              })
+                            }
+                            className={inputClass}
+                            placeholder={t("admin.specializationExamplePlaceholder")}
+                          />
+                        </Labeled>
+                        <Labeled label={t("admin.level")} className="shrink-0">
+                          <Select
+                            value={s.level}
+                            onChange={(v) =>
+                              patchSpec(setFilieres, f.key, i, {
+                                level: v as StructureSpecialization["level"],
+                              })
+                            }
+                            className="w-36"
+                            options={LEVELS.map((l) => ({
+                              value: l.value,
+                              label: t(l.labelKey),
+                            }))}
+                          />
+                        </Labeled>
+                        <Labeled label="" className="shrink-0">
+                          <RemoveButton
+                            onClick={() =>
+                              setFilieres((p) =>
+                                p.map((x) =>
+                                  x.key === f.key
+                                    ? {
+                                        ...x,
+                                        specializations: x.specializations.filter(
+                                          (_, j) => j !== i,
+                                        ),
+                                      }
+                                    : x,
+                                ),
+                              )
+                            }
+                          />
+                        </Labeled>
                       </div>
                     ))}
                   </div>
@@ -812,6 +872,35 @@ function ExistingBlock({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * حقلٌ في صفٍّ مكرَّر، وفوقه عنوانه.
+ *
+ * صفوف هذه الخطوات كانت حقولاً عاريةً متجاورة: اسمٌ ورمزٌ وقائمتان، لا
+ * يُعرف أيُّها القسم وأيُّها الميدان إلّا من القيمة المكتوبة فيها — فإن
+ * طالت القيمةُ وقُصّت لم يبقَ دليل.
+ *
+ * و`label=""` تُبقي سطر العنوان فارغاً: يلزم زرَّ الحذف ليحاذي الحقول لا
+ * عناوينها، وفراغٌ بارتفاع السطر نفسه أضبطُ من هامشٍ مقدَّر بالعين.
+ */
+function Labeled({
+  label,
+  className = "",
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={className}>
+      <span className="mb-1 block text-[11px] font-semibold text-clay">
+        {label || " "}
+      </span>
+      {children}
     </div>
   );
 }

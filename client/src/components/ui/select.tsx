@@ -240,6 +240,8 @@ export function Select({
         aria-controls={`${id}-list`}
         aria-activedescendant={open ? `${id}-opt-${active}` : undefined}
         aria-label={ariaLabel}
+        // القيمة تُقصّ حين يضيق الحقل، فيبقى العنوان الكامل في التلميح.
+        title={selected?.label ?? placeholder}
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : openList())}
         onKeyDown={onKeyDown}

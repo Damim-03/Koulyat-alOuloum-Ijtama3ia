@@ -939,6 +939,7 @@
     "chooseFaculty": "اختر الكلية",
     "departmentWord": "قسم",
     "domainWord": "ميدان",
+    "domainLabel": "الميدان",
     "filiereWord": "شعبة",
     "existingDepartmentsInFaculty": "أقسام موجودة في هذه الكلية",
     "noDepartmentsAddedYet": "لم تُضف أقسام بعد",

@@ -907,6 +907,7 @@
     "chooseFaculty": "Choose the faculty",
     "departmentWord": "Department",
     "domainWord": "Domain",
+    "domainLabel": "Domain",
     "filiereWord": "Branch",
     "existingDepartmentsInFaculty": "Departments already in this faculty",
     "noDepartmentsAddedYet": "No departments added yet",
