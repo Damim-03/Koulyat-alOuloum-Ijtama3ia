@@ -11,6 +11,8 @@ import {
   ChevronDown,
   ChevronUp,
   CircleAlert,
+  CircleDot,
+  Inbox,
   Users2,
   CalendarDays,
   Layers,
@@ -27,6 +29,8 @@ import { TopicFormDialog } from "../components/topic-form-dialog";
 import { StatusBadge } from "../components/status-badge";
 import type { Topic } from "../../../types/professor.types";
 import { Select } from "../../../components/ui/select";
+import { DangerConfirm } from "../../../components/dialog/danger-confirm";
+import { noneText } from "../../../lib/none-text";
 
 /**
  * The professor's topics, in the shape the administration's list settled on:
@@ -59,6 +63,7 @@ export function ProfessorTopicsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [withGroup, setWithGroup] = useState(false);
   const [editing, setEditing] = useState<Topic | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Topic | null>(null);
 
   // ── filters ──
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -126,7 +131,14 @@ export function ProfessorTopicsPage() {
     setDialogOpen(true);
   }
   function handleDelete(tp: Topic) {
-    if (confirm(t("pro.confirmDeleteTopic"))) deleteTopic.mutate(tp.id);
+    setPendingDelete(tp);
+  }
+
+  function confirmDelete() {
+    if (!pendingDelete) return;
+    deleteTopic.mutate(pendingDelete.id, {
+      onSuccess: () => setPendingDelete(null),
+    });
   }
 
   /** Only an undecided topic is the professor's to change. */
@@ -506,6 +518,56 @@ export function ProfessorTopicsPage() {
           </div>
         )}
       </div>
+
+      {/*
+        كان الحذف هنا `window.confirm` — سطرٌ من المتصفّح: «حذف هذا
+        الموضوع؟» بلا عنوانٍ ولا حالةٍ ولا عددِ طلبات، ولا يتبع سمة الموقع.
+        والموضوع يُحذف من صفٍّ في جدول، فالسؤال المجرَّد لا يقول أيّ صفٍّ
+        هو. فصارت النافذة تسمّي الموضوع وتقول ما يذهب معه.
+      */}
+      <DangerConfirm
+        open={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={confirmDelete}
+        loading={deleteTopic.isPending}
+        title={t("admin.deleteTopicTitle")}
+        name={pendingDelete?.title ?? ""}
+        kicker={t("admin.topicWord")}
+        facts={[
+          {
+            icon: CircleDot,
+            label: t("pro.statusLabel"),
+            value: t(`status.${pendingDelete?.status}`),
+          },
+          {
+            icon: Layers,
+            label: t("pro.specialization"),
+            value: pendingDelete?.specialization?.name ?? noneText(),
+          },
+          {
+            icon: CalendarDays,
+            label: t("pro.academicYear"),
+            value: pendingDelete?.academicYear?.title ?? noneText(true),
+          },
+          {
+            icon: Users2,
+            label: t("pro.maxStudents"),
+            value: pendingDelete?.maxStudents ?? 0,
+            dir: "ltr",
+          },
+        ]}
+        impacts={[
+          {
+            icon: Inbox,
+            label: t("admin.impactTopicRequests"),
+            value: pendingDelete?._count?.groupRequests ?? 0,
+            heavy: (pendingDelete?._count?.groupRequests ?? 0) > 0,
+          },
+          { icon: FileText, label: t("admin.impactTopicApplications") },
+        ]}
+        warning={t("admin.irreversibleWarning")}
+        confirmLabel={t("admin.yesDelete")}
+      />
 
       <TopicFormDialog
         open={dialogOpen}

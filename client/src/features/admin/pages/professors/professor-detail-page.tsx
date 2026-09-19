@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import type { Professor, ProfessorTopicLite } from "../../../../types/admin";
 import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
+import { DangerConfirm } from "../../../../components/dialog/danger-confirm";
 import {
   useProfessor,
   useDeleteProfessor,
@@ -531,16 +532,87 @@ export function AdminProfessorDetailPage() {
         onConfirm={confirmVerification}
       />
 
-      <ConfirmDialog
+      {/*
+        المانع يُعرض قبل الضغط لا بعده.
+
+        `deleteProfessorService` يرفض حذف أستاذٍ له موضوعٌ واحد فأكثر،
+        ويردّ ٤٠٠ برسالةٍ تقول العدد وتطلب إعادة الإسناد أو الأرشفة. وكان
+        ذلك يُعرف بعد الضغط على «نعم، احذف»؛ وصار يُقرأ في النافذة نفسها،
+        والزرّ معطَّل. والعدد هنا هو `_count.topics` نفسه الذي يفحصه الخادم.
+      */}
+      <DangerConfirm
         open={confirmOpen}
-        tone="danger"
-        title={t("admin.deleteProfessor")}
-        message={t("admin.confirmDeleteProfessorLong", { name: fullName(p) })}
-        confirmLabel={t("admin.yesDelete")}
-        cancelLabel={t("pro.cancel")}
-        loading={deleteProfessor.isPending}
-        onConfirm={confirmDelete}
         onClose={() => setConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        loading={deleteProfessor.isPending}
+        title={t("admin.deleteProfessor")}
+        name={fullName(p)}
+        kicker={t("admin.professorWord")}
+        avatar={
+          <UserAvatar
+            user={p.user}
+            width={52}
+            height={64}
+            radius="rounded-xl"
+          />
+        }
+        facts={[
+          {
+            icon: Hash,
+            label: t("admin.employeeNumber"),
+            value: p.employeeNumber || noneText(),
+            dir: "ltr",
+          },
+          {
+            icon: Mail,
+            label: t("admin.universityEmail"),
+            value: p.universityEmail || noneText(),
+            dir: "ltr",
+          },
+          {
+            icon: Building2,
+            label: t("admin.department"),
+            value: p.department?.name ?? noneText(),
+          },
+          {
+            icon: GraduationCap,
+            label: t("admin.facultyLabel"),
+            value: facultyName ?? noneText(true),
+          },
+          {
+            icon: Award,
+            label: t("admin.gradeLabel"),
+            value: grades.join("\u060c ") || noneText(true),
+          },
+          {
+            icon: isActive ? BadgeCheck : ShieldAlert,
+            label: t("admin.statusLabel"),
+            value: isActive
+              ? t("admin.statusActive")
+              : t("admin.statusSuspended"),
+          },
+        ]}
+        block={
+          totalTopics > 0
+            ? {
+                message: t("admin.blockProfessorHasTopics", {
+                  count: totalTopics,
+                }),
+                hint: t("admin.blockProfessorHasTopicsHint"),
+              }
+            : null
+        }
+        impacts={[
+          {
+            icon: Briefcase,
+            label: t("admin.impactLoginAccount"),
+            detail: p.user?.email || undefined,
+          },
+          { icon: Users, label: t("admin.impactCommitteeSeats") },
+          { icon: FileText, label: t("admin.impactSubmissions") },
+        ]}
+        warning={t("admin.irreversibleWarning")}
+        confirmLabel={t("admin.yesDelete")}
       />
     </div>
   );

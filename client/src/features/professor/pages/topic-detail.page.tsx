@@ -14,6 +14,8 @@ import {
   Users,
   Users2,
   AlertCircle,
+  CircleDot,
+  Layers,
   Subtitles,
   Info,
   Inbox,
@@ -25,6 +27,8 @@ import { useTopic, useDeleteTopic } from "../hooks/Professor-hook";
 import { TopicFormDialog } from "../components/topic-form-dialog";
 import { StatusBadge } from "../components/status-badge";
 import { UserAvatar } from "../../../components/ui/user-avatar";
+import { DangerConfirm } from "../../../components/dialog/danger-confirm";
+import { noneText } from "../../../lib/none-text";
 import type {
   Topic,
   StudentRef,
@@ -78,6 +82,7 @@ export function ProfessorTopicDetailPage() {
   const { data: topic, isLoading } = useTopic(id ?? null);
   const deleteTopic = useDeleteTopic();
   const [editOpen, setEditOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   function fmtDate(iso?: string) {
     if (!iso) return "—";
@@ -91,9 +96,14 @@ export function ProfessorTopicDetailPage() {
   }
 
   function handleDelete() {
+    if (topic) setConfirmOpen(true);
+  }
+
+  function confirmDelete() {
     if (!topic) return;
-    if (confirm(t("pro.confirmDeleteTopic")))
-      deleteTopic.mutate(topic.id, { onSuccess: () => navigate("../topics") });
+    deleteTopic.mutate(topic.id, {
+      onSuccess: () => navigate("../topics"),
+    });
   }
 
   if (isLoading)
@@ -446,6 +456,65 @@ export function ProfessorTopicDetailPage() {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         topic={topic as Topic}
+      />
+
+      {/*
+        هنا يُعرف المانع، بخلاف شاشة القائمة: صفحة التفصيل تحمل
+        `projectGroup`. والخادم يرفض حذف موضوعٍ تشكّلت له مجموعة ويقول
+        «أرشفه بدلاً من ذلك» — فيُقال ذلك قبل الضغط لا بعده.
+      */}
+      <DangerConfirm
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        loading={deleteTopic.isPending}
+        title={t("admin.deleteTopicTitle")}
+        name={topic.title}
+        kicker={t("admin.topicWord")}
+        facts={[
+          {
+            icon: CircleDot,
+            label: t("pro.statusLabel"),
+            value: t(`status.${topic.status}`),
+          },
+          {
+            icon: Layers,
+            label: t("pro.specialization"),
+            value: topic.specialization?.name ?? noneText(),
+          },
+          {
+            icon: CalendarDays,
+            label: t("pro.academicYear"),
+            value: topic.academicYear?.title ?? noneText(true),
+          },
+          {
+            icon: Users2,
+            label: t("pro.maxStudents"),
+            value: topic.maxStudents,
+            dir: "ltr",
+          },
+        ]}
+        block={
+          topic.projectGroup
+            ? {
+                message: t("admin.blockTopicHasGroup"),
+                hint: t("admin.blockTopicHasGroupHint"),
+              }
+            : null
+        }
+        impacts={[
+          {
+            icon: Inbox,
+            label: t("admin.impactTopicRequests"),
+            value: topic._count?.groupRequests ?? topic.groupRequests?.length ?? 0,
+            heavy:
+              (topic._count?.groupRequests ?? topic.groupRequests?.length ?? 0) >
+              0,
+          },
+          { icon: FileText, label: t("admin.impactTopicApplications") },
+        ]}
+        warning={t("admin.irreversibleWarning")}
+        confirmLabel={t("admin.yesDelete")}
       />
     </div>
   );
