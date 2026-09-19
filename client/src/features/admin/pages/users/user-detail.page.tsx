@@ -56,6 +56,8 @@ import {
   type ErrorInfo,
 } from "../../../../components/dialog/error-dialog";
 import { isNone, noneText } from "../../../../lib/none-text";
+import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { DangerConfirm } from "../../../../components/dialog/danger-confirm";
 
 // Keys, not copy: built once at import time.
 const ROLE_LABEL_KEY: Record<string, string> = {
@@ -1014,30 +1016,86 @@ export function AdminUserDetailPage() {
         </div>
       </Modal>
 
-      <Modal
+      {/*
+        هذه الشاشة تحذف الحسابات الإدارية وحدها.
+
+        `deleteUserService` يردّ ٤٠٠ إن كان الحساب طالباً أو أستاذاً، لأنّ
+        لهما بياناتٍ مرتبطة لا يُنظّفها حذفُ الحساب وحده — ويطلب حذفهما من
+        شاشتيهما. وهذه الصفحة تعرف الدور سلفاً، فتقول ذلك قبل الضغط بدل
+        أن تُترك الإدارية تضغط ثمّ تقرأ خطأً أحمر.
+      */}
+      <DangerConfirm
         open={modal === "delete"}
         onClose={closeModal}
+        onConfirm={onDelete}
+        loading={deleteUser.isPending}
         title={t("admin.deleteUser")}
-        icon={Trash2}
-      >
-        <p className="mb-5 text-sm text-clay">
-          {t("admin.confirmDeleteUserLong", { name: fullName(user) })}
-        </p>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={closeModal}
-            className="rounded-xl px-4 py-2 text-sm font-semibold text-clay transition hover:bg-forest/5"
-          >{t("pro.cancel")}</button>
-          <button
-            onClick={onDelete}
-            disabled={deleteUser.isPending}
-            className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-60"
-          >
-            <Trash2 size={16} />
-            {deleteUser.isPending ? t("admin.deletingEllipsis") : t("admin.deletePermanently")}
-          </button>
-        </div>
-      </Modal>
+        name={fullName(user)}
+        kicker={t(ROLE_LABEL_KEY[user.role]) ?? user.role}
+        avatar={
+          <UserAvatar user={user} width={52} height={64} radius="rounded-xl" />
+        }
+        facts={[
+          {
+            icon: Mail,
+            label: t("admin.email"),
+            value: user.email || noneText(),
+            dir: "ltr",
+          },
+          {
+            icon: AtSign,
+            label: t("admin.username"),
+            value: user.username || noneText(),
+            dir: "ltr",
+          },
+          {
+            icon: Activity,
+            label: t("admin.statusLabel"),
+            value: isActive
+              ? t("admin.statusActive")
+              : t("admin.statusSuspended"),
+          },
+          {
+            icon: user.isVerified ? BadgeCheck : ShieldQuestion,
+            label: t("admin.verificationColumn"),
+            value: user.isVerified
+              ? t("admin.verified")
+              : t("admin.unverified"),
+          },
+          {
+            icon: CalendarDays,
+            label: t("admin.joinedOn"),
+            value: arDateTime(user.createdAt ?? null),
+          },
+          {
+            icon: Clock,
+            label: t("admin.lastSignIn"),
+            value: arDateTime(user.lastLoginAt ?? null),
+          },
+        ]}
+        block={
+          isStudent
+            ? {
+                message: t("admin.blockUserIsStudent"),
+                hint: t("admin.blockUserIsStudentHint"),
+              }
+            : isProfessor
+              ? {
+                  message: t("admin.blockUserIsProfessor"),
+                  hint: t("admin.blockUserIsProfessorHint"),
+                }
+              : null
+        }
+        impacts={[
+          {
+            icon: Shield,
+            label: t("admin.impactLoginAccount"),
+            detail: user.email || undefined,
+          },
+          { icon: IdCardIcon, label: t("admin.impactSubmissions") },
+        ]}
+        warning={t("admin.irreversibleWarning")}
+      />
 
       {/* feedback dialogs */}
       <ErrorDialog open={!!err} error={err} onClose={() => setErr(null)} />

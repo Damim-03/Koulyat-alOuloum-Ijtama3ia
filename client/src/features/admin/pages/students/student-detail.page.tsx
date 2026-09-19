@@ -31,6 +31,10 @@ import {
   useSetUserVerification,
 } from "../../hooks/admin-hook";
 import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
+import {
+  DangerConfirm,
+  type DangerImpact,
+} from "../../../../components/dialog/danger-confirm";
 import { StudentEditDialog } from "../../components/dialog/student/student-edit-dialog.form";
 import { HeaderTrail } from "../../components/ui/hierarchy-header";
 import { useTranslation } from "react-i18next";
@@ -208,6 +212,56 @@ export function AdminStudentDetailPage() {
       label: t("admin.joinedOn"),
       value: fmtDate(u.createdAt),
     },
+  ];
+
+  /**
+   * ما يسقط مع الطالب.
+   *
+   * ليست القائمة تخويفاً: `deleteStudentService` يحذف في معاملةٍ واحدة
+   * الملفّات المرفوعة وطلبات الالتحاق الفردية وعضويّات طلبات الفرق
+   * والطلبات التي يقودها وعضويّات المشاريع، ثمّ الطالبَ وحسابَه. فالمعروض
+   * هنا هو ما يفعله الخادم، بالأعداد التي في هذه الصفحة نفسها.
+   */
+  const deleteImpacts: DangerImpact[] = [
+    {
+      icon: User,
+      label: t("admin.impactLoginAccount"),
+      detail: u.email || undefined,
+    },
+    ...(ledRequests.length
+      ? [
+          {
+            icon: Users,
+            label: t("admin.impactLedRequests"),
+            value: ledRequests.length,
+            detail:
+              ledRequests
+                .map((r: any) => r.topic?.title)
+                .filter(Boolean)
+                .join("\u060c ") || undefined,
+          },
+        ]
+      : []),
+    ...(memberRequests.length
+      ? [
+          {
+            icon: MessagesSquare,
+            label: t("admin.impactMemberRequests"),
+            value: memberRequests.length,
+          },
+        ]
+      : []),
+    ...(hasProject
+      ? [
+          {
+            icon: FolderKanban,
+            label: t("admin.impactProjectMembership"),
+            detail: projectMembers[0]?.group?.topic?.title,
+            heavy: true,
+          },
+        ]
+      : []),
+    { icon: FileText, label: t("admin.impactSubmissions") },
   ];
 
   const hasActivity =
@@ -590,16 +644,57 @@ export function AdminStudentDetailPage() {
         onConfirm={confirmVerification}
       />
 
-      <ConfirmDialog
+      <DangerConfirm
         open={confirmOpen}
-        tone="danger"
-        title={t("admin.deleteStudent")}
-        message={t("admin.confirmDeleteStudentLong", { name })}
-        confirmLabel={t("admin.yesDelete")}
-        cancelLabel={t("pro.cancel")}
-        loading={deleteStudent.isPending}
-        onConfirm={confirmDelete}
         onClose={() => setConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        loading={deleteStudent.isPending}
+        title={t("admin.deleteStudent")}
+        name={name}
+        kicker={t("admin.studentWord")}
+        avatar={
+          <UserAvatar user={u} width={52} height={64} radius="rounded-xl" />
+        }
+        facts={[
+          {
+            icon: IdCard,
+            label: t("pro.regNumber"),
+            value: student.registrationNumber || noneText(),
+            dir: "ltr",
+          },
+          {
+            icon: Mail,
+            label: t("admin.email"),
+            value: u.email || noneText(),
+            dir: "ltr",
+          },
+          {
+            icon: Layers,
+            label: t("admin.specializationLabelAlt"),
+            value: spec?.name ?? noneText(),
+          },
+          {
+            icon: Building2,
+            label: t("admin.department"),
+            value: dept?.name ?? noneText(),
+          },
+          {
+            icon: CalendarDays,
+            label: t("pro.academicYear"),
+            value: student.academicYear?.title ?? noneText(true),
+          },
+          {
+            icon: u.status === "active" ? BadgeCheck : ShieldAlert,
+            label: t("admin.statusLabel"),
+            value:
+              u.status === "active"
+                ? t("admin.statusActive")
+                : t("admin.statusSuspended"),
+          },
+        ]}
+        impacts={deleteImpacts}
+        warning={t("admin.irreversibleWarning")}
+        confirmLabel={t("admin.yesDelete")}
       />
     </div>
   );

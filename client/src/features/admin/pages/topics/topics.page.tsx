@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { filterByAction } from "../../lib/topic-actions";
+import { blockReason, filterByAction } from "../../lib/topic-actions";
 import { useTranslation } from "react-i18next";
 import { useLangNavigate } from "../../../../hooks/useLangNavigate";
 import {
@@ -14,6 +14,8 @@ import {
   Pencil,
   Trash2,
   Undo2,
+  ListChecks,
+  Ban,
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
@@ -39,6 +41,7 @@ import { EditAssignedTopicDialog } from "../../components/dialog/projects/edit-a
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
 import { Select } from "../../../../components/ui/select";
+import { DangerConfirm } from "../../../../components/dialog/danger-confirm";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -826,18 +829,88 @@ export function AdminTopicsPage() {
         </p>
       </ConfirmDialog>
 
-      {/* Bulk delete confirm */}
-      <ConfirmDialog
+      {/*
+        الحذف بالجملة كان عدداً مجرَّداً: «سيُحذف ٧ مواضيع». والعدد لا يُراجَع
+        — الإدارية حدّدت صفوفاً في جدولٍ مفلتَر، وقد يكون بينها ما لم تقصده.
+        فصارت النافذة تسمّي كل موضوعٍ سيُحذف، وتفصل عنه ما استثناه الخادم
+        وسببَه، فيُرى الفرق بين ما حُدِّد وما سيقع قبل وقوعه.
+      */}
+      <DangerConfirm
         open={confirmDeleteOpen}
-        tone="danger"
+        onClose={() => setConfirmDeleteOpen(false)}
+        onConfirm={bulkDelete}
+        loading={bulkBusy}
         title={t("admin.deleteTopicsTitle")}
-        message={t("admin.confirmDeleteTopicsLong", { count: deletable.length })}
+        name={t("admin.topicsSelectedForDelete", { count: deletable.length })}
+        kicker={t("admin.bulkActionWord")}
+        facts={[
+          {
+            icon: ListChecks,
+            label: t("admin.selectedCount"),
+            value: selectedTopics.length,
+            dir: "ltr",
+          },
+          {
+            icon: Trash2,
+            label: t("admin.willBeDeleted"),
+            value: deletable.length,
+            dir: "ltr",
+          },
+          {
+            icon: Ban,
+            label: t("admin.excludedByServer"),
+            value: selectedTopics.length - deletable.length,
+            dir: "ltr",
+          },
+        ]}
+        block={
+          deletable.length === 0
+            ? {
+                message: t("admin.blockNothingDeletable"),
+                hint: t("admin.blockNothingDeletableHint"),
+              }
+            : null
+        }
+        warning={t("admin.confirmDeleteTopicsLong", {
+          count: deletable.length,
+        })}
         confirmLabel={t("admin.confirmDelete")}
         cancelLabel={t("admin.cancel")}
-        loading={bulkBusy}
-        onConfirm={bulkDelete}
-        onClose={() => setConfirmDeleteOpen(false)}
-      />
+      >
+        {deletable.length > 0 && (
+          <ul className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-forest/10 bg-cream-2/60 p-2">
+            {deletable.map((tp: any) => (
+              <li
+                key={tp.id}
+                className="flex items-center gap-2 px-1 py-1 text-[12px] text-clay"
+              >
+                <Trash2 size={12} className="shrink-0 text-brick/70" />
+                <span className="min-w-0 truncate">{tp.title}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {selectedTopics.length > deletable.length && (
+          <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-xl border border-brick/20 bg-brick/8 p-2">
+            {selectedTopics
+              .filter((tp: any) => !deletable.some((d: any) => d.id === tp.id))
+              .map((tp: any) => (
+                <li key={tp.id} className="px-1 py-1 text-[12px] text-brick">
+                  <span className="flex items-center gap-2">
+                    <Ban size={12} className="shrink-0" />
+                    <span className="min-w-0 truncate">{tp.title}</span>
+                  </span>
+                  {blockReason(tp, "delete", t) && (
+                    <span className="mt-0.5 block pr-5 text-[11px] text-clay">
+                      {blockReason(tp, "delete", t)}
+                    </span>
+                  )}
+                </li>
+              ))}
+          </ul>
+        )}
+      </DangerConfirm>
     </div>
   );
 }
