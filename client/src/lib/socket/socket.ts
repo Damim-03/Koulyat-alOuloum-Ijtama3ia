@@ -33,12 +33,18 @@ export type ClientToServerEvents = Record<string, never>;
 export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 export function createSocket(): AppSocket {
-  return io(env.VITE_SOCKET_URL, {
+  const options = {
     autoConnect: false, // we connect manually once authenticated
     withCredentials: true,
     transports: ["websocket"],
     // Read at connect time (not at module load) so a reconnect after a token
     // refresh presents the current token rather than the one from page load.
-    auth: (cb) => cb({ token: useAuthStore.getState().accessToken ?? "" }),
-  });
+    auth: (cb: (data: { token: string }) => void) =>
+      cb({ token: useAuthStore.getState().accessToken ?? "" }),
+  };
+
+  // عنوانٌ فارغ = نفس أصل الصفحة، فيعمل السوكيت أينما فُتح التطبيق: محلياً،
+  // أو عبر نفق، أو من هاتفٍ على الشبكة. والعنوان المطلق يبقى ممكناً لمن
+  // ينشر الـAPI على نطاقٍ آخر.
+  return env.VITE_SOCKET_URL ? io(env.VITE_SOCKET_URL, options) : io(options);
 }

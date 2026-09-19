@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
@@ -49,6 +49,7 @@ import {
 import { ListInput } from "../../../components/ui/list-input";
 import { StudentPicker, type PickedStudent } from "./student-picker";
 import { UserAvatar } from "../../../components/ui/user-avatar";
+import { Select } from "../../../components/ui/select";
 
 /**
  * Proposing a topic, in the same room the administration proposes one in.
@@ -469,15 +470,26 @@ export function TopicFormDialog({
                   label={t("pro.academicYear")}
                   error={errors.academicYearId?.message}
                 >
-                  <select {...register("academicYearId")} className={inputCls}>
-                    <option value="">{t("pro.selectYear")}</option>
-                    {academicYears?.map((y) => (
-                      <option key={y.id} value={y.id}>
-                        {y.title}
-                        {y.isActive ? " ●" : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={control}
+                    name="academicYearId"
+                    render={({ field }) => (
+                      <Select
+                        ref={field.ref}
+                        value={(field.value as string) ?? ""}
+                        onChange={(v) => {
+                          field.onChange(v);
+                        }}
+                        options={[
+                          { value: "", label: t("pro.selectYear") },
+                          ...(academicYears ?? []).map((y) => ({
+                            value: y.id,
+                            label: `${y.title}${y.isActive ? " ●" : ""}`,
+                          })),
+                        ]}
+                      />
+                    )}
+                  />
                 </Field>
 
                 <Field
@@ -497,75 +509,95 @@ export function TopicFormDialog({
 
               <div className="space-y-3 border-t border-forest/10 pt-4">
                 <Field label={t("pro.faculty")}>
-                  <select
-                    {...register("facultyId", {
-                      onChange: () => {
+                  <Controller
+                    control={control}
+                    name="facultyId"
+                    render={({ field }) => (
+                      <Select
+                        ref={field.ref}
+                        value={(field.value as string) ?? ""}
+                        onChange={(v) => {
+                          field.onChange(v);
+                        // ما كان مُرفقاً بـ`register` يبقى كما هو
                         setValue("departmentId", "");
-                        setValue("filiereId", "");
-                        setValue("specializationId", "");
-                      },
-                    })}
-                    className={inputCls}
-                  >
-                    <option value="">{t("pro.allFaculties")}</option>
-                    {faculties?.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
+                                                setValue("filiereId", "");
+                                                setValue("specializationId", "");
+                        }}
+                        options={[
+                          { value: "", label: t("pro.allFaculties") },
+                          ...(faculties ?? []).map((f) => ({ value: f.id, label: f.name })),
+                        ]}
+                      />
+                    )}
+                  />
                 </Field>
 
                 <Field label={t("pro.department")}>
-                  <select
-                    {...register("departmentId", {
-                      onChange: () => {
+                  <Controller
+                    control={control}
+                    name="departmentId"
+                    render={({ field }) => (
+                      <Select
+                        ref={field.ref}
+                        value={(field.value as string) ?? ""}
+                        onChange={(v) => {
+                          field.onChange(v);
+                        // ما كان مُرفقاً بـ`register` يبقى كما هو
                         setValue("filiereId", "");
-                        setValue("specializationId", "");
-                      },
-                    })}
-                    className={inputCls}
-                  >
-                    <option value="">{t("pro.allDepartments")}</option>
-                    {deptOptions.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
+                                                setValue("specializationId", "");
+                        }}
+                        options={[
+                          { value: "", label: t("pro.allDepartments") },
+                          ...deptOptions.map((d) => ({ value: d.id, label: d.name })),
+                        ]}
+                      />
+                    )}
+                  />
                 </Field>
 
                 <Field label={t("pro.filiere")}>
-                  <select
-                    {...register("filiereId", {
-                      onChange: () => setValue("specializationId", ""),
-                    })}
-                    className={inputCls}
-                  >
-                    <option value="">{t("pro.allFilieres")}</option>
-                    {filiereOptions.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={control}
+                    name="filiereId"
+                    render={({ field }) => (
+                      <Select
+                        ref={field.ref}
+                        value={(field.value as string) ?? ""}
+                        onChange={(v) => {
+                          field.onChange(v);
+                          // ما كان مُرفقاً بـ`register` يبقى كما هو
+                          setValue("specializationId", "");
+                        }}
+                        options={[
+                          { value: "", label: t("pro.allFilieres") },
+                          ...filiereOptions.map((f) => ({ value: f.id, label: f.name })),
+                        ]}
+                      />
+                    )}
+                  />
                 </Field>
 
                 <Field
                   label={t("pro.specialization")}
                   error={errors.specializationId?.message}
                 >
-                  <select
-                    {...register("specializationId")}
-                    className={inputCls}
-                  >
-                    <option value="">{t("pro.selectSpecialization")}</option>
-                    {specOptions.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={control}
+                    name="specializationId"
+                    render={({ field }) => (
+                      <Select
+                        ref={field.ref}
+                        value={(field.value as string) ?? ""}
+                        onChange={(v) => {
+                          field.onChange(v);
+                        }}
+                        options={[
+                          { value: "", label: t("pro.selectSpecialization") },
+                          ...specOptions.map((s) => ({ value: s.id, label: s.name })),
+                        ]}
+                      />
+                    )}
+                  />
                 </Field>
               </div>
 

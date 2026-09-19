@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { getEnv } from "../utils/get-env";
+import { isOriginAllowed } from "./origins";
 
 /**
  * ============================================================
@@ -187,3 +188,16 @@ const appConfig = () => ({
 });
 
 export const config = appConfig();
+
+/**
+ * هل يُقبل هذا الأصل؟
+ *
+ * الحدّ الوحيد للسماح في الـHTTP وفي السوكيت معاً — فلا يفترقان. وقاعدته
+ * في `origins.ts`، دالّةً صرفةً مُختبَرة: القائمة الصريحة في كل بيئة،
+ * وأنفاق التطوير في التطوير وحده.
+ */
+export const isAllowedOrigin = (origin: string): boolean =>
+  isOriginAllowed(origin, {
+    allowList: config.CORS_ORIGINS,
+    isProduction: IS_PRODUCTION,
+  });

@@ -25,6 +25,8 @@ import type { Filiere } from "../../../../types/admin";
 import { UserFormDialog } from "../../components/dialog/user/user-form-dialog.form";
 import { SearchField } from "../../components/ui/search-field";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { None } from "../../../../lib/none";
+import { Select as UiSelect } from "../../../../components/ui/select";
 
 const PAGE_SIZE = 10;
 
@@ -379,9 +381,9 @@ export function AdminProfessorsPage() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="overflow-x-auto">
+        <div className="max-h-[70vh] overflow-auto">
           <table className="w-full min-w-240 text-start">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-forest text-cream">
                 <th className="w-20 px-4 py-3 text-xs font-medium">
                   {t("admin.avatarColumn")}
@@ -428,16 +430,16 @@ export function AdminProfessorsPage() {
                 <tr
                   key={p.id}
                   onClick={() => goToProfessor(p.id)}
-                  className="cursor-pointer align-top transition-colors hover:bg-forest/4"
+                  className="cursor-pointer align-top transition-colors odd:bg-forest/[0.03] hover:bg-forest/7"
                 >
                   <td className="px-4 py-3.5">
                     <UserAvatar user={p.user} size={36} />
                   </td>
                   <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                    {p.user?.firstName ?? "\u2014"}
+                    {p.user?.firstName ?? <None />}
                   </td>
                   <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                    {p.user?.lastName ?? "\u2014"}
+                    {p.user?.lastName ?? <None />}
                   </td>
                   <td className="px-4 py-3.5 text-sm text-clay" dir="ltr">
                     {p.employeeNumber}
@@ -446,10 +448,10 @@ export function AdminProfessorsPage() {
                     {p.universityEmail}
                   </td>
                   <td className="px-4 py-3.5 text-sm text-clay">
-                    {p.department?.faculty?.name ?? "\u2014"}
+                    {p.department?.faculty?.name ?? <None fem />}
                   </td>
                   <td className="px-4 py-3.5 text-sm text-clay">
-                    {p.department?.name ?? "\u2014"}
+                    {p.department?.name ?? <None />}
                   </td>
                   <td className="px-4 py-3.5 text-sm text-clay">
                     <FiliereCell filieres={p.department?.filieres} />
@@ -518,7 +520,7 @@ export function AdminProfessorsPage() {
 function FiliereCell({ filieres }: { filieres?: Filiere[] }) {
   const { t } = useTranslation();
   const list = filieres ?? [];
-  if (list.length === 0) return <span>{"\u2014"}</span>;
+  if (list.length === 0) return <span>{<None fem />}</span>;
   const shown = list.slice(0, 2).map((f) => f.name);
   const extra = list.length - shown.length;
   return (
@@ -532,7 +534,7 @@ function FiliereCell({ filieres }: { filieres?: Filiere[] }) {
 /* ── string[] → small pills ───────────────────────────────── */
 function TagPills({ items, tint }: { items?: string[]; tint: string }) {
   const list = items ?? [];
-  if (list.length === 0) return <span className="text-clay">{"\u2014"}</span>;
+  if (list.length === 0) return <span className="text-clay">{<None fem />}</span>;
   return (
     <div className="flex max-w-40 flex-wrap gap-1">
       {list.map((tg) => (
@@ -566,18 +568,15 @@ function Select({
       <span className="mb-1 block text-[11px] font-medium text-clay">
         {label}
       </span>
-      <select
+      <UiSelect
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o.v} value={o.v}>
-            {o.l}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        aria-label={label}
+        options={[
+          { value: "", label: placeholder },
+          ...options.map((o) => ({ value: o.v, label: o.l })),
+        ]}
+      />
     </label>
   );
 }

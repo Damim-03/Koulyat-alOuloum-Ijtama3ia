@@ -102,7 +102,7 @@ export function AppRouter() {
           path="professor"
           element={
             <ProtectedRoute>
-              <RoleRoute roles={[Role.PROFESSOR, Role.OWNER]}>
+              <RoleRoute roles={[Role.PROFESSOR]}>
                 <ProfessorLayout />
               </RoleRoute>
             </ProtectedRoute>
@@ -143,7 +143,7 @@ export function AppRouter() {
           path="admin"
           element={
             <ProtectedRoute>
-              <RoleRoute roles={[Role.ADMIN, Role.OWNER]}>
+              <RoleRoute roles={[Role.ADMIN]}>
                 <AdminLayout />
               </RoleRoute>
             </ProtectedRoute>

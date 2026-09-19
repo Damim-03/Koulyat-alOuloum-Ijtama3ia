@@ -79,7 +79,7 @@ async function main() {
     const out = {
       password: TEST_PASSWORD,
       admin: { email: f.admin.email },
-      owner: { email: f.owner.email },
+      admin2: { email: f.admin2.email },
       professor: { universityEmail: f.professor.universityEmail },
       student: { registrationNumber: f.students[0]!.reg },
       studentNoProject: { registrationNumber: f.students[1]!.reg },

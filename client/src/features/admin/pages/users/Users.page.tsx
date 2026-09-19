@@ -23,9 +23,10 @@ import {
 import { SuccessDialog } from "../../../../components/dialog/success-dialog";
 import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { None } from "../../../../lib/none";
+import { Select as UiSelect } from "../../../../components/ui/select";
 
 const ROLE_STYLES: Record<string, string> = {
-  owner: "bg-gold/20 text-gold",
   admin: "bg-forest/10 text-forest",
   professor: "bg-sage/20 text-sage",
   student: "bg-soft-sage/30 text-forest",
@@ -244,7 +245,6 @@ export function AdminUsersPage() {
               onChange={setRole}
               options={[
                 { v: "", l: t("admin.allRoles") },
-                { v: "owner", l: t("role.owner") },
                 { v: "admin", l: t("role.admin") },
                 { v: "professor", l: t("role.professor") },
                 { v: "student", l: t("role.student") },
@@ -360,9 +360,9 @@ export function AdminUsersPage() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="overflow-x-auto">
+        <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-start">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-forest text-cream">
                 <th className="w-20 px-5 py-3 text-xs font-medium">
                   {t("admin.avatarColumn")}
@@ -418,22 +418,22 @@ export function AdminUsersPage() {
                 <tr
                   key={u.id}
                   onClick={() => goToUser(u.id)}
-                  className="cursor-pointer transition-colors hover:bg-forest/4"
+                  className="cursor-pointer transition-colors odd:bg-forest/[0.03] hover:bg-forest/7"
                 >
                   <td className="px-5 py-3.5">
                     <UserAvatar user={u} size={36} />
                   </td>
                   <td className="px-5 py-3.5 text-sm font-medium text-forest">
-                    {u.firstName ?? "\u2014"}
+                    {u.firstName ?? <None />}
                   </td>
                   <td className="px-5 py-3.5 text-sm font-medium text-forest">
-                    {u.lastName ?? "\u2014"}
+                    {u.lastName ?? <None />}
                   </td>
                   <td className="px-5 py-3.5 text-sm text-clay" dir="ltr">
-                    {u.username ? `@${u.username}` : "\u2014"}
+                    {u.username ? `@${u.username}` : <None />}
                   </td>
                   <td className="px-5 py-3.5 text-sm text-clay" dir="ltr">
-                    {u.email ?? "\u2014"}
+                    {u.email ?? <None />}
                   </td>
                   <td className="px-5 py-3.5">
                     <span
@@ -537,17 +537,12 @@ function Select({
       <span className="mb-1 block text-[11px] font-medium text-clay">
         {label}
       </span>
-      <select
+      <UiSelect
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
-      >
-        {options.map((o) => (
-          <option key={o.v} value={o.v}>
-            {o.l}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        aria-label={label}
+        options={options.map((o) => ({ value: o.v, label: o.l }))}
+      />
     </label>
   );
 }

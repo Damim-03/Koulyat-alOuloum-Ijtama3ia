@@ -5,6 +5,8 @@ import { useProject, useProfessors, useStudents, useChangeSupervisor, useAssignS
 import { FormDialog } from "../../form/form-dialog";
 import i18n from "../../../../../i18n/i18n";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
+import { None } from "../../../../../lib/none";
+import { Select } from "../../../../../components/ui/select";
 
 interface Props {
   projectId: string | null;
@@ -59,7 +61,7 @@ export function ProjectDetailDialog({ projectId, open, onClose }: Props) {
       {isLoading ? (
         <div className="py-10 text-center text-sm text-clay">{"\u2026"}</div>
       ) : !project ? (
-        <div className="py-10 text-center text-sm text-clay">{"\u2014"}</div>
+        <div className="py-10 text-center text-sm text-clay">{<None />}</div>
       ) : (
         <div className="space-y-5">
           {/* Members */}
@@ -130,20 +132,16 @@ export function ProjectDetailDialog({ projectId, open, onClose }: Props) {
               {t("admin.changeSupervisor")}
             </h4>
             <div className="flex gap-2">
-              <select
+              <Select
                 value={newProf}
-                onChange={(e) => setNewProf(e.target.value)}
-                className="flex-1 rounded-lg border border-forest/15 bg-cream-2 px-3 py-2 text-xs text-forest outline-none focus:border-gold"
-              >
-                <option value="">{t("admin.selectProfessor")}</option>
-                {professors.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {[p.user?.firstName, p.user?.lastName]
-                      .filter(Boolean)
-                      .join(" ") || p.universityEmail}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setNewProf(v)}
+                options={[
+                  { value: "", label: t("admin.selectProfessor") },
+                  ...professors.map((p) => ({ value: p.id, label: [p.user?.firstName, p.user?.lastName]
+                              .filter(Boolean)
+                              .join(" ") || p.universityEmail })),
+                ]}
+              />
               <button
                 onClick={doChangeSupervisor}
                 disabled={!newProf || changeSupervisor.isPending}
@@ -161,20 +159,16 @@ export function ProjectDetailDialog({ projectId, open, onClose }: Props) {
               {t("admin.assignStudent")}
             </h4>
             <div className="flex gap-2">
-              <select
+              <Select
                 value={newStudent}
-                onChange={(e) => setNewStudent(e.target.value)}
-                className="flex-1 rounded-lg border border-forest/15 bg-cream-2 px-3 py-2 text-xs text-forest outline-none focus:border-gold"
-              >
-                <option value="">{t("admin.selectStudent")}</option>
-                {students.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {[s.user?.firstName, s.user?.lastName]
-                      .filter(Boolean)
-                      .join(" ") || s.registrationNumber}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setNewStudent(v)}
+                options={[
+                  { value: "", label: t("admin.selectStudent") },
+                  ...students.map((s) => ({ value: s.id, label: [s.user?.firstName, s.user?.lastName]
+                              .filter(Boolean)
+                              .join(" ") || s.registrationNumber })),
+                ]}
+              />
               <button
                 onClick={doAssignStudent}
                 disabled={!newStudent || assignStudent.isPending}

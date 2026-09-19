@@ -18,14 +18,6 @@ export const roleGuard =
     }
 
     //
-    // OWNER bypass
-    //
-
-    if (user.role === "owner") {
-      return next();
-    }
-
-    //
     // Role permissions
     //
 
@@ -60,10 +52,18 @@ export const roleGuard =
   };
 
 //
-// OWNER ONLY
+// ADMIN ONLY
 //
 
-export const ownerOnly =
+/**
+ * كان هنا حارسان: `ownerOnly` لثلاثة مسارات حذف، و`adminOrOwner` لما دونها.
+ * ويوم أُلغي دور `owner` صارا شيئاً واحداً — فبقاؤهما اسمين لشرطٍ واحد
+ * يُوهم بمستويين لا وجود لهما.
+ *
+ * والحذف الذي كان محجوزاً للمالك انتقل إلى المدير بقرارٍ صريح، لا بإهمال:
+ * لولا ذلك لَما استطاع أحدٌ حذف حساب.
+ */
+export const adminOnly =
   () => (req: Request, res: Response, next: NextFunction) => {
     const user = (req as Request & { user?: JwtUser }).user;
 
@@ -73,32 +73,9 @@ export const ownerOnly =
       });
     }
 
-    if (user.role !== "owner") {
+    if (user.role !== "admin") {
       return res.status(403).json({
-        message: "Forbidden: only OWNER can access this resource",
-      });
-    }
-
-    return next();
-  };
-
-//
-// ADMIN OR OWNER
-//
-
-export const adminOrOwner =
-  () => (req: Request, res: Response, next: NextFunction) => {
-    const user = (req as Request & { user?: JwtUser }).user;
-
-    if (!user) {
-      return res.status(401).json({
-        message: "Unauthorized",
-      });
-    }
-
-    if (user.role !== "owner" && user.role !== "admin") {
-      return res.status(403).json({
-        message: "Forbidden: only OWNER or ADMIN can access this resource",
+        message: "Forbidden: only an administrator can access this resource",
       });
     }
 
@@ -128,8 +105,7 @@ export const requireRole =
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // OWNER retains the system-wide bypass it has elsewhere in this file.
-    if (user.role === "owner" || allowed.includes(user.role as RoleType)) {
+    if (allowed.includes(user.role as RoleType)) {
       return next();
     }
 

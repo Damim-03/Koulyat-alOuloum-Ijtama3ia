@@ -28,6 +28,8 @@ import {
   useSetGroupRequestLeader,
 } from "../../hooks/admin-hook";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { noneText } from "../../../../lib/none-text";
+import { None } from "../../../../lib/none";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -91,6 +93,22 @@ export function AdminGroupRequestDetailPage() {
   const prof = topic.professor?.user;
   const members = (req.members ?? []) as any[];
   const status = req.status as string;
+
+  /*
+   * ما يجوز يأتي من الخادم، لا من حالة الطلب.
+   *
+   * كانت هذه الصفحة تُقرّر كالقائمة تماماً — `status === "pending" || "accepted"`
+   * — فتعرض «تراجَع وارفض» على كل طلبٍ مقبول. وقبولُ الطلب يُنشئ المشروع،
+   * فالرفض بعده مرفوضٌ دائماً: زرٌّ لإجراءٍ مستحيل، ورسالةُ خطأٍ مكان الفعل.
+   *
+   * والاحتياط للخادم الأقدم الذي لا يُرسل الجدول: أظهِر الزرّين ودَع الحكم
+   * له — أسوأ ما يقع عندئذٍ رسالة رفض، لا زرٌّ مفقود.
+   */
+  const acts = (req as any).actions;
+  const canAccept = acts ? acts.canAccept : status !== "accepted";
+  const canReject = acts ? acts.canReject : status !== "rejected";
+  const whyNoAccept: string | undefined = acts?.blockedReasons?.accept;
+  const whyNoReject: string | undefined = acts?.blockedReasons?.reject;
   const leaderId = req.leaderStudentId ?? req.leader?.id;
   const busy =
     accept.isPending ||
@@ -172,7 +190,7 @@ export function AdminGroupRequestDetailPage() {
                   )}
                 </div>
                 <h1 className="font-serif text-xl font-bold text-forest sm:text-2xl">
-                  {topic.title ?? "\u2014"}
+                  {topic.title ?? <None />}
                 </h1>
               </div>
             </div>
@@ -218,13 +236,13 @@ export function AdminGroupRequestDetailPage() {
             />
             <MiniStat
               icon={UserRound}
-              value={topic.maxStudents ?? "\u2014"}
+              value={topic.maxStudents ?? noneText(true)}
               label={t("admin.maxCapacity")}
               tint="bg-gold/15 text-gold"
             />
             <MiniStat
               icon={Hash}
-              value={req.priority ?? "\u2014"}
+              value={req.priority ?? noneText(true)}
               label={t("pro.priority")}
               tint="bg-forest/8 text-forest"
             />
@@ -276,28 +294,41 @@ export function AdminGroupRequestDetailPage() {
         ) : (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-3">
-              {(status === "pending" || status === "rejected") && (
-                <button
-                  onClick={doAccept}
-                  disabled={accept.isPending}
-                  className="flex flex-2 min-w-60 items-center justify-center gap-2 rounded-xl bg-forest py-3.5 font-bold text-cream shadow-md transition hover:bg-forest-deep active:scale-[.98] disabled:opacity-60"
-                >
-                  <Check size={18} />
-                  {status === "rejected"
-                    ? t("admin.approveAndReconsider")
-                    : t("admin.acceptAndFormTeam")}
-                </button>
-              )}
-              {(status === "pending" || status === "accepted") && (
-                <button
-                  onClick={() => setRejecting(true)}
-                  className="flex flex-1 min-w-35 items-center justify-center gap-2 rounded-xl border-2 border-red-400 py-3.5 font-bold text-red-500 transition hover:bg-red-50 active:scale-[.98]"
-                >
-                  <X size={18} />
-                  {status === "accepted" ? t("admin.undoAndReject") : t("admin.rejectRequest")}
-                </button>
-              )}
+              {/*
+                * مُطفأٌ بسبب، لا مخفيّ.
+                *
+                * الزرّ المخفيّ يترك الإدارة تسأل «أين ذهب؟»، والمُطفأ بتلميحٍ
+                * يقول لماذا — وفي حالة الرفض يقول البديل أيضاً: افسخ المشروع
+                * من صفحة «المشاريع».
+                */}
+              <button
+                onClick={doAccept}
+                disabled={!canAccept || accept.isPending}
+                title={whyNoAccept}
+                className="flex flex-2 min-w-60 items-center justify-center gap-2 rounded-xl bg-forest py-3.5 font-bold text-cream shadow-md transition hover:bg-forest-deep active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Check size={18} />
+                {status === "rejected"
+                  ? t("admin.approveAndReconsider")
+                  : t("admin.acceptAndFormTeam")}
+              </button>
+              <button
+                onClick={() => setRejecting(true)}
+                disabled={!canReject}
+                title={whyNoReject}
+                className="flex flex-1 min-w-35 items-center justify-center gap-2 rounded-xl border-2 border-red-400 py-3.5 font-bold text-red-500 transition hover:bg-red-50 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <X size={18} />
+                {status === "accepted" ? t("admin.undoAndReject") : t("admin.rejectRequest")}
+              </button>
             </div>
+
+            {/* السبب مكتوباً تحت الأزرار — لا يراه إلا من يمرّ بالفأرة فوق التلميح. */}
+            {(whyNoAccept || whyNoReject) && (
+              <p className="rounded-xl bg-amber-50 px-3 py-2 text-[11.5px] leading-relaxed text-amber-800">
+                {whyNoReject ?? whyNoAccept}
+              </p>
+            )}
             <p className="text-center text-[11px] text-clay opacity-70">
               {t("admin.decisionChangeHint")}
             </p>
@@ -375,7 +406,7 @@ export function AdminGroupRequestDetailPage() {
                         dir="ltr"
                       >
                         <IdCard size={11} />{" "}
-                        {m.student?.registrationNumber ?? "\u2014"}
+                        {m.student?.registrationNumber ?? <None />}
                       </span>
                       {u?.email && (
                         <span

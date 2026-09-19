@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
 import { Network, Type, Hash, Building2, Save } from "lucide-react";
@@ -14,6 +14,7 @@ import {
   type DepartmentInput,
   departmentSchema,
 } from "../../../validation/admin.schema";
+import { Select } from "../../../../../components/ui/select";
 
 interface Props {
   open: boolean;
@@ -32,6 +33,7 @@ export function DepartmentFormDialog({ open, onClose, department }: Props) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -124,14 +126,23 @@ export function DepartmentFormDialog({ open, onClose, department }: Props) {
           icon={Building2}
           error={errors.facultyId?.message}
         >
-          <select {...register("facultyId")} className={inputClass}>
-            <option value="">{t("admin.selectFaculty")}</option>
-            {faculties?.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
+          <Controller
+            control={control}
+            name="facultyId"
+            render={({ field }) => (
+              <Select
+                ref={field.ref}
+                value={(field.value as string) ?? ""}
+                onChange={(v) => {
+                  field.onChange(v);
+                }}
+                options={[
+                  { value: "", label: t("admin.selectFaculty") },
+                  ...(faculties ?? []).map((f) => ({ value: f.id, label: f.name })),
+                ]}
+              />
+            )}
+          />
         </Field>
       </form>
     </FormDialog>

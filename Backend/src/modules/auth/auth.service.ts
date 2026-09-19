@@ -170,7 +170,7 @@ export const adminLoginService = async (data: AdminLoginDTO) => {
   const user = await prisma.user.findFirst({
     where: {
       email: data.email,
-      role: { in: ["admin", "owner"] },
+      role: "admin",
     },
   });
 
@@ -188,7 +188,7 @@ export const adminLoginService = async (data: AdminLoginDTO) => {
 
   const tokens = signTokens({
     userId: user.id,
-    role: user.role === "admin" ? Roles.ADMIN : Roles.OWNER,
+    role: Roles.ADMIN,
     refId: user.id,
     tokenVersion: user.tokenVersion,
     sid: newSessionId(),

@@ -26,6 +26,7 @@ import {
 import { TopicFormDialog } from "../components/topic-form-dialog";
 import { StatusBadge } from "../components/status-badge";
 import type { Topic } from "../../../types/professor.types";
+import { Select } from "../../../components/ui/select";
 
 /**
  * The professor's topics, in the shape the administration's list settled on:
@@ -47,8 +48,6 @@ const STATUSES = [
   "archived",
 ] as const;
 
-const selectCls =
-  "w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30";
 
 export function ProfessorTopicsPage() {
   const { t, i18n } = useTranslation();
@@ -251,54 +250,44 @@ export function ProfessorTopicsPage() {
               />
             </div>
 
-            <select
+            <Select
               value={status}
-              onChange={(e) => {
-                setStatus(e.target.value);
+              onChange={(v) => {
+                setStatus(v);
                 setPage(1);
               }}
-              className={selectCls}
-            >
-              <option value="">{t("pro.allStatuses")}</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {t(`status.${s}`)}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: t("pro.allStatuses") },
+                ...STATUSES.map((s) => ({ value: s, label: t(`status.${s}`) })),
+              ]}
+            />
 
-            <select
+            <Select
               value={specializationId}
-              onChange={(e) => {
-                setSpecializationId(e.target.value);
+              onChange={(v) => {
+                setSpecializationId(v);
                 setPage(1);
               }}
-              className={selectCls}
-            >
-              <option value="">{t("pro.allSpecializations")}</option>
-              {specializations?.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: t("pro.allSpecializations") },
+                ...(specializations ?? []).map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
 
-            <select
+            <Select
               value={academicYearId}
-              onChange={(e) => {
-                setAcademicYearId(e.target.value);
+              onChange={(v) => {
+                setAcademicYearId(v);
                 setPage(1);
               }}
-              className={selectCls}
-            >
-              <option value="">{t("pro.allYears")}</option>
-              {years?.map((y) => (
-                <option key={y.id} value={y.id}>
-                  {y.title}
-                  {y.isActive ? " ●" : ""}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: t("pro.allYears") },
+                ...(years ?? []).map((y) => ({
+                  value: y.id,
+                  label: `${y.title}${y.isActive ? " ●" : ""}`,
+                })),
+              ]}
+            />
           </div>
 
           {activeFilters > 0 && (

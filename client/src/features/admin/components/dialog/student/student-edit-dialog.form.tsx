@@ -43,6 +43,8 @@ import {
 } from "../../../hooks/admin-hook";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
 import { inputCls, Panel, FieldBox } from "../../form/entity-form";
+import { None } from "../../../../../lib/none";
+import { Select } from "../../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -488,80 +490,60 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
                   />
                 </FieldBox>
                 <FieldBox label={t("pro.academicYear")} icon={CalendarDays}>
-                  <select
+                  <Select
                     value={form.academicYearId}
-                    onChange={(e) => set("academicYearId", e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">{t("pro.selectYear")}</option>
-                    {((years ?? []) as any[]).map((y) => (
-                      <option key={y.id} value={y.id}>
-                        {y.title}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => set("academicYearId", v)}
+                    options={[
+                      { value: "", label: t("pro.selectYear") },
+                      ...((years ?? []) as any[]).map((y) => ({ value: y.id, label: y.title })),
+                    ]}
+                  />
                 </FieldBox>
               </div>
 
               {/* the hierarchy narrows step by step */}
               <FieldBox label={t("admin.facultyLabel")} icon={Building2}>
-                <select
+                <Select
                   value={form.facultyId}
-                  onChange={(e) => onFaculty(e.target.value)}
-                  className={inputCls}
-                >
-                  <option value="">{t("admin.allFacultiesShort")}</option>
-                  {((faculties ?? []) as any[]).map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => onFaculty(v)}
+                  options={[
+                    { value: "", label: t("admin.allFacultiesShort") },
+                    ...((faculties ?? []) as any[]).map((f) => ({ value: f.id, label: f.name })),
+                  ]}
+                />
               </FieldBox>
 
               <FieldBox label={t("admin.department")} icon={Network}>
-                <select
+                <Select
                   value={form.departmentId}
-                  onChange={(e) => onDepartment(e.target.value)}
-                  className={inputCls}
-                >
-                  <option value="">{t("admin.allDepartments")}</option>
-                  {deptOptions.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => onDepartment(v)}
+                  options={[
+                    { value: "", label: t("admin.allDepartments") },
+                    ...deptOptions.map((d) => ({ value: d.id, label: d.name })),
+                  ]}
+                />
               </FieldBox>
 
               <FieldBox label={t("admin.filiere")} icon={GitBranch}>
-                <select
+                <Select
                   value={form.filiereId}
-                  onChange={(e) => onFiliere(e.target.value)}
-                  className={inputCls}
-                >
-                  <option value="">{t("admin.allFilieresShort")}</option>
-                  {filiereOptions.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => onFiliere(v)}
+                  options={[
+                    { value: "", label: t("admin.allFilieresShort") },
+                    ...filiereOptions.map((f) => ({ value: f.id, label: f.name })),
+                  ]}
+                />
               </FieldBox>
 
               <FieldBox label={t("admin.specializationLabelAlt")} icon={Layers} required>
-                <select
+                <Select
                   value={form.specializationId}
-                  onChange={(e) => set("specializationId", e.target.value)}
-                  className={inputCls}
-                >
-                  <option value="">{t("admin.chooseSpecialization")}</option>
-                  {specOptions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => set("specializationId", v)}
+                  options={[
+                    { value: "", label: t("admin.chooseSpecialization") },
+                    ...specOptions.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                />
               </FieldBox>
 
               {/* live path preview */}
@@ -578,7 +560,7 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
                       ?.name,
                   ]
                     .filter(Boolean)
-                    .join(" ← ") || "—"}
+                    .join(" ← ") || <None />}
                 </p>
               </div>
             </Panel>

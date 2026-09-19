@@ -17,8 +17,10 @@ export const createUserSchema = z
     email: z.string().email({ error: () => t("validation.emailInvalid") }).optional().or(z.literal("")),
     username: z.string().trim().min(3, { error: () => t("validation.usernameMin") }).optional().or(z.literal("")),
     password: z.string().min(6, { error: () => t("validation.passwordMin") }),
-    role: z.enum(["owner", "admin", "professor", "student"]),
+    role: z.enum(["admin", "professor", "student"]),
     gender,
+    // علامةٌ إدارية؛ الخلفية تقبلها اختياريةً وتتركها false إن غابت.
+    isVerified: z.boolean().optional(),
   })
   .refine((d) => !!d.email || !!d.username, {
     error: () => t("validation.emailOrUsername"),
@@ -53,6 +55,7 @@ export const createStudentSchema = z.object({
   registrationNumber: z.string().trim().min(1, { error: () => t("validation.regNumberRequired") }),
   specializationId: z.string().uuid({ error: () => t("validation.pickSpecialization") }),
   academicYearId: z.string().uuid({ error: () => t("validation.pickYear") }),
+  isVerified: z.boolean().optional(),
 });
 export type CreateStudentInput = z.infer<typeof createStudentSchema>;
 
@@ -90,6 +93,7 @@ export const createProfessorSchema = z.object({
   gender,
   universityEmail,
   departmentId: z.string().uuid({ error: () => t("admin.selectDepartment") }),
+  isVerified: z.boolean().optional(),
 });
 export type CreateProfessorInput = z.infer<typeof createProfessorSchema>;
 

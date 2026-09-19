@@ -31,7 +31,7 @@ import {
 
 let f: Fixture;
 let adminToken = "";
-let ownerToken = "";
+let admin2Token = "";
 let studentToken = "";
 let professorToken = "";
 
@@ -75,8 +75,8 @@ beforeAll(async () => {
     email: f.admin.email!,
     password: TEST_PASSWORD,
   });
-  ownerToken = await login("/api/auth/admin/login", {
-    email: f.owner.email!,
+  admin2Token = await login("/api/auth/admin/login", {
+    email: f.admin2.email!,
     password: TEST_PASSWORD,
   });
   studentToken = await login("/api/auth/student/login", {
@@ -177,9 +177,9 @@ describe("جرس الإشعارات", () => {
    * موجود» و٤٠٣ تقول «موجودٌ وليس لك» — وكلتاهما تكشف ما لا يخصّ السائل.
    */
   it("ولا يُعلّم أحدٌ إشعار غيره مقروءاً", async () => {
-    const foreign = await notify(f.owner.id);
-    const ownerBefore = await prisma.notification.count({
-      where: { userId: f.owner.id, isRead: false },
+    const foreign = await notify(f.admin2.id);
+    const admin2Before = await prisma.notification.count({
+      where: { userId: f.admin2.id, isRead: false },
     });
 
     const res = await bell.readOne(foreign.id).expect(200);
@@ -191,9 +191,9 @@ describe("جرس الإشعارات", () => {
     ).toBe(false);
     expect(
       await prisma.notification.count({
-        where: { userId: f.owner.id, isRead: false },
+        where: { userId: f.admin2.id, isRead: false },
       }),
-    ).toBe(ownerBefore);
+    ).toBe(admin2Before);
   });
 
   it("ومعرّفٌ لا وجود له ⇒ 200 بلا تغيير، لا 404 تكشف", async () => {
@@ -204,7 +204,7 @@ describe("جرس الإشعارات", () => {
   it("و«اقرأ الكلّ» يُصفّر عدّاد صاحبه وحده", async () => {
     await notify(f.admin.id);
     await notify(f.admin.id);
-    const foreign = await notify(f.owner.id);
+    const foreign = await notify(f.admin2.id);
 
     const res = await bell.readAll().expect(200);
     expect(res.body.updated).toBeGreaterThanOrEqual(2);
@@ -734,9 +734,12 @@ describe("GET /api/auth/me", () => {
     expect(res.body.user.email).toBe(f.admin.email);
   });
 
-  it("والمالك دورُه owner لا admin", async () => {
-    const res = await me(ownerToken).expect(200);
-    expect(res.body.user.role).toBe("owner");
+  /** ولم يعد في المنصّة دورٌ إداريّ ثانٍ: كل حسابات الإدارة `admin`. */
+  it("والمدير الثاني دورُه admin أيضاً", async () => {
+    const res = await me(admin2Token).expect(200);
+
+    expect(res.body.user.id).toBe(f.admin2.id);
+    expect(res.body.user.role).toBe("admin");
   });
 
   /**

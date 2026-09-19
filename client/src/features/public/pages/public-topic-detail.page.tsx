@@ -12,7 +12,9 @@ import {
   Share2,
   Info,
 } from "lucide-react";
+import { toast } from "sonner";
 import { usePublicTopic } from "../hooks/public-hook";
+import { noneText } from "../../../lib/none-text";
 import { useAuth } from "../../../hooks/use-auth";
 // ⚠️ طابِق المسار مع موقع GroupRequestDialog عندك (موجود ضمن ميزة الطالب).
 import { GroupRequestDialog } from "../../student/components/group-request-dialog";
@@ -44,6 +46,19 @@ export function PublicTopicDetailPage() {
     });
   }
 
+  /**
+   * «مشاركة» كان زرّاً لا `onClick` له: يُضغط فلا يقع شيء، وهو أسوأ من
+   * غيابه — الزرّ يَعِد بفعلٍ ثم يصمت.
+   */
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success(t("public.linkCopied"));
+    } catch {
+      toast.error(t("admin.actionFailed"));
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="font-body py-20 text-center text-sm text-clay">
@@ -65,6 +80,18 @@ export function PublicTopicDetailPage() {
       .join(" ") || "\u2014";
   const requirements = topic.requirements ?? [];
   const objectives = topic.objectives ?? [];
+
+  /**
+   * التلميح كان واحداً للجميع: «يجب تسجيل الدخول كطالب…» — يقرؤه الطالب
+   * الداخل بحسابه فيحسب أنّ شيئاً ناقصاً، ويقرؤه الأستاذ فيظنّ الزرّ له.
+   * فصار لكلّ حالٍ سطره: زائرٌ يُدعى للدخول، وغيرُ الطالب يُقال له إنّ
+   * التقديم ليس لدوره، والطالبُ يُقال له ما يقع عند الضغط.
+   */
+  const applyHint = !isAuthenticated
+    ? t("public.applyHint")
+    : role !== "student"
+      ? t("public.applyStudentsOnly")
+      : t("public.applyReady");
 
   return (
     <div className="font-body mx-auto w-full max-w-6xl px-6 py-8">
@@ -96,7 +123,7 @@ export function PublicTopicDetailPage() {
             <div className="space-y-2 border-t border-forest/10 pt-4 text-xs text-clay">
               <div className="flex items-center gap-2">
                 <CalendarDays size={14} />
-                {topic.academicYear?.title ?? "\u2014"}
+                {topic.academicYear?.title ?? noneText(true)}
               </div>
               <div className="flex items-center gap-2">
                 <Users size={14} />
@@ -110,6 +137,11 @@ export function PublicTopicDetailPage() {
                 <button
                   onClick={handleApply}
                   disabled={isAuthenticated && role !== "student"}
+                  title={
+                    isAuthenticated && role !== "student"
+                      ? t("public.applyStudentsOnly")
+                      : undefined
+                  }
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-gold py-3 font-bold text-forest-deep transition hover:bg-gold-soft disabled:opacity-50"
                 >
                   <UserPlus size={18} />
@@ -118,11 +150,14 @@ export function PublicTopicDetailPage() {
                     : t("public.loginToApply")}
                 </button>
               ) : (
-                <div className="rounded-xl bg-violet-50 py-3 text-center text-sm font-semibold text-violet-600">
+                <div className="rounded-xl border border-forest/15 bg-forest/5 py-3 text-center text-sm font-semibold text-clay">
                   {t("public.reserved")}
                 </div>
               )}
-              <button className="flex w-full items-center justify-center gap-2 rounded-xl border border-forest/20 py-2.5 text-sm font-semibold text-forest transition hover:bg-forest/5">
+              <button
+                onClick={copyLink}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-forest/20 py-2.5 text-sm font-semibold text-forest transition hover:bg-forest/5"
+              >
                 <Share2 size={16} />
                 {t("public.share")}
               </button>
@@ -132,7 +167,7 @@ export function PublicTopicDetailPage() {
           {/* Hint */}
           <div className="flex items-start gap-2 rounded-xl border border-gold/30 bg-gold/5 p-4 text-[11px] text-clay">
             <Info size={14} className="mt-0.5 shrink-0 text-gold" />
-            {t("public.applyHint")}
+            {applyHint}
           </div>
         </aside>
 
@@ -142,7 +177,7 @@ export function PublicTopicDetailPage() {
           <div className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
             <div className="mb-3 flex flex-wrap gap-2">
               <span className="rounded-full bg-soft-sage/30 px-3 py-1 text-[11px] font-medium text-forest">
-                {topic.specialization?.name ?? "\u2014"}
+                {topic.specialization?.name ?? noneText()}
               </span>
               <span
                 className={`rounded-full px-3 py-1 text-[11px] font-bold ${
@@ -159,6 +194,23 @@ export function PublicTopicDetailPage() {
             <h1 className="font-serif text-2xl font-bold leading-tight text-forest lg:text-3xl">
               {topic.title}
             </h1>
+
+            {/* ما يسأل عنه القارئ أوّلاً: مَن يُشرف، وأيّ سنة، وكم مقعداً.
+                كان كلّ ذلك في العمود الجانبيّ وحده، والرأس فراغاً تحت سطر. */}
+            <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-forest/10 pt-4 text-[12.5px] text-clay">
+              <span className="inline-flex items-center gap-1.5">
+                <User size={14} className="text-sage" />
+                {profName}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarDays size={14} className="text-sage" />
+                {topic.academicYear?.title ?? noneText(true)}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Users size={14} className="text-sage" />
+                {t("public.maxStudentsN", { n: topic.maxStudents })}
+              </span>
+            </div>
           </div>
 
           {/* Description */}
@@ -166,7 +218,7 @@ export function PublicTopicDetailPage() {
             icon={<ListChecks size={18} className="text-gold" />}
             title={t("public.descriptionLabel")}
           >
-            <p className="whitespace-pre-line leading-relaxed text-clay">
+            <p className="whitespace-pre-line text-[15px] leading-loose text-forest/85">
               {topic.description}
             </p>
           </Section>

@@ -13,6 +13,7 @@ import {
   Clock,
   Activity,
   BadgeCheck,
+  ShieldQuestion,
   KeyRound,
   Ban,
   CheckCircle2,
@@ -36,6 +37,7 @@ import {
   useStudent,
   useResetUserPassword,
   useSetUserStatus,
+  useSetUserVerification,
   useDeleteUser,
 } from "../../hooks/admin-hook";
 import { PageLoader } from "../../../../components/page-loader";
@@ -53,10 +55,10 @@ import {
   toErrorInfo,
   type ErrorInfo,
 } from "../../../../components/dialog/error-dialog";
+import { isNone, noneText } from "../../../../lib/none-text";
 
 // Keys, not copy: built once at import time.
 const ROLE_LABEL_KEY: Record<string, string> = {
-  owner: "roles.owner",
   admin: "role.admin",
   professor: "roles.professor",
   student: "roles.student",
@@ -74,7 +76,7 @@ const arDateTime = (iso: string | null) =>
         dateStyle: "medium",
         timeStyle: "short",
       }).format(new Date(iso))
-    : "\u2014";
+    : translate("common.none");
 
 const arDate = (iso: string) =>
   new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium" }).format(new Date(iso));
@@ -202,22 +204,31 @@ function Info({
   label,
   value,
   ltr,
+  valueClass,
 }: {
   icon: typeof Mail;
   label: string;
   value?: string | null;
   ltr?: boolean;
+  /** لونٌ للقيمة حين تكون حالةً لا نصّاً — كالتوثيق. */
+  valueClass?: string;
 }) {
+  // ويُقارَن بالنصّ أيضاً لا بالفراغ وحده: مُنسّقات التواريخ تُرجع
+  // «لا يوجد» جاهزةً، فتصل إلى هنا قيمةً غير فارغة.
+  const empty = isNone(value);
+
   return (
     <div className="flex items-start gap-3 rounded-xl bg-cream-2 px-4 py-3 transition hover:bg-forest/5">
       <Icon size={16} className="mt-0.5 shrink-0 text-clay" />
       <div className="min-w-0">
         <p className="text-[11px] text-clay">{label}</p>
         <p
-          className="truncate text-sm font-medium text-forest"
+          className={`truncate text-sm ${
+            empty ? "text-clay/75" : `font-medium ${valueClass ?? "text-forest"}`
+          }`}
           dir={ltr ? "ltr" : undefined}
         >
-          {value || "\u2014"}
+          {value || noneText()}
         </p>
       </div>
     </div>
@@ -313,7 +324,7 @@ function Modal({
   );
 }
 
-type ModalKind = "edit" | "status" | "delete" | null;
+type ModalKind = "edit" | "status" | "verify" | "delete" | null;
 
 export function AdminUserDetailPage() {
   const { t } = useTranslation();
@@ -324,6 +335,7 @@ export function AdminUserDetailPage() {
   const updateUser = useUpdateUser();
   const resetPassword = useResetUserPassword();
   const setStatus = useSetUserStatus();
+  const setVerification = useSetUserVerification();
   const deleteUser = useDeleteUser();
 
   // نجلب الكيان الكامل حسب الدور كي تُعبّئ النافذة المخصّصة حقولها.
@@ -370,7 +382,7 @@ export function AdminUserDetailPage() {
   const isActive = user.status === "active";
   const isProfessor = user.role === "professor";
   const isStudent = user.role === "student";
-  const isBase = !isProfessor && !isStudent; // admin / owner
+  const isBase = !isProfessor && !isStudent; // admin
   const closeEdit = () => {
     setModal(null);
     refetch();
@@ -394,6 +406,31 @@ export function AdminUserDetailPage() {
           refetch();
           closeModal();
           setOk({ title: isActive ? t("toast.accountSuspended") : t("toast.accountActivated") });
+        },
+        onError: onErr,
+      },
+    );
+  }
+
+  /**
+   * التوثيق شهادةٌ من الإدارة، وهي تُراجَع: تُرفع وتُسحب.
+   *
+   * ولا تمسّ الدخول ولا البيانات — ولذلك يقول نصّ التأكيد ذلك صراحةً، حتى
+   * لا يُخلط بـ«إيقاف الحساب» وهو الزرّ المجاور.
+   */
+  function onToggleVerification() {
+    const next = !user!.isVerified;
+    setVerification.mutate(
+      { id: user!.id, isVerified: next },
+      {
+        onSuccess: () => {
+          refetch();
+          closeModal();
+          setOk({
+            title: next
+              ? t("toast.accountVerified")
+              : t("toast.accountUnverified"),
+          });
         },
         onError: onErr,
       },
@@ -624,15 +661,6 @@ export function AdminUserDetailPage() {
               value={user.username}
               ltr
             />
-            <div className="flex items-center gap-2 rounded-xl bg-cream-2 px-4 py-3">
-              <BadgeCheck
-                size={16}
-                className={user.isVerified ? "text-emerald-600" : "text-clay"}
-              />
-              <span className="text-sm font-medium text-forest">
-                {user.isVerified ? t("admin.verifiedAccount") : t("admin.unverified")}
-              </span>
-            </div>
           </div>
         </div>
 
@@ -667,6 +695,20 @@ export function AdminUserDetailPage() {
               icon={Shield}
               label={t("admin.role")}
               value={t(ROLE_LABEL_KEY[user.role]) ?? user.role}
+            />
+
+            {/*
+              التوثيق كان في «معلومات التواصل» وهو ليس وسيلة تواصل، وكان
+              الصفّ الوحيد بلا عنوانٍ فوقه بين صفوفٍ كلّها «عنوانٌ ثم قيمة»
+              — فبدا دخيلاً. وهو هنا حالةُ حسابٍ إلى جانب الدور.
+            */}
+            <Info
+              icon={BadgeCheck}
+              label={t("admin.verificationStatus")}
+              value={
+                user.isVerified ? t("admin.verified") : t("admin.unverified")
+              }
+              valueClass={user.isVerified ? "text-emerald-600" : "text-clay"}
             />
 
             {user.student && (
@@ -741,6 +783,23 @@ export function AdminUserDetailPage() {
             className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep disabled:opacity-50"
           >
             <Pencil size={16} />{t("admin.editData")}</button>
+          <button
+            onClick={() => setModal("verify")}
+            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
+              user.isVerified
+                ? "border-forest/20 text-clay hover:bg-forest/5"
+                : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            }`}
+          >
+            {user.isVerified ? (
+              <ShieldQuestion size={16} />
+            ) : (
+              <BadgeCheck size={16} />
+            )}
+            {user.isVerified
+              ? t("admin.unverifyAccount")
+              : t("admin.verifyAccount")}
+          </button>
           <button
             onClick={() => setModal("status")}
             className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
@@ -910,6 +969,47 @@ export function AdminUserDetailPage() {
           >
             {isActive ? <Ban size={16} /> : <CheckCircle2 size={16} />}
             {setStatus.isPending ? "…" : isActive ? t("admin.suspend") : t("admin.activate")}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={modal === "verify"}
+        onClose={closeModal}
+        title={
+          user.isVerified ? t("admin.unverifyAccount") : t("admin.verifyAccount")
+        }
+        icon={user.isVerified ? ShieldQuestion : BadgeCheck}
+      >
+        <p className="mb-5 text-sm text-clay">
+          {user.isVerified
+            ? t("admin.confirmUnverifyUser", { name: fullName(user) })
+            : t("admin.confirmVerifyUser", { name: fullName(user) })}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={closeModal}
+            className="rounded-xl px-4 py-2 text-sm font-semibold text-clay transition hover:bg-forest/5"
+          >{t("pro.cancel")}</button>
+          <button
+            onClick={onToggleVerification}
+            disabled={setVerification.isPending}
+            className={`inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white transition disabled:opacity-60 ${
+              user.isVerified
+                ? "bg-clay hover:bg-forest"
+                : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            {user.isVerified ? (
+              <ShieldQuestion size={16} />
+            ) : (
+              <BadgeCheck size={16} />
+            )}
+            {setVerification.isPending
+              ? "…"
+              : user.isVerified
+                ? t("admin.unverify")
+                : t("admin.verify")}
           </button>
         </div>
       </Modal>

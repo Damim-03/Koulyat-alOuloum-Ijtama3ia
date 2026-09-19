@@ -6,6 +6,7 @@ import {
   FileText,
   Save,
   Search,
+  UserX,
   Star,
   UserPlus,
   SendHorizontal,
@@ -34,6 +35,7 @@ import {
   ReviewRow,
 } from "../../../../../components/ui/form-bits";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
+import { Select } from "../../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -60,7 +62,6 @@ interface PickedStudent {
   reg: string;
 }
 
-const selectCls = inputCls;
 
 function fullName(u: any) {
   return [u?.firstName, u?.lastName].filter(Boolean).join(" ");
@@ -395,18 +396,14 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
 
                 <div className="grid grid-cols-2 gap-3">
                   <Field label={t("admin.academicYear")}>
-                    <select
+                    <Select
                       value={academicYearId}
-                      onChange={(e) => setAcademicYearId(e.target.value)}
-                      className={selectCls}
-                    >
-                      <option value="">{t("admin.selectYear")}</option>
-                      {(years ?? []).map((y: any) => (
-                        <option key={y.id} value={y.id}>
-                          {y.title}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setAcademicYearId(v)}
+                      options={[
+                        { value: "", label: t("admin.selectYear") },
+                        ...(years ?? []).map((y: any) => ({ value: y.id, label: y.title })),
+                      ]}
+                    />
                   </Field>
 
                   <Field label={t("admin.maxStudents")}>
@@ -434,77 +431,59 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                     was which. */}
                 <div className="space-y-3 border-t border-forest/10 pt-4">
                   <Field label={t("admin.faculty")}>
-                    <select
+                    <Select
                       value={facultyId}
-                      onChange={(e) => {
-                        setFacultyId(e.target.value);
+                      onChange={(v) => {
+                        setFacultyId(v);
                         setDepartmentId("");
                         setFiliereId("");
                         setSpecializationId("");
                       }}
-                      className={selectCls}
-                    >
-                      <option value="">{t("admin.allFaculties")}</option>
-                      {(faculties ?? []).map((f: any) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: t("admin.allFaculties") },
+                        ...(faculties ?? []).map((f: any) => ({ value: f.id, label: f.name })),
+                      ]}
+                    />
                   </Field>
 
                   <Field label={t("admin.department")}>
-                    <select
+                    <Select
                       value={departmentId}
-                      onChange={(e) => {
-                        setDepartmentId(e.target.value);
+                      onChange={(v) => {
+                        setDepartmentId(v);
                         setFiliereId("");
                         setSpecializationId("");
                       }}
-                      className={selectCls}
-                    >
-                      <option value="">{t("admin.allDepartments")}</option>
-                      {deptOptions.map((d: any) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: t("admin.allDepartments") },
+                        ...deptOptions.map((d: any) => ({ value: d.id, label: d.name })),
+                      ]}
+                    />
                   </Field>
 
                   <Field label={t("admin.filiere")}>
-                    <select
+                    <Select
                       value={filiereId}
-                      onChange={(e) => {
-                        setFiliereId(e.target.value);
+                      onChange={(v) => {
+                        setFiliereId(v);
                         setSpecializationId("");
                       }}
-                      className={selectCls}
-                    >
-                      <option value="">{t("admin.allFilieres")}</option>
-                      {filiereOptions.map((f: any) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: t("admin.allFilieres") },
+                        ...filiereOptions.map((f: any) => ({ value: f.id, label: f.name })),
+                      ]}
+                    />
                   </Field>
 
                   <Field label={t("admin.specialization")}>
-                    <select
+                    <Select
                       value={specializationId}
-                      onChange={(e) => setSpecializationId(e.target.value)}
-                      className={selectCls}
-                    >
-                      <option value="">
-                        {t("admin.selectSpecialization")}
-                      </option>
-                      {specOptions.map((sp: any) => (
-                        <option key={sp.id} value={sp.id}>
-                          {sp.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setSpecializationId(v)}
+                      options={[
+                        { value: "", label: t("admin.selectSpecialization") },
+                        ...specOptions.map((sp: any) => ({ value: sp.id, label: sp.name })),
+                      ]}
+                    />
                   </Field>
                 </div>
               </section>
@@ -521,7 +500,10 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                     <UserPlus size={16} />
                     {t("admin.assignStudents")}
                   </p>
-                  <span className="rounded-full bg-forest/10 px-2 py-0.5 text-[11px] font-bold text-forest tabular-nums">
+                  <span
+                    dir="ltr"
+                    className="rounded-full bg-forest/10 px-2 py-0.5 text-[11px] font-bold text-forest tabular-nums"
+                  >
                     {picked.length} / {maxStudents}
                   </span>
                 </div>
@@ -593,26 +575,30 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                 )}
 
                 {picked.length < maxStudents && (
-                  <div className="relative">
-                    <Search
-                      className="absolute top-1/2 end-3 -translate-y-1/2 text-clay"
-                      size={16}
-                    />
-                    <input
-                      value={studentSearch}
-                      onChange={(e) => setStudentSearch(e.target.value)}
-                      placeholder={t("admin.searchStudentToAssign")}
-                      className="w-full rounded-xl border border-forest/15 bg-cream-card py-2 pe-9 ps-3 text-sm text-forest outline-none transition focus:border-sage focus:ring-2 focus:ring-sage/20"
-                    />
+                  <div>
+                    <div className="relative">
+                      <Search
+                        className="pointer-events-none absolute top-1/2 end-3 -translate-y-1/2 text-clay"
+                        size={16}
+                      />
+                      <input
+                        value={studentSearch}
+                        onChange={(e) => setStudentSearch(e.target.value)}
+                        placeholder={t("admin.searchStudentToAssign")}
+                        className="w-full rounded-xl border border-forest/15 bg-cream-card py-2.5 pe-9 ps-3 text-sm text-forest outline-none transition focus:border-sage focus:ring-2 focus:ring-sage/20"
+                      />
+                    </div>
                     {studentSearch.trim() && (
-                      <div className="mt-1.5 max-h-52 overflow-y-auto rounded-xl border border-forest/10 bg-cream-card">
+                      <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-forest/10 bg-cream-card">
                         {searching && (
-                          <p className="px-3 py-3 text-center text-xs text-clay">
-                            {"…"}
+                          <p className="flex items-center justify-center gap-2 px-3 py-3 text-xs text-clay">
+                            <Loader2 size={14} className="animate-spin" />
+                            {t("admin.searching")}
                           </p>
                         )}
                         {!searching && searchResults.length === 0 && (
-                          <p className="px-3 py-3 text-center text-xs text-clay">
+                          <p className="flex items-center justify-center gap-2 px-3 py-4 text-xs font-medium text-clay">
+                            <UserX size={15} className="shrink-0 text-brick" />
                             {t("admin.noStudents")}
                           </p>
                         )}

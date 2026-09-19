@@ -73,6 +73,26 @@ export function useUpdateUser() {
     onError: () => toast.error(t("toast.updateFailed")),
   });
 }
+/**
+ * توثيق حسابٍ قائم.
+ *
+ * ويُبطِل مفتاحَي القائمة والتفصيل معاً: صفحة المستخدمين تُرشَّح بالتوثيق،
+ * فلو بقي مخزونها على حاله لظلّ الحساب في نتيجة «غير الموثّقين» بعد توثيقه.
+ */
+export function useSetUserVerification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, isVerified }: { id: string; isVerified: boolean }) =>
+      adminApi.setUserVerification(id, isVerified),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      qc.invalidateQueries({ queryKey: ["admin", "user", id] });
+      toast.success(t("toast.verificationUpdated"));
+    },
+    onError: () => toast.error(t("toast.verificationUpdateFailed")),
+  });
+}
+
 export function useSetUserStatus() {
   const qc = useQueryClient();
   return useMutation({

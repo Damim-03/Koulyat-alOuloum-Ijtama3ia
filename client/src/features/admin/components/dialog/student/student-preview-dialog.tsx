@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { FormDialog } from "../../form/form-dialog";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
+import { None } from "../../../../../lib/none";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -122,7 +123,7 @@ export function StudentPreviewDialog({
             <span className="inline-flex items-center gap-1.5 rounded-full bg-gold/10 px-2.5 py-0.5 text-xs font-bold text-forest ring-1 ring-gold/45 ring-inset">
               <IdCard size={13} className="text-gold" />
               <span dir="ltr" className="font-mono tracking-wide">
-                {student.registrationNumber ?? "—"}
+                {student.registrationNumber ?? <None />}
               </span>
             </span>
             {u.status && (
@@ -160,7 +161,7 @@ export function StudentPreviewDialog({
                 className="truncate text-sm font-semibold text-forest"
                 dir={r.dir}
               >
-                {r.value || "—"}
+                {r.value || t("common.none")}
               </p>
             </div>
           </div>

@@ -49,10 +49,35 @@ export function FieldBox({
   error?: string;
   children: ReactNode;
 }) {
+  // الخطأ يُعلَّم في ثلاثة مواضع لا في واحد: إطارُ الحقل، وعنوانه، والرسالة
+  // تحته. ورسالةٌ حمراء تحت حقلٍ بلونه الطبيعيّ تُقرأ سهواً — خصوصاً في
+  // استمارةٍ فيها عشرة حقول، حيث العين تبحث عن **الحقل** لا عن السطر.
+  //
+  // والتلوين هنا لا في كل نداء: `FieldBox` هي التي تعرف أن ثمّة خطأً، فتُلوّن
+  // ما بداخلها أياً كان — مُدخلاً أو قائمة. ولو تُرك للنداءات لَنُسي في بعضها.
+  const invalid = Boolean(error);
+
+  // الحقل الناقص يُعلَّم في صندوقه هو — لا في مُدخلٍ بداخله.
+  //
+  // جرّبتُ أوّلاً تلوين المُدخل عبر مُتغيّرٍ اعتراضيّ (`[&_input]:border-brick`)
+  // فعمل على نسخةٍ مطابقة في المتصفّح ولم يعمل على الحقل الحقيقيّ — فتركتُه:
+  // تنسيقٌ يصيب أحياناً أسوأ من تنسيقٍ لا يصيب، لأن العين تتعلّم ألّا تثق به.
+  //
+  // وهذا الصندوق هو العنصر الذي يحمل الصنف بنفسه، فلا وسيط ولا أسبقيّة:
+  // أرضيّةٌ حمراء خفيفة، وحدٌّ أحمر، وشريطٌ جانبيّ — تُرى من طرف العين في
+  // استمارةٍ فيها عشرة حقول.
+  const boxCls = invalid
+    ? "-mx-2 rounded-xl border border-brick/35 bg-brick/5 px-2 py-1.5 border-s-4 border-s-brick"
+    : "";
+
   return (
-    <label className="block">
-      <span className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-clay">
-        <Icon size={12} className="text-clay/70" />
+    <label className={`block ${boxCls}`}>
+      <span
+        className={`mb-1 flex items-center gap-1.5 text-[11px] font-medium ${
+          invalid ? "text-brick" : "text-clay"
+        }`}
+      >
+        <Icon size={12} className={invalid ? "text-brick/80" : "text-clay/70"} />
         {label}
         {required && <span className="text-brick">*</span>}
       </span>

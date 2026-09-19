@@ -43,6 +43,8 @@ import { useBodyScrollLock } from "../../../../../hooks/use-body-scroll-lock";
 import { useTranslation } from "react-i18next";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
 import { inputCls, Panel, FieldBox } from "../../form/entity-form";
+import { None } from "../../../../../lib/none";
+import { Select } from "../../../../../components/ui/select";
 
 interface Props {
   open: boolean;
@@ -491,49 +493,37 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
                   />
                 </FieldBox>
                 <FieldBox label={t("admin.facultyLabel")} icon={Building2}>
-                  <select
+                  <Select
                     value={form.facultyId}
-                    onChange={(e) => onFacultyChange(e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">{t("admin.allFacultiesShort")}</option>
-                    {(faculties ?? []).map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => onFacultyChange(v)}
+                    options={[
+                      { value: "", label: t("admin.allFacultiesShort") },
+                      ...(faculties ?? []).map((f) => ({ value: f.id, label: f.name })),
+                    ]}
+                  />
                 </FieldBox>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
                 <FieldBox label={t("admin.department")} icon={Network} required>
-                  <select
+                  <Select
                     value={form.departmentId}
-                    onChange={(e) => onDepartmentChange(e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">{t("admin.chooseDepartment")}</option>
-                    {deptOptions.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => onDepartmentChange(v)}
+                    options={[
+                      { value: "", label: t("admin.chooseDepartment") },
+                      ...deptOptions.map((d) => ({ value: d.id, label: d.name })),
+                    ]}
+                  />
                 </FieldBox>
                 <FieldBox label={t("admin.filiere")} icon={GitBranch}>
-                  <select
+                  <Select
                     value={form.filiereId}
-                    onChange={(e) => set("filiereId", e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">{t("admin.allFilieresShort")}</option>
-                    {filiereOptions.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => set("filiereId", v)}
+                    options={[
+                      { value: "", label: t("admin.allFilieresShort") },
+                      ...filiereOptions.map((f) => ({ value: f.id, label: f.name })),
+                    ]}
+                  />
                 </FieldBox>
               </div>
 
@@ -566,7 +556,7 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
                     filiereOptions.find((f) => f.id === form.filiereId)?.name,
                   ]
                     .filter(Boolean)
-                    .join(" ← ") || "—"}
+                    .join(" ← ") || <None />}
                 </p>
               </div>
             </Panel>

@@ -9,13 +9,13 @@ import {
   useAcademicYears,
 } from "../../hooks/admin-hook";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { None } from "../../../../lib/none";
+import { Select } from "../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const PAGE_SIZE = 12;
 
-const selectCls =
-  "rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30";
 
 
 export function AdminUnassignedStudentsPage() {
@@ -181,86 +181,66 @@ export function AdminUnassignedStudentsPage() {
           />
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-          <select
+          <Select
             value={facultyId}
-            onChange={(e) => {
-              setFacultyId(e.target.value);
+            onChange={(v) => {
+              setFacultyId(v);
               setDepartmentId("");
               setFiliereId("");
               setSpecializationId("");
             }}
-            className={selectCls}
-          >
-            <option value="">{t("admin.allFaculties")}</option>
-            {facultyOptions.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-          <select
+            options={[
+              { value: "", label: t("admin.allFaculties") },
+              ...facultyOptions.map((f) => ({ value: f.id, label: f.name })),
+            ]}
+          />
+          <Select
             value={departmentId}
-            onChange={(e) => {
-              setDepartmentId(e.target.value);
+            onChange={(v) => {
+              setDepartmentId(v);
               setFiliereId("");
               setSpecializationId("");
             }}
-            className={selectCls}
-          >
-            <option value="">{t("admin.allDepartments")}</option>
-            {deptOptions.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-          <select
+            options={[
+              { value: "", label: t("admin.allDepartments") },
+              ...deptOptions.map((d) => ({ value: d.id, label: d.name })),
+            ]}
+          />
+          <Select
             value={filiereId}
-            onChange={(e) => {
-              setFiliereId(e.target.value);
+            onChange={(v) => {
+              setFiliereId(v);
               setSpecializationId("");
             }}
-            className={selectCls}
-          >
-            <option value="">{t("admin.allFilieres")}</option>
-            {filiereOptions.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-          <select
+            options={[
+              { value: "", label: t("admin.allFilieres") },
+              ...filiereOptions.map((f) => ({ value: f.id, label: f.name })),
+            ]}
+          />
+          <Select
             value={specializationId}
-            onChange={(e) => setSpecializationId(e.target.value)}
-            className={selectCls}
-          >
-            <option value="">{t("admin.allSpecializations")}</option>
-            {specOptions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <select
+            onChange={(v) => setSpecializationId(v)}
+            options={[
+              { value: "", label: t("admin.allSpecializations") },
+              ...specOptions.map((s) => ({ value: s.id, label: s.name })),
+            ]}
+          />
+          <Select
             value={academicYearId}
-            onChange={(e) => setAcademicYearId(e.target.value)}
-            className={selectCls}
-          >
-            <option value="">{t("admin.allYears")}</option>
-            {(years ?? []).map((y: any) => (
-              <option key={y.id} value={y.id}>
-                {y.title}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setAcademicYearId(v)}
+            options={[
+              { value: "", label: t("admin.allYears") },
+              ...(years ?? []).map((y: any) => ({ value: y.id, label: y.title })),
+            ]}
+          />
         </div>
       </div>
 
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="overflow-x-auto">
+        <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-start">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-forest text-cream">
                 <th className="px-5 py-3 text-xs font-medium">
                   {t("admin.student")}
@@ -304,7 +284,7 @@ export function AdminUnassignedStudentsPage() {
                   <tr
                     key={s.id}
                     onClick={() => navigate(`/admin/students/${s.id}`)}
-                    className="cursor-pointer transition-colors hover:bg-forest/4"
+                    className="cursor-pointer transition-colors odd:bg-forest/[0.03] hover:bg-forest/7"
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
@@ -317,22 +297,22 @@ export function AdminUnassignedStudentsPage() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-sm text-clay" dir="ltr">
-                      {s.registrationNumber ?? "\u2014"}
+                      {s.registrationNumber ?? <None />}
                     </td>
                     <td className="px-5 py-3.5">
                       <p className="text-sm text-forest">
-                        {spec?.name ?? "\u2014"}
+                        {spec?.name ?? <None />}
                       </p>
                       <p className="flex flex-wrap items-center gap-1 text-[10px] text-clay">
-                        <span>{faculty?.name ?? "\u2014"}</span>
+                        <span>{faculty?.name ?? <None fem />}</span>
                         <ChevronLeft size={9} className="text-clay/40 ltr:rotate-180" />
-                        <span>{dept?.name ?? "\u2014"}</span>
+                        <span>{dept?.name ?? <None />}</span>
                         <ChevronLeft size={9} className="text-clay/40 ltr:rotate-180" />
-                        <span>{filiere?.name ?? "\u2014"}</span>
+                        <span>{filiere?.name ?? <None fem />}</span>
                       </p>
                     </td>
                     <td className="px-5 py-3.5 text-sm text-clay" dir="ltr">
-                      {s.academicYear?.title ?? "\u2014"}
+                      {s.academicYear?.title ?? <None fem />}
                     </td>
                     <td className="px-5 py-3.5 text-clay">
                       <ChevronLeft size={16} className="opacity-50 ltr:rotate-180" />

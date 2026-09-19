@@ -48,7 +48,7 @@ let open: ClientSocket[] = [];
 
 const claimsFor = (
   userId: string,
-  role: "admin" | "owner" | "professor" | "student",
+  role: "admin" | "professor" | "student",
   refId: string,
   over: Partial<{ tokenVersion: number; sid: string }> = {},
 ) => ({

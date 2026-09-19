@@ -39,6 +39,8 @@ import { useUsers, useSpecializations } from "../../hooks/admin-hook";
 import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
 import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { noneText } from "../../../../lib/none-text";
+import { Select } from "../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -50,10 +52,10 @@ function personName(u?: MessageUserLite | null) {
     );
 }
 function fmtDateTime(iso?: string) {
-    if (!iso) return "\u2014";
+    if (!iso) return noneText();
     const d = new Date(iso);
     return Number.isNaN(d.getTime())
-        ? "\u2014"
+        ? noneText()
         : d.toLocaleString(i18n.language, {
             dateStyle: "medium",
             timeStyle: "short",
@@ -62,7 +64,6 @@ function fmtDateTime(iso?: string) {
 
 // Keys, not copy: built once at import time.
 const ROLE_LABEL_KEY: Record<string, string> = {
-  owner: "roles.owner",
   admin: "roles.admin",
   professor: "roles.professor",
   student: "roles.student",
@@ -518,18 +519,14 @@ function ComposeTab({ onSent }: { onSent: () => void }) {
                 <label className="mb-4 block">
           <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-clay">
             <Layers size={12} />{t("messages.limitToSpecialization")}</span>
-                    <select
-                        value={specializationId}
-                        onChange={(e) => setSpecializationId(e.target.value)}
-                        className="w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30 sm:max-w-xs"
-                    >
-                        <option value="">{t("messages.allSpecializations")}</option>
-                        {(specs ?? []).map((s: any) => (
-                            <option key={s.id} value={s.id}>
-                                {s.name}
-                            </option>
-                        ))}
-                    </select>
+                    <Select
+                      value={specializationId}
+                      onChange={(v) => setSpecializationId(v)}
+                      options={[
+                        { value: "", label: t("messages.allSpecializations") },
+                        ...(specs ?? []).map((s: any) => ({ value: s.id, label: s.name })),
+                      ]}
+                    />
                 </label>
             )}
 

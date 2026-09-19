@@ -27,6 +27,8 @@ import {
 import { UserFormDialog } from "../../components/dialog/user/user-form-dialog.form";
 import { SearchField } from "../../components/ui/search-field";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { None } from "../../../../lib/none";
+import { Select as UiSelect } from "../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -480,9 +482,9 @@ export function AdminStudentsPage() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="overflow-x-auto">
+        <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-start">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-forest text-cream">
                 <th className="w-20 px-4 py-3 text-start text-xs font-medium">
                   {t("admin.avatarColumn")}
@@ -534,34 +536,34 @@ export function AdminStudentsPage() {
                   <tr
                     key={s.id}
                     onClick={() => goToStudent(s.id)}
-                    className="cursor-pointer transition-colors hover:bg-forest/4"
+                    className="cursor-pointer transition-colors odd:bg-forest/[0.03] hover:bg-forest/7"
                   >
                     <td className="px-4 py-3.5">
                       <UserAvatar user={s.user} size={36} />
                     </td>
                     <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                      {s.user?.firstName ?? "\u2014"}
+                      {s.user?.firstName ?? <None />}
                     </td>
                     <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                      {s.user?.lastName ?? "\u2014"}
+                      {s.user?.lastName ?? <None />}
                     </td>
                     <td className="px-4 py-3.5 text-sm text-clay" dir="ltr">
                       {s.registrationNumber}
                     </td>
                     <td className="px-4 py-3.5 text-sm text-clay">
-                      {c.specName ?? "\u2014"}
+                      {c.specName ?? <None />}
                     </td>
                     <td className="px-4 py-3.5 text-sm text-clay">
-                      {c.filiereName ?? "\u2014"}
+                      {c.filiereName ?? <None fem />}
                     </td>
                     <td className="px-4 py-3.5 text-sm text-clay">
-                      {c.deptName ?? "\u2014"}
+                      {c.deptName ?? <None />}
                     </td>
                     <td className="px-4 py-3.5 text-sm text-clay">
-                      {c.facultyName ?? "\u2014"}
+                      {c.facultyName ?? <None fem />}
                     </td>
                     <td className="px-4 py-3.5 text-sm text-clay">
-                      {s.academicYear?.title ?? "\u2014"}
+                      {s.academicYear?.title ?? <None fem />}
                     </td>
                     <td className="px-4 py-3.5 text-clay">
                       <ChevronLeft size={16} className="opacity-50 ltr:rotate-180" />
@@ -632,18 +634,15 @@ function Select({
       <span className="mb-1 block text-[11px] font-medium text-clay">
         {label}
       </span>
-      <select
+      <UiSelect
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o.v} value={o.v}>
-            {o.l}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        aria-label={label}
+        options={[
+          { value: "", label: placeholder },
+          ...options.map((o) => ({ value: o.v, label: o.l })),
+        ]}
+      />
     </label>
   );
 }

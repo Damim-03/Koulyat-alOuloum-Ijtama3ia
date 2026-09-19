@@ -60,19 +60,19 @@ export async function seed(studentCount = 6) {
   });
 
   /*
-   * مالكٌ إلى جانب المدير.
+   * مديرٌ ثانٍ.
    *
-   * ثلاثة مسارات حذف محميّة بـ`ownerOnly()` — حذف حساب، وحذف طالب، وحذف
-   * أستاذ. وهذا امتيازٌ **فوق** المدير، فلا يُختبَر بحساب مدير وحده: يلزم من
-   * يملكه ومن لا يملكه، وإلا بقي الفرق بين الدورين دعوى بلا شاهد.
+   * كان هذا الحساب مالكاً (`owner`) يوم كان الحذف امتيازاً فوق المدير. ولمّا
+   * أُلغي ذلك الدور لم يُحذف الحساب: ما زالت الحاجة إليه قائمة لسببٍ آخر —
+   * **الإشعارات تُرسل إلى الإدارة كلّها**، فلا يُثبَت ذلك بمديرٍ واحد.
    */
-  const owner = await prisma.user.create({
+  const admin2 = await prisma.user.create({
     data: {
       firstName: TAG,
-      lastName: "Owner",
-      email: `${TAG}.owner@test.local`,
+      lastName: "Admin2",
+      email: `${TAG}.admin2@test.local`,
       password: hash,
-      role: "owner",
+      role: "admin",
     },
   });
 
@@ -176,7 +176,7 @@ export async function seed(studentCount = 6) {
     specialization,
     academicYear,
     admin,
-    owner,
+    admin2,
     profUser,
     professor,
     prof2User,

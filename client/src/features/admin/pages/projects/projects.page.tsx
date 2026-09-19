@@ -29,13 +29,13 @@ import { ProfessorPicker } from "../../components/ui/professor-picker";
 import { useLangNavigate } from "../../../../hooks/useLangNavigate";
 import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { None } from "../../../../lib/none";
+import { Select } from "../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const PAGE_SIZE = 9;
 
-const selectCls =
-  "rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30";
 
 /** Whole days from today to `date`; negative once it has passed. */
 function daysUntil(date: string | Date) {
@@ -225,61 +225,45 @@ export function AdminProjectsPage() {
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-                <select
+                <Select
                   value={specializationId}
-                  onChange={(e) => setSpecializationId(e.target.value)}
-                  className={selectCls}
-                >
-                  <option value="">{t("admin.allSpecializations")}</option>
-                  {(specs ?? []).map((s: any) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setSpecializationId(v)}
+                  options={[
+                    { value: "", label: t("admin.allSpecializations") },
+                    ...(specs ?? []).map((s: any) => ({ value: s.id, label: s.name })),
+                  ]}
+                />
 
-                <select
+                <Select
                   value={academicYearId}
-                  onChange={(e) => setAcademicYearId(e.target.value)}
-                  className={selectCls}
-                >
-                  <option value="">{t("admin.allYears")}</option>
-                  {(years ?? []).map((y: any) => (
-                    <option key={y.id} value={y.id}>
-                      {y.title}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setAcademicYearId(v)}
+                  options={[
+                    { value: "", label: t("admin.allYears") },
+                    ...(years ?? []).map((y: any) => ({ value: y.id, label: y.title })),
+                  ]}
+                />
 
-                <select
+                <Select
                   value={defense}
-                  onChange={(e) => setDefense(e.target.value)}
-                  className={selectCls}
-                >
-                  <option value="">{t("admin.allDefenseStates")}</option>
-                  <option value="none">{t("admin.defenseNone")}</option>
-                  <option value="scheduled">
-                    {t("admin.defenseScheduledFilter")}
-                  </option>
-                  <option value="completed">
-                    {t("admin.defenseCompleted")}
-                  </option>
-                  <option value="cancelled">
-                    {t("admin.defenseCancelled")}
-                  </option>
-                </select>
+                  onChange={(v) => setDefense(v)}
+                  options={[
+                    { value: "", label: t("admin.allDefenseStates") },
+                    { value: "none", label: t("admin.defenseNone") },
+                    { value: "scheduled", label: t("admin.defenseScheduledFilter") },
+                    { value: "completed", label: t("admin.defenseCompleted") },
+                    { value: "cancelled", label: t("admin.defenseCancelled") },
+                  ]}
+                />
 
-                <select
+                <Select
                   value={sort}
-                  onChange={(e) => setSort(e.target.value)}
-                  className={selectCls}
-                >
-                  <option value="newest">{t("admin.sortNewest")}</option>
-                  <option value="oldest">{t("admin.sortOldest")}</option>
-                  <option value="defenseSoon">
-                    {t("admin.sortDefenseSoon")}
-                  </option>
-                </select>
+                  onChange={(v) => setSort(v)}
+                  options={[
+                    { value: "newest", label: t("admin.sortNewest") },
+                    { value: "oldest", label: t("admin.sortOldest") },
+                    { value: "defenseSoon", label: t("admin.sortDefenseSoon") },
+                  ]}
+                />
               </div>
             </>
           )}
@@ -403,7 +387,7 @@ export function AdminProjectsPage() {
                 </div>
 
                 <h3 className="mb-1.5 text-start font-serif text-base font-bold text-forest">
-                  {p.topic?.title ?? "—"}
+                  {p.topic?.title ?? <None />}
                 </h3>
 
                 {/* Where it sits — neither of these was available before. */}

@@ -9,9 +9,14 @@ import viteConfig from "./vite.config";
  * ويُستعمل في التطوير والبناء والاختبار معاً. أي مشغّل آخر يعني إعداداً
  * موازياً يجب أن يبقى مطابقاً يدوياً، وهو ما لا يبقى مطابقاً أبداً.
  */
-export default mergeConfig(
-  viteConfig,
-  defineConfig({
+export default defineConfig((configEnv) =>
+  mergeConfig(
+    // `vite.config` صار دالّةً — يحتاج `mode` ليعرف أنه خلف نفق — و
+    // `mergeConfig` لا يدمج دالّة («Cannot merge config in form of
+    // callback»). فتُستدعى هنا بنفس البيئة التي يمرّرها Vitest، ويبقى
+    // المصدر واحداً كما كان.
+    typeof viteConfig === "function" ? viteConfig(configEnv) : viteConfig,
+    {
     test: {
       // مكوّنات React تحتاج DOM.
       environment: "jsdom",
@@ -36,5 +41,6 @@ export default mergeConfig(
         ],
       },
     },
-  }),
+    },
+  ),
 );

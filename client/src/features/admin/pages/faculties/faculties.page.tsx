@@ -20,6 +20,7 @@ import { AcademicStructureWizard } from "../../components/dialog/academic/academ
 import { AcademicYearsPanel } from "../../components/academic/academic-years-panel";
 import { CoverBanner } from "../../components/ui/cover-banner";
 import i18n from "../../../../i18n/i18n";
+import { Select } from "../../../../components/ui/select";
 
 type SortKey = "name" | "departments";
 
@@ -133,16 +134,14 @@ export function AdminFacultiesPage() {
             className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-clay"
             size={16}
           />
-          <select
+          <Select
             value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            className="w-full appearance-none rounded-xl border border-forest/15 bg-cream-2 py-2.5 pr-9 pl-4 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30 sm:w-52"
-          >
-            <option value="name">{t("admin.sortNameAsc")}</option>
-            <option value="departments">
-              {t("admin.sortDepartmentsDesc")}
-            </option>
-          </select>
+            onChange={(v) => setSort(v as SortKey)}
+            options={[
+              { value: "name", label: t("admin.sortNameAsc") },
+              { value: "departments", label: t("admin.sortDepartmentsDesc") },
+            ]}
+          />
         </div>
       </div>
 

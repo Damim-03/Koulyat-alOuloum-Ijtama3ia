@@ -11,7 +11,6 @@
 //
 
 export const Roles = {
-  OWNER: "owner",
   ADMIN: "admin",
   PROFESSOR: "professor",
   STUDENT: "student",
@@ -105,71 +104,17 @@ export type PermissionType = (typeof Permissions)[keyof typeof Permissions];
 
 export const RolePermissions: Record<RoleType, PermissionType[]> = {
   //
-  // ================= OWNER =================
+  // ================= ADMIN =================
   //
-  [Roles.OWNER]: [
-    // System
+  [Roles.ADMIN]: [
+    // ورثها من `owner` يوم أُلغي: صار المدير أعلى دورٍ في المنصّة.
+    // ولا يفحصها اليوم مسار — تبقى لأن الجدول وصفٌ لما يملكه الدور، لا
+    // سجلٌّ لما استُعمل منه.
     Permissions.MANAGE_ADMINS,
     Permissions.VIEW_AUDIT_LOGS,
     Permissions.MANAGE_SYSTEM_SETTINGS,
     Permissions.SYSTEM_OVERVIEW,
 
-    // Full access
-    Permissions.LOGIN,
-    Permissions.VIEW_OWN_PROFILE,
-    Permissions.EDIT_OWN_PROFILE,
-
-    Permissions.VIEW_TOPICS,
-    Permissions.CREATE_TOPICS,
-    Permissions.UPDATE_OWN_TOPICS,
-    Permissions.DELETE_OWN_TOPICS,
-    Permissions.APPROVE_TOPICS,
-    Permissions.REJECT_TOPICS,
-
-    Permissions.APPLY_TO_TOPIC,
-    Permissions.CANCEL_APPLICATION,
-    Permissions.VIEW_OWN_APPLICATIONS,
-    Permissions.VIEW_TOPIC_APPLICATIONS,
-    Permissions.VIEW_GROUPS,
-    Permissions.ACCEPT_APPLICATIONS,
-    Permissions.REJECT_APPLICATIONS,
-
-    Permissions.VIEW_PROJECT,
-    Permissions.VIEW_SUPERVISED_PROJECTS,
-
-    Permissions.VIEW_MILESTONES,
-    Permissions.CREATE_MILESTONES,
-    Permissions.UPDATE_MILESTONES,
-    Permissions.DELETE_MILESTONES,
-
-    Permissions.UPLOAD_SUBMISSIONS,
-    Permissions.COMMENT_ON_SUBMISSIONS,
-
-    Permissions.VIEW_DEFENSE,
-    Permissions.ASSIGN_DEFENSES,
-    Permissions.VIEW_DEFENSES,
-
-    Permissions.SCHEDULE_MEETINGS,
-
-    Permissions.MANAGE_USERS,
-    Permissions.MANAGE_STUDENTS,
-    Permissions.MANAGE_PROFESSORS,
-
-    Permissions.MANAGE_DEPARTMENTS,
-    Permissions.MANAGE_SPECIALIZATIONS,
-    Permissions.MANAGE_ACADEMIC_YEARS,
-
-    Permissions.MANAGE_ROOMS,
-    Permissions.VIEW_REPORTS,
-
-    Permissions.VIEW_NOTIFICATIONS,
-    Permissions.MANAGE_NOTIFICATIONS,
-  ],
-
-  //
-  // ================= ADMIN =================
-  //
-  [Roles.ADMIN]: [
     Permissions.LOGIN,
     Permissions.VIEW_OWN_PROFILE,
     Permissions.EDIT_OWN_PROFILE,

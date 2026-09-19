@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../../core/middleware/auth.middleware";
-import { adminOrOwner, ownerOnly } from "../../core/utils/roleGuard";
+import { adminOnly } from "../../core/utils/roleGuard";
 import {
   // stats
   getOverviewStatsController,
@@ -16,6 +16,7 @@ import {
   createUserController,
   updateUserController,
   updateUserStatusController,
+  updateUserVerificationController,
   resetUserPasswordController,
   deleteUserController,
   // students
@@ -108,9 +109,13 @@ import { cardImageUpload } from "../../core/middleware/upload.middleware";
 
 const adminRoutes = Router();
 
-// All admin routes require auth + admin (or owner) role.
+// كل مسارات الإدارة تشترط المصادقة ودور المدير.
+//
+// وكان الحذف وحده مشروطاً بدور `owner` فوق هذا؛ فلمّا أُلغي ذلك الدور صار
+// الحذف كسائر عمليات الإدارة — لا حارس إضافيّ له هنا، لأن حارساً مطابقاً
+// للحارس العامّ يُوهم بمستوىً ثانٍ لا وجود له.
 adminRoutes.use(authMiddleware);
-adminRoutes.use(adminOrOwner());
+adminRoutes.use(adminOnly());
 
 //
 // ─── STATS ────────────────────────────────────────────────────
@@ -141,8 +146,12 @@ adminRoutes.get("/users/:id", getUserController);
 adminRoutes.post("/users", createUserController);
 adminRoutes.patch("/users/:id", updateUserController);
 adminRoutes.patch("/users/:id/status", updateUserStatusController);
+adminRoutes.patch(
+  "/users/:id/verification",
+  updateUserVerificationController,
+);
 adminRoutes.post("/users/:id/reset-password", resetUserPasswordController);
-adminRoutes.delete("/users/:id", ownerOnly(), deleteUserController);
+adminRoutes.delete("/users/:id", deleteUserController);
 
 //
 // ─── STUDENTS ─────────────────────────────────────────────────
@@ -151,7 +160,7 @@ adminRoutes.get("/students", listStudentsController);
 adminRoutes.get("/students/:id", getStudentController);
 adminRoutes.post("/students", createStudentController);
 adminRoutes.patch("/students/:id", updateStudentController);
-adminRoutes.delete("/students/:id", ownerOnly(), deleteStudentController);
+adminRoutes.delete("/students/:id", deleteStudentController);
 
 //
 // ─── PROFESSORS ───────────────────────────────────────────────
@@ -167,7 +176,7 @@ adminRoutes.get("/professors", listProfessorsController);
 adminRoutes.get("/professors/:id", getProfessorController);
 adminRoutes.post("/professors", createProfessorController);
 adminRoutes.patch("/professors/:id", updateProfessorController);
-adminRoutes.delete("/professors/:id", ownerOnly(), deleteProfessorController);
+adminRoutes.delete("/professors/:id", deleteProfessorController);
 
 //
 // ─── FACULTIES ────────────────────────────────────────────────

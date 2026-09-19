@@ -31,6 +31,9 @@ import {
   useSpecializations,
 } from "../../hooks/admin-hook";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { noneText } from "../../../../lib/none-text";
+import { None } from "../../../../lib/none";
+import { Select } from "../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -38,10 +41,10 @@ function personName(u: any) {
   return [u?.firstName, u?.lastName].filter(Boolean).join(" ") || "\u2014";
 }
 function fmtDate(iso?: string) {
-  if (!iso) return "\u2014";
+  if (!iso) return noneText();
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
-    ? "\u2014"
+    ? noneText()
     : d.toLocaleDateString(i18n.language, { dateStyle: "medium" } as any);
 }
 
@@ -129,25 +132,18 @@ export function AdminGroupRequestsPage() {
   const accept = useAcceptGroupRequest();
   const reject = useRejectGroupRequest();
 
-  // lightweight per-status counts for the stat strip
-  const { data: pendData } = useGroupRequests({
-    page: 1,
-    limit: 1,
-    status: "pending",
-  });
-  const { data: accData } = useGroupRequests({
-    page: 1,
-    limit: 1,
-    status: "accepted",
-  });
-  const { data: rejData } = useGroupRequests({
-    page: 1,
-    limit: 1,
-    status: "rejected",
-  });
-  const pendCount = pendData?.total ?? 0;
-  const accCount = accData?.total ?? 0;
-  const rejCount = rejData?.total ?? 0;
+  /*
+   * العدّادات تأتي مع القائمة، محسوبةً **بنفس الفلاتر**.
+   *
+   * كانت ثلاثة نداءاتٍ إضافية بـ`limit: 1` تقرأ `total` — ولا تُمرّر فلاتر
+   * الشاشة. فترشيحٌ بأستاذٍ أو تاريخ يُضيّق القائمة ويترك الشريط على الإجمالي
+   * العامّ: أرقامٌ تناقض ما تحتها مباشرةً. والآن رحلةٌ واحدة، ورقمٌ يصف ما
+   * تراه.
+   */
+  const counts = (data as any)?.counts;
+  const pendCount = counts?.pending ?? 0;
+  const accCount = counts?.accepted ?? 0;
+  const rejCount = counts?.rejected ?? 0;
 
   // filter lookups
   const { data: profsData } = useProfessors({ limit: 100 });
@@ -228,7 +224,7 @@ export function AdminGroupRequestsPage() {
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatTile
           icon={ClipboardList}
-          value={pendCount + accCount + rejCount}
+          value={counts?.all ?? pendCount + accCount + rejCount}
           label={t("admin.totalRequests")}
           tint="bg-soft-sage/30 text-forest"
         />
@@ -315,41 +311,30 @@ export function AdminGroupRequestsPage() {
           {/* row 1 */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Labeled label={t("admin.statusLabel", { defaultValue: t("status.label") })}>
-              <select
+              <Select
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className={selectCls}
-              >
-                {STATUS_FILTERS.map((st) => (
-                  <option key={st || "all"} value={st}>
-                    {st
-                      ? t(`status.${st}`, { defaultValue: st })
-                      : t("admin.statusAll", {
-                          defaultValue: t("pro.allStatuses"),
-                        })}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setStatus(v)}
+                options={[
+                  ...STATUS_FILTERS.map((st) => ({ value: st, label: st
+                              ? t(`status.${st}`, { defaultValue: st })
+                              : t("admin.statusAll", {
+                                  defaultValue: t("pro.allStatuses"),
+                                }) })),
+                ]}
+              />
             </Labeled>
 
             <Labeled label={t("admin.supervisor", { defaultValue: t("admin.professorLabel") })}>
-              <select
+              <Select
                 value={professorId}
-                onChange={(e) => setProfessorId(e.target.value)}
-                className={selectCls}
-              >
-                <option value="">
-                  {t("admin.allProfessors", {
-                    defaultValue: t("messages.allProfessors"),
-                  })}
-                </option>
-
-                {professors.map((p: any) => (
-                  <option key={p.id} value={p.id}>
-                    {personName(p.user) || p.universityEmail}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setProfessorId(v)}
+                options={[
+                  { value: "", label: t("admin.allProfessors", {
+                            defaultValue: t("messages.allProfessors"),
+                          }) },
+                  ...professors.map((p: any) => ({ value: p.id, label: personName(p.user) || p.universityEmail })),
+                ]}
+              />
             </Labeled>
 
             <Labeled label={t("admin.dateFrom", { defaultValue: t("admin.fromDate") })}>
@@ -374,63 +359,48 @@ export function AdminGroupRequestsPage() {
           {/* row 2 */}
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Labeled label={t("admin.facultyLabel")}>
-              <select
+              <Select
                 value={facultyId}
-                onChange={(e) => {
-                  setFacultyId(e.target.value);
+                onChange={(v) => {
+                  setFacultyId(v);
                   setDepartmentId("");
                   setFiliereId("");
                   setSpecializationId("");
                 }}
-                className={selectCls}
-              >
-                <option value="">{t("admin.allFacultiesShort")}</option>
-
-                {(faculties ?? []).map((f: any) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: t("admin.allFacultiesShort") },
+                  ...(faculties ?? []).map((f: any) => ({ value: f.id, label: f.name })),
+                ]}
+              />
             </Labeled>
 
             <Labeled label={t("admin.department")}>
-              <select
+              <Select
                 value={departmentId}
-                onChange={(e) => {
-                  setDepartmentId(e.target.value);
+                onChange={(v) => {
+                  setDepartmentId(v);
                   setFiliereId("");
                   setSpecializationId("");
                 }}
-                className={selectCls}
-              >
-                <option value="">{t("admin.allDepartments")}</option>
-
-                {deptOptions.map((d: any) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: t("admin.allDepartments") },
+                  ...deptOptions.map((d: any) => ({ value: d.id, label: d.name })),
+                ]}
+              />
             </Labeled>
 
             <Labeled label={t("admin.filiere")}>
-              <select
+              <Select
                 value={filiereId}
-                onChange={(e) => {
-                  setFiliereId(e.target.value);
+                onChange={(v) => {
+                  setFiliereId(v);
                   setSpecializationId("");
                 }}
-                className={selectCls}
-              >
-                <option value="">{t("admin.allFilieresShort")}</option>
-
-                {filiereOptions.map((f: any) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: t("admin.allFilieresShort") },
+                  ...filiereOptions.map((f: any) => ({ value: f.id, label: f.name })),
+                ]}
+              />
             </Labeled>
 
             <Labeled
@@ -438,23 +408,16 @@ export function AdminGroupRequestsPage() {
                 defaultValue: t("admin.specializationLabelAlt"),
               })}
             >
-              <select
+              <Select
                 value={specializationId}
-                onChange={(e) => setSpecializationId(e.target.value)}
-                className={selectCls}
-              >
-                <option value="">
-                  {t("admin.allSpecializations", {
-                    defaultValue: t("messages.allSpecializations"),
-                  })}
-                </option>
-
-                {specOptions.map((s: any) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setSpecializationId(v)}
+                options={[
+                  { value: "", label: t("admin.allSpecializations", {
+                            defaultValue: t("messages.allSpecializations"),
+                          }) },
+                  ...specOptions.map((s: any) => ({ value: s.id, label: s.name })),
+                ]}
+              />
             </Labeled>
           </div>
 
@@ -536,116 +499,138 @@ export function AdminGroupRequestsPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {items.map((r: any) => {
-            const members = r.members ?? [];
-            const st = STATUS_STYLES[r.status] ?? "bg-gray-100 text-gray-600";
-            return (
-              <div
-                key={r.id}
-                onClick={() => goToRequest(r.id)}
-                className="group cursor-pointer overflow-hidden rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:-translate-y-0.5 hover:border-gold/40 hover:shadow-[0_8px_28px_rgba(38,66,61,0.10)]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${st}`}
-                      >
-                        {t(`status.${r.status}`, { defaultValue: r.status })}
-                      </span>
+        <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+          {/* ترويسة الأعمدة — للشاشات الواسعة وحدها. الضيّقة تقرأ الصفّ سطراً سطراً. */}
+          <div className="hidden items-center gap-4 border-b border-forest/10 bg-forest/[0.03] px-4 py-2.5 text-[11px] font-bold text-clay lg:flex">
+            <span className="min-w-0 flex-1">{t("admin.topicLabel")}</span>
+            <span className="w-44 shrink-0">{t("admin.leader")}</span>
+            <span className="w-20 shrink-0 text-center">{t("admin.membersLabel")}</span>
+            <span className="w-28 shrink-0 text-center">{t("admin.statusLabel")}</span>
+            <span className="w-24 shrink-0 text-center">{t("admin.dateLabel")}</span>
+            <span className="w-56 shrink-0" />
+          </div>
+
+          <ul className="divide-y divide-forest/10">
+            {items.map((r: any) => {
+              const members = r.members ?? [];
+              const st = STATUS_STYLES[r.status] ?? "bg-gray-100 text-gray-600";
+
+              /*
+               * لا شرط هنا. الخادم يقول ما يجوز ولماذا لا، والشاشة تعرض حكمه.
+               * وكان هنا شرطان يُقلّدان الخادم ويتباعدان عنه — فيُعرض «رفض»
+               * على كل طلبٍ مقبول، وقبولُ الطلب يُنشئ المشروع، فالرفض بعده
+               * مرفوضٌ دائماً.
+               *
+               * والاحتياط للخادم الأقدم الذي لا يُرسل الجدول: أظهِر الزرّين
+               * ودَع الحكم له — أسوأ ما يقع عندئذٍ رسالة رفض، لا زرٌّ مفقود.
+               */
+              const acts = r.actions;
+              const canAccept = acts ? acts.canAccept : r.status !== "accepted";
+              const canReject = acts ? acts.canReject : r.status !== "rejected";
+              const whyNoAccept = acts?.blockedReasons?.accept;
+              const whyNoReject = acts?.blockedReasons?.reject;
+
+              return (
+                <li
+                  key={r.id}
+                  onClick={() => goToRequest(r.id)}
+                  className="group cursor-pointer px-4 py-3 transition hover:bg-forest/[0.03]"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="truncate font-serif text-sm font-bold text-forest group-hover:text-forest-deep">
+                        {r.topic?.title ?? <None />}
+                      </h3>
                       {r.priority != null && (
-                        <span className="rounded-full bg-gold/15 px-2.5 py-0.5 text-[10px] font-bold text-gold">
-                          {t("admin.priorityN", {
-                            n: r.priority,
-                            defaultValue: t("admin.priorityN", { n: r.priority }),
-                          })}
+                        <span className="shrink-0 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-bold text-gold">
+                          {t("admin.priorityN", { n: r.priority })}
                         </span>
                       )}
-                      <span className="inline-flex items-center gap-1 text-[10px] text-clay">
-                        <CalendarDays size={11} /> {fmtDate(r.createdAt)}
-                      </span>
                     </div>
-                    <h3 className="truncate font-serif text-base font-bold text-forest group-hover:text-forest-deep">
-                      {r.topic?.title ?? "\u2014"}
-                    </h3>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-clay">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-clay">
                       {r.topic?.professor?.user && (
                         <span className="inline-flex items-center gap-1">
-                          <UserRound size={12} />{" "}
-                          {personName(r.topic.professor.user)}
+                          <UserRound size={11} /> {personName(r.topic.professor.user)}
                         </span>
                       )}
                       {r.topic?.specialization?.name && (
                         <span className="inline-flex items-center gap-1">
-                          <Layers size={12} /> {r.topic.specialization.name}
+                          <Layers size={11} /> {r.topic.specialization.name}
                         </span>
                       )}
                     </div>
                   </div>
-                  <ChevronLeft
-                    size={18}
-                    className="shrink-0 text-clay/40 transition rtl:group-hover:-translate-x-0.5 ltr:group-hover:translate-x-0.5 group-hover:text-gold ltr:rotate-180"
-                  />
-                </div>
 
-                {/* leader + members */}
-                <div className="mt-3 flex items-center justify-between gap-3 border-t border-forest/10 pt-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <UserAvatar user={r.leader?.user} size={32} />
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-forest">
-                        {personName(r.leader?.user)}
-                      </p>
-                      <p className="text-[10px] text-clay">{t("admin.leader")}</p>
-                    </div>
+                  <div className="flex w-44 shrink-0 items-center gap-2">
+                    <UserAvatar user={r.leader?.user} size={26} />
+                    <span className="truncate text-xs text-forest">
+                      {personName(r.leader?.user)}
+                    </span>
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-forest/8 px-2.5 py-1 text-[11px] font-semibold text-forest">
-                    <Users size={12} />{" "}
-                    {t("admin.membersCountShort", { count: members.length })}
-                  </span>
-                </div>
 
-                {/* reversible actions */}
-                <div
-                  className="mt-3 flex items-center gap-2"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {(r.status === "pending" || r.status === "rejected") && (
+                  <div className="w-20 shrink-0 lg:text-center">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-forest/8 px-2 py-0.5 text-[11px] font-semibold text-forest">
+                      <Users size={11} /> {members.length}
+                    </span>
+                  </div>
+
+                  <div className="w-28 shrink-0 lg:text-center">
+                    <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${st}`}>
+                      {t(`status.${r.status}`, { defaultValue: r.status })}
+                    </span>
+                  </div>
+
+                  <div className="w-24 shrink-0 text-[11px] text-clay lg:text-center">
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarDays size={11} /> {fmtDate(r.createdAt)}
+                    </span>
+                  </div>
+
+                  <div
+                    className="flex w-56 shrink-0 items-center gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <button
                       onClick={() => accept.mutate(r.id)}
-                      disabled={accept.isPending}
-                      className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-forest px-4 py-2 text-xs font-semibold text-cream transition hover:bg-forest-deep disabled:opacity-60"
+                      disabled={!canAccept || accept.isPending}
+                      title={whyNoAccept}
+                      className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-forest px-2.5 py-1.5 text-[11px] font-semibold text-cream transition hover:bg-forest-deep disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      <Check size={14} />
+                      <Check size={12} />
                       {t("admin.accept", { defaultValue: t("pro.accept") })}
                     </button>
-                  )}
-                  {(r.status === "pending" || r.status === "accepted") && (
                     <button
                       onClick={() => reject.mutate({ id: r.id })}
-                      disabled={reject.isPending}
-                      className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border-2 border-red-400 px-4 py-2 text-xs font-semibold text-red-500 transition hover:bg-red-50 disabled:opacity-60"
+                      disabled={!canReject || reject.isPending}
+                      title={whyNoReject}
+                      className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-400 px-2.5 py-1.5 text-[11px] font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      <X size={14} />
+                      <X size={12} />
                       {t("admin.reject", { defaultValue: t("pro.reject") })}
                     </button>
-                  )}
-                  <button
-                    onClick={() => goToRequest(r.id)}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-forest/20 px-3 py-2 text-xs font-semibold text-forest transition hover:bg-forest/5"
-                  >{t("admin.details")}</button>
-                </div>
+                    <button
+                      onClick={() => goToRequest(r.id)}
+                      title={t("admin.details")}
+                      className="grid size-7 shrink-0 place-items-center rounded-lg border border-forest/20 text-forest transition hover:bg-forest/5"
+                    >
+                      <ChevronLeft size={14} className="ltr:rotate-180" />
+                    </button>
+                  </div>
 
-                {r.status === "rejected" && r.rejectionReason && (
-                  <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-[11px] text-red-600">
-                    <span className="font-semibold">{t("admin.rejectionReasonColon")}</span>{" "}
-                    {r.rejectionReason}
-                  </p>
-                )}
-              </div>
-            );
-          })}
+                  </div>
+
+                  {/* السبب على سطره: حشرُه بين الأعمدة يضغطها ويُخفيه. */}
+                  {r.status === "rejected" && r.rejectionReason && (
+                    <p className="mt-2 rounded-lg bg-red-50 px-3 py-1.5 text-[11px] text-red-600">
+                      <span className="font-semibold">{t("admin.rejectionReasonColon")}</span>{" "}
+                      {r.rejectionReason}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

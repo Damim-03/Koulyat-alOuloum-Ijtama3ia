@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../../core/middleware/auth.middleware";
-import { adminOrOwner } from "../../core/utils/roleGuard";
+import { adminOnly } from "../../core/utils/roleGuard";
 import {
     sendMessageController,
     broadcastMessageController,
@@ -29,7 +29,7 @@ messagesRoutes.patch("/:id/read", markMessageReadController);
 
 // ── الإرسال ──
 // بثّ جماعي (الكل / كل الطلبة / كل الأساتذة / تخصّص) — للإدارة فقط.
-messagesRoutes.post("/broadcast", adminOrOwner(), broadcastMessageController);
+messagesRoutes.post("/broadcast", adminOnly(), broadcastMessageController);
 // رسالة مباشرة — لكل الأدوار (القيود حسب العلاقة داخل الخدمة).
 messagesRoutes.post("/", sendMessageController);
 

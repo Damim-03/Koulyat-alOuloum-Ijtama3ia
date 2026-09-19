@@ -6,7 +6,6 @@ import {
   GitBranch,
   Plus,
   Trash2,
-  Check,
   ChevronLeft,
   ChevronRight,
   Save,
@@ -29,6 +28,8 @@ import type {
   StructureRef,
   StructureSpecialization,
 } from "../../../../../types/admin";
+import { Select } from "../../../../../components/ui/select";
+import { Stepper } from "../../../../../components/ui/stepper";
 
 //
 // ─── REFS ────────────────────────────────────────────────────
@@ -312,49 +313,21 @@ export function AcademicStructureWizard({
         </>
       }
     >
-      {/* ── stepper ── */}
-      <ol className="mb-5 flex items-center gap-1">
-        {STEPS.map((s, i) => {
-          const done = i < step;
-          const active = i === step;
-          const reachable = i === 0 || facultyReady;
-          return (
-            <li key={t(s.titleKey)} className="flex flex-1 items-center gap-1">
-              <button
-                type="button"
-                disabled={!reachable}
-                onClick={() => setStep(i)}
-                className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3 py-2 transition ${
-                  active
-                    ? "border-gold bg-gold/10"
-                    : done
-                      ? "border-forest/15 bg-soft-sage/20"
-                      : "border-forest/10 bg-cream-2/50"
-                } ${reachable ? "hover:border-gold/60" : "cursor-not-allowed opacity-50"}`}
-              >
-                <span
-                  className={`grid size-7 shrink-0 place-items-center rounded-lg text-xs font-bold ${
-                    active
-                      ? "bg-gold text-forest-deep"
-                      : done
-                        ? "bg-soft-sage text-forest"
-                        : "bg-forest/8 text-clay"
-                  }`}
-                >
-                  {done ? <Check size={14} /> : i + 1}
-                </span>
-                <span
-                  className={`min-w-0 truncate text-xs font-semibold ${
-                    active ? "text-forest" : "text-clay"
-                  }`}
-                >
-                  {t(s.titleKey)}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+      {/*
+        شريط الخطوات المشترك — نفسه في معالج إنشاء الحساب وحذف الموضوع
+        وطلب المجموعة. وكان هنا شريط أزرارٍ خاصٌّ بهذه الشاشة: يرسم الشيء
+        نفسه بشيفرةٍ أخرى، ويسمح **بالقفز إلى الأمام** متى صحّت الكلّية.
+        والتقدّم الآن من «التالي» وحده — فهو الذي يعرف ما يشترطه كلّ انتقال
+        — والرجوع بالنقر على خطوةٍ مرّت.
+      */}
+      <div className="mb-5">
+        <Stepper
+          steps={STEPS.map((x) => ({ key: x.titleKey, label: t(x.titleKey) }))}
+          current={step}
+          onGo={setStep}
+          ariaLabel={t("admin.addAcademicStructure")}
+        />
+      </div>
 
       {/* ══ STEP 1 — FACULTY ══ */}
       {step === 0 && (
@@ -421,22 +394,21 @@ export function AcademicStructureWizard({
           ) : (
             <>
               <Field label={t("admin.chooseFaculty")} icon={Building2}>
-                <select
+                <Select
                   value={facultyId}
-                  onChange={(e) => {
-                    setFacultyId(e.target.value);
+                  onChange={(v) => {
+                    setFacultyId(v);
                     setDomains([]);
                     setFilieres([]);
                   }}
-                  className={inputClass}
-                >
-                  <option value="">{t("admin.selectPlaceholder")}</option>
-                  {faculties?.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} ({f.code})
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: t("admin.selectPlaceholder") },
+                    ...(faculties ?? []).map((f) => ({
+                      value: f.id,
+                      label: `${f.name} (${f.code})`,
+                    })),
+                  ]}
+                />
               </Field>
 
               {/* What this faculty already holds */}
@@ -687,22 +659,19 @@ export function AcademicStructureWizard({
                           className={inputClass}
                           placeholder={t("admin.specializationExamplePlaceholder")}
                         />
-                        <select
+                        <Select
                           value={s.level}
-                          onChange={(e) =>
+                          onChange={(v) =>
                             patchSpec(setFilieres, f.key, i, {
-                              level: e.target
-                                .value as StructureSpecialization["level"],
+                              level: v as StructureSpecialization["level"],
                             })
                           }
-                          className={`${inputClass} w-32 shrink-0`}
-                        >
-                          {LEVELS.map((l) => (
-                            <option key={l.value} value={l.value}>
-                              {t(l.labelKey)}
-                            </option>
-                          ))}
-                        </select>
+                          className="w-32 shrink-0"
+                          options={LEVELS.map((l) => ({
+                            value: l.value,
+                            label: t(l.labelKey),
+                          }))}
+                        />
                         <RemoveButton
                           onClick={() =>
                             setFilieres((p) =>
@@ -860,18 +829,19 @@ function RefSelect({
 }) {
   const { t } = useTranslation();
   return (
-    <select
+    <Select
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={inputClass}
-    >
-      {emptyLabel && <option value="">{emptyLabel}</option>}
-      {options.map((o) => (
-        <option key={o.ref} value={o.ref}>
-          {o.isExisting ? t("admin.existingOption", { name: o.label }) : o.label}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      options={[
+        ...(emptyLabel ? [{ value: "", label: emptyLabel }] : []),
+        ...options.map((o) => ({
+          value: o.ref,
+          label: o.isExisting
+            ? t("admin.existingOption", { name: o.label })
+            : o.label,
+        })),
+      ]}
+    />
   );
 }
 

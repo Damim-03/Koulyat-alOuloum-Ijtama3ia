@@ -1,0 +1,36 @@
+{
+  // اختبارات المتصفّح وإعداد Playwright.
+  //
+  // هي خارج `src`، فلا يشملها `tsconfig.app.json`، ولا يشملها
+  // `tsconfig.node.json` (المقصور على `vite.config.ts`) — فكانت تسقط في
+  // «مشروعٍ مُستنتَج» بلا أنواع: خطٌّ أحمر تحت `node:fs` و`node:path`، وهي
+  // موجودةٌ فعلاً.
+  //
+  // وتحتاج العالمين معاً: أنواع `node` لأنها برامج تعمل في العُقدة، و`DOM`
+  // لأن ما يُمرَّر إلى `page.evaluate` يُنفَّذ في المتصفّح ويقرأ `window`.
+  // ولهذا لم تصلح ضمّها إلى `tsconfig.node.json`: لا `DOM` فيه.
+  //
+  // وسائر الخيارات منقولةٌ عن شقيقيها حرفاً بحرف — لا تشدّد جديداً هنا.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+}

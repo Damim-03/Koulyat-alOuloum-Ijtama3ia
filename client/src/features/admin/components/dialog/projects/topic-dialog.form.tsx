@@ -15,6 +15,7 @@ import { statusChip } from "../../../utils/status-styles";
 import { ProfessorPicker } from "../../ui/professor-picker";
 import { ListInput } from "../../../../../components/ui/list-input";
 import { inputCls, SectionHead, Field } from "../../../../../components/ui/form-bits";
+import { Select } from "../../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -36,7 +37,6 @@ interface Props {
   onCreated?: () => void;
 }
 
-const selectCls = inputCls;
 
 export function TopicDialog({ open, onClose, onCreated }: Props) {
   const { t } = useTranslation();
@@ -282,18 +282,14 @@ export function TopicDialog({ open, onClose, onCreated }: Props) {
 
                 <div className="grid grid-cols-2 gap-3">
                   <Field label={t("admin.academicYear")}>
-                    <select
+                    <Select
                       value={academicYearId}
-                      onChange={(e) => setAcademicYearId(e.target.value)}
-                      className={selectCls}
-                    >
-                      <option value="">{t("admin.selectYear")}</option>
-                      {(years ?? []).map((y: any) => (
-                        <option key={y.id} value={y.id}>
-                          {y.title}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setAcademicYearId(v)}
+                      options={[
+                        { value: "", label: t("admin.selectYear") },
+                        ...(years ?? []).map((y: any) => ({ value: y.id, label: y.title })),
+                      ]}
+                    />
                   </Field>
 
                   <Field label={t("admin.maxStudents")}>
@@ -315,75 +311,59 @@ export function TopicDialog({ open, onClose, onCreated }: Props) {
 
                 <div className="space-y-3 border-t border-forest/10 pt-4">
                   <Field label={t("admin.faculty")}>
-                    <select
+                    <Select
                       value={facultyId}
-                      onChange={(e) => {
-                        setFacultyId(e.target.value);
+                      onChange={(v) => {
+                        setFacultyId(v);
                         setDepartmentId("");
                         setFiliereId("");
                         setSpecializationId("");
                       }}
-                      className={selectCls}
-                    >
-                      <option value="">{t("admin.allFaculties")}</option>
-                      {(faculties ?? []).map((f: any) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: t("admin.allFaculties") },
+                        ...(faculties ?? []).map((f: any) => ({ value: f.id, label: f.name })),
+                      ]}
+                    />
                   </Field>
 
                   <Field label={t("admin.department")}>
-                    <select
+                    <Select
                       value={departmentId}
-                      onChange={(e) => {
-                        setDepartmentId(e.target.value);
+                      onChange={(v) => {
+                        setDepartmentId(v);
                         setFiliereId("");
                         setSpecializationId("");
                       }}
-                      className={selectCls}
-                    >
-                      <option value="">{t("admin.allDepartments")}</option>
-                      {deptOptions.map((d: any) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: t("admin.allDepartments") },
+                        ...deptOptions.map((d: any) => ({ value: d.id, label: d.name })),
+                      ]}
+                    />
                   </Field>
 
                   <Field label={t("admin.filiere")}>
-                    <select
+                    <Select
                       value={filiereId}
-                      onChange={(e) => {
-                        setFiliereId(e.target.value);
+                      onChange={(v) => {
+                        setFiliereId(v);
                         setSpecializationId("");
                       }}
-                      className={selectCls}
-                    >
-                      <option value="">{t("admin.allFilieres")}</option>
-                      {filiereOptions.map((f: any) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: t("admin.allFilieres") },
+                        ...filiereOptions.map((f: any) => ({ value: f.id, label: f.name })),
+                      ]}
+                    />
                   </Field>
 
                   <Field label={t("admin.specialization")}>
-                    <select
+                    <Select
                       value={specializationId}
-                      onChange={(e) => setSpecializationId(e.target.value)}
-                      className={selectCls}
-                    >
-                      <option value="">{t("admin.selectSpecialization")}</option>
-                      {specOptions.map((sp: any) => (
-                        <option key={sp.id} value={sp.id}>
-                          {sp.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setSpecializationId(v)}
+                      options={[
+                        { value: "", label: t("admin.selectSpecialization") },
+                        ...specOptions.map((sp: any) => ({ value: sp.id, label: sp.name })),
+                      ]}
+                    />
                   </Field>
                 </div>
               </div>

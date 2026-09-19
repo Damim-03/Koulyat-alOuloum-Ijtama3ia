@@ -11,6 +11,7 @@ import { useAuth } from "../../../hooks/use-auth";
 import { useLanguage } from "../../../hooks/use-language";
 import { PATHS } from "../../../routes/paths";
 import type { PublicTopic } from "../../../types/public.types";
+import { Select } from "../../../components/ui/select";
 
 const PAGE_SIZE = 9;
 
@@ -103,53 +104,44 @@ export function PublicTopicsPage() {
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && applyFilters()}
               placeholder={t("public.searchPlaceholder")}
-              className="w-full rounded-xl border border-forest/15 bg-white py-2.5 pr-10 pl-3 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
+              className="w-full rounded-xl border border-forest/15 bg-cream py-2.5 pr-10 pl-3 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
             />
           </div>
 
           {/* Department → resets specialization when changed */}
-          <select
+          <Select
             value={departmentId}
-            onChange={(e) => {
-              setDepartmentId(e.target.value);
+            onChange={(v) => {
+              setDepartmentId(v);
               setSpecializationId("");
             }}
-            className="rounded-xl border border-forest/15 bg-white px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
-          >
-            <option value="">{t("public.allDepartments")}</option>
-            {(departments ?? []).map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: t("public.allDepartments") },
+              ...(departments ?? []).map((d) => ({ value: d.id, label: d.name })),
+            ]}
+          />
 
           {/* Specialization (scoped to department) */}
-          <select
+          <Select
             value={specializationId}
-            onChange={(e) => setSpecializationId(e.target.value)}
-            className="rounded-xl border border-forest/15 bg-white px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
-          >
-            <option value="">{t("public.allSpecializations")}</option>
-            {(specializations ?? []).map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setSpecializationId(v)}
+            options={[
+              { value: "", label: t("public.allSpecializations") },
+              ...(specializations ?? []).map((s) => ({ value: s.id, label: s.name })),
+            ]}
+          />
 
           {/* Availability */}
-          <select
+          <Select
             value={availability}
-            onChange={(e) =>
-              setAvailability(e.target.value as typeof availability)
-            }
-            className="rounded-xl border border-forest/15 bg-white px-3 py-2.5 text-sm text-forest outline-none focus:border-gold focus:ring-2 focus:ring-gold/30"
-          >
-            <option value="">{t("public.allStatuses")}</option>
-            <option value="available">{t("public.available")}</option>
-            <option value="reserved">{t("public.reserved")}</option>
-          </select>
+            onChange={(v) =>
+                  setAvailability(v as typeof availability)}
+            options={[
+              { value: "", label: t("public.allStatuses") },
+              { value: "available", label: t("public.available") },
+              { value: "reserved", label: t("public.reserved") },
+            ]}
+          />
         </div>
 
         <div className="mt-3 flex items-center justify-between">
@@ -224,7 +216,7 @@ function TopicCard({
       .join(" ") || "\u2014";
 
   return (
-    <div className="flex h-full flex-col rounded-xl border border-forest/10 bg-white p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(38,66,61,0.1)]">
+    <div className="flex h-full flex-col rounded-xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(38,66,61,0.1)]">
       <div className="mb-4 flex items-start justify-between">
         {topic.isAvailable ? (
           <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">
