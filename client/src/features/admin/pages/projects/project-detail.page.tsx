@@ -23,6 +23,8 @@ import { ProjectDetailDialog } from "../../components/dialog/projects/project-de
 import { MilestoneManager } from "../../components/ui/milestone-manager";
 import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { noneText } from "../../../../lib/none-text";
+import { None } from "../../../../lib/none";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -41,7 +43,7 @@ function nameOf(u: any) {
 }
 
 function fmtDate(value?: string | Date | null) {
-  if (!value) return "—";
+  if (!value) return noneText();
   return new Date(value).toLocaleDateString(i18n.language, {
     dateStyle: "medium",
   });
@@ -137,7 +139,7 @@ export function AdminProjectDetailPage() {
         <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
           <div className="min-w-0 space-y-3">
             <h1 className="font-serif text-2xl leading-tight font-bold text-forest lg:text-3xl">
-              {topic.title ?? "—"}
+              {topic.title ?? <None />}
             </h1>
             <div className="flex flex-wrap gap-2">
               {topic.specialization?.name && (
@@ -329,7 +331,7 @@ export function AdminProjectDetailPage() {
                           </td>
                           <td className="px-4 py-3.5 text-sm font-medium text-forest">
                             <span className="inline-flex items-center gap-1.5">
-                              {st?.user?.firstName ?? "—"}
+                              {st?.user?.firstName ?? <None />}
                               {m.isLeader && (
                                 <span className="rounded-full bg-gold/15 px-1.5 py-0.5 text-[9px] font-bold text-gold">
                                   {t("admin.leader")}
@@ -338,13 +340,13 @@ export function AdminProjectDetailPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                            {st?.user?.lastName ?? "—"}
+                            {st?.user?.lastName ?? <None />}
                           </td>
                           <td
                             className="px-4 py-3.5 text-sm text-clay tabular-nums"
                             dir="ltr"
                           >
-                            {st?.registrationNumber ?? "—"}
+                            {st?.registrationNumber ?? <None />}
                           </td>
                           <td className="px-4 py-3.5 text-sm">
                             <span
@@ -354,7 +356,7 @@ export function AdminProjectDetailPage() {
                                   : "text-clay"
                               }
                             >
-                              {sp?.name ?? "—"}
+                              {sp?.name ?? <None />}
                             </span>
                             {mismatch && (
                               <AlertTriangle
@@ -365,19 +367,19 @@ export function AdminProjectDetailPage() {
                             )}
                           </td>
                           <td className="px-4 py-3.5 text-sm text-clay">
-                            {sp?.filiere?.name ?? "—"}
+                            {sp?.filiere?.name ?? <None fem />}
                           </td>
                           <td className="px-4 py-3.5 text-sm text-clay">
-                            {sp?.filiere?.department?.name ?? "—"}
+                            {sp?.filiere?.department?.name ?? <None />}
                           </td>
                           <td className="px-4 py-3.5 text-sm text-clay">
-                            {sp?.filiere?.department?.faculty?.name ?? "—"}
+                            {sp?.filiere?.department?.faculty?.name ?? <None fem />}
                           </td>
                           <td
                             className="px-4 py-3.5 text-sm text-clay"
                             dir="ltr"
                           >
-                            {st?.academicYear?.title ?? "—"}
+                            {st?.academicYear?.title ?? <None fem />}
                           </td>
                         </tr>
                       );

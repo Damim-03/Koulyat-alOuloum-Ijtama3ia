@@ -9,6 +9,7 @@ import {
   createUserSchema,
   updateUserSchema,
   updateUserStatusSchema,
+  updateUserVerificationSchema,
   resetPasswordSchema,
   listStudentsSchema,
   createStudentSchema,
@@ -183,6 +184,25 @@ export const updateUserStatusController = async (
       data as never,
     );
     return res.status(HTTPSTATUS.OK).json({ message: "Status updated", user });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const updateUserVerificationController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody(updateUserVerificationSchema, req.body);
+    const user = await svc.updateUserVerificationService(
+      req.params.id as string,
+      data as never,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Verification updated", user });
   } catch (e) {
     next(e);
   }

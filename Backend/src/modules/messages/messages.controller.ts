@@ -36,7 +36,7 @@ export const sendMessageController = async (
     }
 };
 
-/* ── broadcast (admin/owner — guarded in routes) ───────────── */
+/* ── broadcast (admin — guarded in routes) ─────────────────── */
 export const broadcastMessageController = async (
     req: Request,
     res: Response,

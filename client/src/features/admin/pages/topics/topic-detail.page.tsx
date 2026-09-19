@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { can, blockReason } from "../../lib/topic-actions";
+import { actionsOf, can, blockReason } from "../../lib/topic-actions";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -30,13 +30,14 @@ import {
   usePublishTopic,
   useUnpublishTopic,
   useUnarchiveTopic,
-  useDeleteTopic,
 } from "../../hooks/admin-hook";
-import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
+import { TopicDeleteDialog } from "../../components/dialog/topic/topic-delete-dialog.form";
 import { ProjectMembersDialog } from "../../components/dialog/projects/project-members-dialog.form";
 import { EditAssignedTopicDialog } from "../../components/dialog/projects/edit-assigned-topic-dialog.form";
 import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { noneText } from "../../../../lib/none-text";
+import { None } from "../../../../lib/none";
 
 const STATUS_STYLES: Record<string, string> = {
   approved: "bg-emerald-100 text-emerald-700",
@@ -77,7 +78,6 @@ export function AdminTopicDetailPage() {
   const publish = usePublishTopic();
   const unpublish = useUnpublishTopic();
   const unarchive = useUnarchiveTopic();
-  const del = useDeleteTopic();
 
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
@@ -86,7 +86,7 @@ export function AdminTopicDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
 
   function fmtDate(iso?: string) {
-    if (!iso) return "\u2014";
+    if (!iso) return noneText();
     try {
       return new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium" }).format(
         new Date(iso),
@@ -139,6 +139,21 @@ export function AdminTopicDetailPage() {
   const hasGroup = Boolean(projectGroup);
   const groupId = projectGroup?.id ?? null;
   const members = projectGroup?.members ?? [];
+
+  /**
+   * زرّ الحذف: يُفتح لما يستطيع المعالج تذليله.
+   *
+   * حكم الخادم وحده كان يقرّر، وهو يرفض الحذف ما دامت للموضوع مجموعة. فبعد
+   * أن صار للحذف معالجٌ **يفسخ المجموعة أوّلاً**، بقي الزرّ مطفأً على الحالة
+   * التي بُني لها بالضبط — وضغطةٌ عليه لا تفتح شيئاً.
+   *
+   * والاستثناء محصورٌ في المانع الذي يزيله المعالج: `hasGroup` ومعه مُعرّف
+   * المجموعة. أمّا طلب فريقٍ ينتظر قراراً (`waiting`/`reserved`) فيبقى
+   * مانعاً — لا يملك المعالج البتّ فيه، ولا يصحّ أن يَعِد بما لا يفعل.
+   */
+  const deleteBlock = actionsOf(topic).blockedCodes.delete?.code;
+  const deletableViaWizard =
+    can(topic, "delete") || (deleteBlock === "hasGroup" && !!groupId);
 
   /**
    * Teams still waiting for a decision on this topic.
@@ -195,10 +210,6 @@ export function AdminTopicDetailPage() {
   function doUnarchive() {
     unarchive.mutate(topic!.id, { onSuccess: () => refetch() });
   }
-  function doDelete() {
-    del.mutate(topic!.id, { onSuccess: () => navigate(topicsPath) });
-  }
-
   return (
     <div className="font-body">
       {/* Top bar */}
@@ -234,8 +245,14 @@ export function AdminTopicDetailPage() {
               it now, and its reason is the tooltip. */}
           <button
             onClick={() => setConfirmOpen(true)}
-            disabled={!can(topic, "delete")}
-            title={blockReason(topic, "delete", t)}
+            disabled={!deletableViaWizard}
+            title={
+              can(topic, "delete")
+                ? undefined
+                : deletableViaWizard
+                  ? t("admin.deleteStartsWithDissolve")
+                  : blockReason(topic, "delete", t)
+            }
             className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
           >
             <Trash2 size={14} />
@@ -253,10 +270,10 @@ export function AdminTopicDetailPage() {
             </h1>
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full bg-soft-sage/30 px-3 py-1 text-[11px] font-medium text-forest">
-                {topic.specialization?.name ?? "\u2014"}
+                {topic.specialization?.name ?? <None />}
               </span>
               <span className="rounded-full bg-forest/5 px-3 py-1 text-[11px] font-medium text-clay">
-                {topic.academicYear?.title ?? "\u2014"}
+                {topic.academicYear?.title ?? <None fem />}
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-gold/15 px-3 py-1 text-[11px] font-medium text-gold">
                 <Users size={14} />
@@ -288,7 +305,7 @@ export function AdminTopicDetailPage() {
               </h2>
             </div>
             <p className="whitespace-pre-line leading-relaxed text-clay">
-              {topic.description || "\u2014"}
+              {topic.description || <None />}
             </p>
           </section>
 
@@ -547,11 +564,11 @@ export function AdminTopicDetailPage() {
             <div className="space-y-1">
               <InfoRow
                 label={t("admin.specialization")}
-                value={topic.specialization?.name ?? "\u2014"}
+                value={topic.specialization?.name ?? noneText()}
               />
               <InfoRow
                 label={t("admin.academicYear")}
-                value={topic.academicYear?.title ?? "\u2014"}
+                value={topic.academicYear?.title ?? noneText(true)}
               />
               <InfoRow
                 label={t("admin.maxCapacity")}
@@ -760,17 +777,25 @@ export function AdminTopicDetailPage() {
         onUpdated={() => refetch()}
       />
 
-      <ConfirmDialog
-        open={confirmOpen}
-        tone="danger"
-        title={t("admin.deleteTopicTitle", { defaultValue: t("admin.deleteTopic") })}
-        message={t("admin.confirmDeleteTopicLong", { title: topic.title })}
-        confirmLabel={t("admin.confirmDelete", { defaultValue: t("admin.yesDelete") })}
-        cancelLabel={t("admin.cancel", { defaultValue: t("pro.cancel") })}
-        loading={del.isPending}
-        onConfirm={doDelete}
-        onClose={() => setConfirmOpen(false)}
-      />
+      {/*
+        الحذف معالجٌ لا تأكيدٌ واحد: موضوعٌ قامت عليه مجموعةٌ لا تقبل الخلفية
+        حذفه، فكان الزرّ يفتح تأكيداً ثم يُردّ بخطأ. والمعالج يمرّ بما يمنع:
+        يفسخ المجموعة بسببٍ يصل أعضاءها، ثم يُراسل المشرف، ثم يحذف.
+      */}
+      {confirmOpen && (
+        <TopicDeleteDialog
+          onClose={() => setConfirmOpen(false)}
+          topicId={topic.id}
+          topicTitle={topic.title}
+          groupId={groupId}
+          members={members}
+          supervisor={topic.professor ?? null}
+          supervisorUserId={
+            (topic.professor?.user as { id?: string } | undefined)?.id ?? null
+          }
+          onDeleted={() => navigate(topicsPath)}
+        />
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   useSpecializations,
   useAcademicYears,
 } from "../hooks/Student-hook";
+import { Select } from "../../../components/ui/select";
 
 export function StudentBrowseTopicsPage() {
   const { t } = useTranslation();
@@ -66,30 +67,22 @@ export function StudentBrowseTopicsPage() {
               className={`${field} w-full pr-10`}
             />
           </div>
-          <select
+          <Select
             value={specializationId}
-            onChange={(e) => setSpecializationId(e.target.value)}
-            className={field}
-          >
-            <option value="">{t("stu.allSpecs")}</option>
-            {specs?.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <select
+            onChange={(v) => setSpecializationId(v)}
+            options={[
+              { value: "", label: t("stu.allSpecs") },
+              ...(specs ?? []).map((s) => ({ value: s.id, label: s.name })),
+            ]}
+          />
+          <Select
             value={academicYearId}
-            onChange={(e) => setAcademicYearId(e.target.value)}
-            className={field}
-          >
-            <option value="">{t("stu.allYears")}</option>
-            {years?.map((y) => (
-              <option key={y.id} value={y.id}>
-                {y.title}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setAcademicYearId(v)}
+            options={[
+              { value: "", label: t("stu.allYears") },
+              ...(years ?? []).map((y) => ({ value: y.id, label: y.title })),
+            ]}
+          />
           <button
             onClick={applyFilters}
             className="rounded-xl bg-forest px-5 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"

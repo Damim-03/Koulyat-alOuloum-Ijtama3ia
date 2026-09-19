@@ -16,6 +16,8 @@ import { useAdminDefenses, useDeleteDefense } from "../../hooks/admin-hook";
 import type { AdminDefense } from "../../../../types/admin";
 import { DefenseFormDialog } from "../../components/dialog/defense/defense-dialog.form";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { noneText } from "../../../../lib/none-text";
+import { None } from "../../../../lib/none";
 
 
 const PAGE_SIZE = 10;
@@ -160,7 +162,7 @@ export function AdminDefensesPage() {
           const dt = fmtDate(d.date);
           const isUpcoming = new Date(d.date).getTime() >= now;
           const members = d.group?.members ?? [];
-          const topicTitle = d.group?.topic?.title ?? "\u2014";
+          const topicTitle = d.group?.topic?.title ?? noneText();
 
           return (
             <div
@@ -190,7 +192,7 @@ export function AdminDefensesPage() {
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-clay">
                     <span className="flex items-center gap-1">
                       <MapPin size={13} />
-                      {d.room || "\u2014"}
+                      {d.room || <None fem />}
                     </span>
                     <span className="flex items-center gap-1">
                       <Users size={13} />

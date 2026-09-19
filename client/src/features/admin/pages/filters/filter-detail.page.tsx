@@ -27,6 +27,7 @@ import {
   HierarchyHeader,
   HeaderBadge,
 } from "../../components/ui/hierarchy-header";
+import { Select } from "../../../../components/ui/select";
 
 const LEVEL_LABEL: Record<string, string> = {
   licence: "admin.levelLicence",
@@ -171,16 +172,16 @@ export function FiliereDetailPage() {
                 <span className="mb-1 block text-[11px] font-medium text-clay">
                   {t("admin.specializationLevel")}
                 </span>
-                <select
+                <Select
                   value={level}
-                  onChange={(e) => setLevel(e.target.value)}
-                  className="w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-                >
-                  <option value="">{t("admin.allLevels")}</option>
-                  <option value="licence">{t("admin.levelLicence")}</option>
-                  <option value="master">{t("admin.levelMaster")}</option>
-                  <option value="doctorate">{t("admin.levelDoctorate")}</option>
-                </select>
+                  onChange={(v) => setLevel(v)}
+                  options={[
+                    { value: "", label: t("admin.allLevels") },
+                    { value: "licence", label: t("admin.levelLicence") },
+                    { value: "master", label: t("admin.levelMaster") },
+                    { value: "doctorate", label: t("admin.levelDoctorate") },
+                  ]}
+                />
               </label>
             </div>
           )}

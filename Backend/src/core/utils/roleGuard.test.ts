@@ -9,7 +9,7 @@
  * مجهول، بدور لا يملك الصلاحية. وهناك يسكن الأمان — لا في مسار النجاح.
  */
 import type { Request, Response, NextFunction } from "express";
-import { roleGuard, ownerOnly, adminOrOwner, requireRole } from "./roleGuard";
+import { roleGuard, adminOnly, requireRole } from "./roleGuard";
 import { Permissions, Roles } from "../enums/role.enum";
 import type { RoleType } from "../enums/role.enum";
 
@@ -60,14 +60,29 @@ describe("roleGuard", () => {
     expect(h.status).toBe(401);
   });
 
-  it("المالك يتجاوز كل فحص، ولو طُلبت صلاحية لا يملكها أحد", () => {
-    const h = harness(Roles.OWNER);
+  /**
+   * كان للمالك تجاوزٌ يمرّ به فوق الجدول كلّه. ويوم أُلغي ذلك الدور زال
+   * التجاوز معه، فلم يبقَ في الملفّ بابٌ خلفيّ: **لا دور يتجاوز الجدول**.
+   * وهذا الاختبار يحرس زواله — لو أُعيد يوماً لأحدٍ لاحمرّ هنا.
+   */
+  it("ولا دور يتجاوز الجدول: المدير نفسه يُمنع ممّا لا يملكه", () => {
+    const h = harness(Roles.ADMIN);
+    roleGuard([Permissions.APPLY_TO_TOPIC])(h.req, h.res, h.next);
+
+    expect(h.passed).toBe(false);
+    expect(h.status).toBe(403);
+  });
+
+  it("وصلاحيةٌ لا وجود لها تُمنع عن الجميع", () => {
+    const h = harness(Roles.ADMIN);
     roleGuard(["A_PERMISSION_THAT_DOES_NOT_EXIST" as never])(
       h.req,
       h.res,
       h.next,
     );
-    expect(h.passed).toBe(true);
+
+    expect(h.passed).toBe(false);
+    expect(h.status).toBe(403);
   });
 
   it("دور مجهول ⇒ 403 «Invalid role»", () => {
@@ -143,47 +158,35 @@ describe("roleGuard", () => {
   });
 });
 
-describe("ownerOnly", () => {
+describe("adminOnly", () => {
   it("بلا مستخدم ⇒ 401", () => {
     const h = harness();
-    ownerOnly()(h.req, h.res, h.next);
+    adminOnly()(h.req, h.res, h.next);
     expect(h.status).toBe(401);
     expect(h.passed).toBe(false);
   });
 
-  it.each([Roles.ADMIN, Roles.PROFESSOR, Roles.STUDENT])(
-    "%s ⇒ 403",
-    (role) => {
-      const h = harness(role);
-      ownerOnly()(h.req, h.res, h.next);
-      expect(h.passed).toBe(false);
-      expect(h.status).toBe(403);
-    },
-  );
-
-  it("المالك وحده يمرّ", () => {
-    const h = harness(Roles.OWNER);
-    ownerOnly()(h.req, h.res, h.next);
-    expect(h.passed).toBe(true);
-  });
-});
-
-describe("adminOrOwner", () => {
-  it("بلا مستخدم ⇒ 401", () => {
-    const h = harness();
-    adminOrOwner()(h.req, h.res, h.next);
-    expect(h.status).toBe(401);
-  });
-
-  it.each([Roles.OWNER, Roles.ADMIN])("%s يمرّ", (role) => {
-    const h = harness(role);
-    adminOrOwner()(h.req, h.res, h.next);
+  it("المدير يمرّ", () => {
+    const h = harness(Roles.ADMIN);
+    adminOnly()(h.req, h.res, h.next);
     expect(h.passed).toBe(true);
   });
 
-  it.each([Roles.PROFESSOR, Roles.STUDENT])("%s ⇒ 403", (role) => {
+  /**
+   * هذا الحارس يحمي — من بين ما يحمي — مسارات حذف الحسابات. وكانت محجوزةً
+   * لدور `owner`؛ فلمّا أُلغي انتقلت إلى المدير. والأستاذ والطالب على
+   * حالهما: ممنوعان.
+   */
+  it.each([Roles.PROFESSOR, Roles.STUDENT])("و«%s» ⇒ 403", (role) => {
     const h = harness(role);
-    adminOrOwner()(h.req, h.res, h.next);
+    adminOnly()(h.req, h.res, h.next);
+    expect(h.passed).toBe(false);
+    expect(h.status).toBe(403);
+  });
+
+  it("ودورٌ مجهول ⇒ 403", () => {
+    const h = harness("intruder");
+    adminOnly()(h.req, h.res, h.next);
     expect(h.passed).toBe(false);
     expect(h.status).toBe(403);
   });
@@ -209,10 +212,13 @@ describe("requireRole", () => {
     expect(h.status).toBe(403);
   });
 
-  it("المالك يمرّ ولو لم يكن في القائمة — تجاوزٌ مقصود وموثَّق", () => {
-    const h = harness(Roles.OWNER);
+  /** التجاوز الذي كان للمالك هنا زال أيضاً: القائمة تعني ما تقول. */
+  it("والمدير لا يمرّ إلى مسارٍ ليس في قائمته", () => {
+    const h = harness(Roles.ADMIN);
     requireRole(Roles.STUDENT)(h.req, h.res, h.next);
-    expect(h.passed).toBe(true);
+
+    expect(h.passed).toBe(false);
+    expect(h.status).toBe(403);
   });
 
   it("أدوار متعدّدة: كلٌّ منها يمرّ", () => {

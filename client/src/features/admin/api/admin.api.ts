@@ -77,6 +77,10 @@ export const adminApi = {
       .then((r) => r.data.user),
   setUserStatus: (id: string, status: "active" | "suspended") =>
     client.patch(`${BASE}/users/${id}/status`, { status }).then((r) => r.data),
+  setUserVerification: (id: string, isVerified: boolean) =>
+    client
+      .patch(`${BASE}/users/${id}/verification`, { isVerified })
+      .then((r) => r.data),
   resetUserPassword: (id: string, password: string) =>
     client
       .post(`${BASE}/users/${id}/reset-password`, { password })

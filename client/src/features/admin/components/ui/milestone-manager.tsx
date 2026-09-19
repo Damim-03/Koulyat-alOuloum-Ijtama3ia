@@ -22,6 +22,8 @@ import {
 import { statusChip } from "../../utils/status-styles";
 import { ConfirmDialog } from "../form/confirm-dialog.form";
 import i18n from "../../../../i18n/i18n";
+import { noneText } from "../../../../lib/none-text";
+import { Select } from "../../../../components/ui/select";
 
 /**
  * The project timeline, editable from the administration side.
@@ -41,7 +43,7 @@ const inputCls =
   "w-full rounded-xl border border-forest/15 bg-cream px-3 py-2 text-sm text-forest outline-none transition focus:border-sage focus:ring-2 focus:ring-sage/20";
 
 function fmtDate(value?: string | Date | null) {
-  if (!value) return "—";
+  if (!value) return noneText();
   return new Date(value).toLocaleDateString(i18n.language, {
     dateStyle: "medium",
   });
@@ -146,18 +148,14 @@ export function MilestoneManager({ groupId }: { groupId: string }) {
           />
         </div>
 
-        <select
+        <Select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-xl border border-forest/15 bg-cream px-3 py-2 text-sm text-forest outline-none transition focus:border-sage"
-        >
-          <option value="">{t("admin.allStatuses")}</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {t(`status.${s}`, { defaultValue: s })}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setStatusFilter(v)}
+          options={[
+            { value: "", label: t("admin.allStatuses") },
+            ...STATUSES.map((s) => ({ value: s, label: t(`status.${s}`, { defaultValue: s }) })),
+          ]}
+        />
 
         <button
           type="button"
@@ -216,19 +214,14 @@ export function MilestoneManager({ groupId }: { groupId: string }) {
                 <span className="mb-1 block text-[11px] font-medium text-clay">
                   {t("admin.currentStatus")}
                 </span>
-                <select
+                <Select
                   value={draft.status}
-                  onChange={(e) =>
-                    setDraft({ ...draft, status: e.target.value })
-                  }
-                  className={inputCls}
-                >
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {t(`status.${s}`, { defaultValue: s })}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) =>
+                              setDraft({ ...draft, status: v })}
+                  options={[
+                    ...STATUSES.map((s) => ({ value: s, label: t(`status.${s}`, { defaultValue: s }) })),
+                  ]}
+                />
               </label>
             </div>
           </div>

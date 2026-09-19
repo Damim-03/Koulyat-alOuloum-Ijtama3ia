@@ -19,7 +19,7 @@ import compression from "compression";
 import cookieParser from "cookie-parser";
 import morgan from "morgan";
 
-import { config } from "./core/config/app.config";
+import { config, isAllowedOrigin } from "./core/config/app.config";
 import { errorHandler } from "./core/middleware/errorHandler.middleware";
 import { asyncHandler } from "./core/middleware/asyncHandler.middleware";
 import { HTTPSTATUS } from "./core/config/http/http.config";
@@ -90,7 +90,7 @@ app.use(
     origin: (origin, callback) => {
       // Same-origin and non-browser callers send no Origin header.
       if (!origin) return callback(null, true);
-      if (config.CORS_ORIGINS.includes(origin)) return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
       return callback(new Error("CORS not allowed"));
     },
     credentials: true,

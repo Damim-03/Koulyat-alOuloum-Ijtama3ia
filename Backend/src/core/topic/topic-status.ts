@@ -458,3 +458,124 @@ export const OCCUPANCY_INCLUDE = {
     select: { id: true, status: true, _count: { select: { members: true } } },
   },
 } satisfies Prisma.GraduationTopicInclude;
+
+//
+// ─── طلبات المجموعات ──────────────────────────────────────────
+//
+
+export type RequestActionKey = "accept" | "reject";
+
+export type RequestBlockCode =
+  | "alreadyAccepted"
+  | "topicUnavailable"
+  | "topicTaken"
+  | "tooManyMembers"
+  | "hasProject";
+
+export type RequestBlock = {
+  code: RequestBlockCode;
+  params?: Record<string, string | number>;
+};
+
+export type RequestActions = {
+  canAccept: boolean;
+  canReject: boolean;
+  blockedReasons: Partial<Record<RequestActionKey, string>>;
+  blockedCodes: Partial<Record<RequestActionKey, RequestBlock>>;
+};
+
+/**
+ * جدول قواعد طلب المجموعة — نظير `topicActions`، وللسبب نفسه.
+ *
+ * شاشة «طلبات المجموعات» كانت تُقرّر من حالة الطلب وحدها:
+ *
+ *     status === "pending" || status === "rejected"  ⇒ اعرض «قبول»
+ *     status === "pending" || status === "accepted"  ⇒ اعرض «رفض»
+ *
+ * بينما الخادم يحرس بأربعة شروط، ثلاثةٌ منها **لا تصل الواجهة أصلاً**: هل
+ * للموضوع مجموعة، وما حالته، وكم يسع. فكان زرُّ «رفض» يُعرض على كل طلبٍ
+ * مقبول — وقبولُ الطلب يُنشئ المجموعة، فالرفض بعده مرفوضٌ دائماً. زرٌّ
+ * لإجراءٍ مستحيل، وهو عين العَرَض الثاني الذي عالجناه في المواضيع.
+ *
+ * ولا يُصلحه تصحيح شرط الواجهة: الشرطان سيتباعدان ثانيةً عند أوّل تعديل.
+ * يُصلحه ألّا يكون للواجهة شرطٌ أصلاً.
+ */
+export const requestActions = (input: {
+  status: string;
+  memberCount: number;
+  topic: { status: TopicStatus; maxStudents: number; hasGroup: boolean };
+}): RequestActions => {
+  const reasons: Partial<Record<RequestActionKey, string>> = {};
+  const codes: Partial<Record<RequestActionKey, RequestBlock>> = {};
+  const gate = (
+    key: RequestActionKey,
+    ok: boolean,
+    why: string,
+    block: RequestBlock,
+  ) => {
+    if (!ok) {
+      reasons[key] = why;
+      codes[key] = block;
+    }
+    return ok;
+  };
+
+  const { status, memberCount, topic } = input;
+  const accepted = status === "accepted";
+
+  // الترتيب هو ترتيب الخادم نفسه، فيقع السبب المعروض على أوّل ما يمنع فعلاً.
+  const canAccept = accepted
+    ? gate("accept", false, "هذا الطلب مقبولٌ بالفعل.", {
+        code: "alreadyAccepted",
+      })
+    : !ELIGIBLE_FOR_ACCEPT.includes(topic.status)
+      ? gate(
+          "accept",
+          false,
+          "هذا الموضوع لم يعد متاحاً (تمّت معالجته بالفعل).",
+          { code: "topicUnavailable", params: { status: topic.status } },
+        )
+      : topic.hasGroup
+        ? gate(
+            "accept",
+            false,
+            "تمّت الموافقة على مجموعة لهذا الموضوع بالفعل — سبقهم فريقٌ آخر.",
+            { code: "topicTaken" },
+          )
+        : gate(
+            "accept",
+            memberCount <= topic.maxStudents,
+            `عدد الأعضاء (${memberCount}) يتجاوز الحدّ الأقصى للموضوع (${topic.maxStudents}).`,
+            {
+              code: "tooManyMembers",
+              params: { members: memberCount, max: topic.maxStudents },
+            },
+          );
+
+  /*
+   * الشرط على المجموعة لا على حالة الطلب: طلبٌ مقبولٌ فُسخت مجموعته يبقى
+   * رفضه ممكناً — فهو الإصلاح لا الهدم.
+   */
+  const canReject = gate(
+    "reject",
+    !(accepted && topic.hasGroup),
+    "لا يمكن رفض طلب تشكّل له مشروع بالفعل. إن أردت التراجع عن الاكتمال فافسخ المشروع من صفحة «المشاريع» — عندها يتحرّر الموضوع ويعود قابلاً للتداول.",
+    { code: "hasProject" },
+  );
+
+  return { canAccept, canReject, blockedReasons: reasons, blockedCodes: codes };
+};
+
+/**
+ * حالات الموضوع التي يجوز قبول طلبٍ عليها.
+ *
+ * و`pending` منها عمداً: الأستاذ قد يقترح موضوعاً مع فريقه، فيحمل الطلب
+ * اعتماد الموضوع معه. والطالب لا يبلغ هذه الحالة — طلبه يُردّ على موضوعٍ غير
+ * معتمَد أو منشور.
+ */
+const ELIGIBLE_FOR_ACCEPT: TopicStatus[] = [
+  "pending",
+  "approved",
+  "open",
+  "full",
+];

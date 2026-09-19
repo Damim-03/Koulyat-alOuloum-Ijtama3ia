@@ -312,12 +312,32 @@ export interface AdminGroupRequestMember {
   };
 }
 
+/** عدّاد كل حالة تحت الفلاتر الجارية — يحسبه الخادم في نفس الرحلة. */
+export interface AdminGroupRequestCounts {
+  pending: number;
+  accepted: number;
+  rejected: number;
+  all: number;
+}
+
+/** ما يجوز الآن على طلب المجموعة — يحسبه الخادم ولا تُخمّنه الشاشة. */
+export interface AdminGroupRequestActions {
+  canAccept: boolean;
+  canReject: boolean;
+  /** سبب المنع بالعربية، جاهزٌ للعرض كتلميح على الزرّ المطفأ. */
+  blockedReasons: Partial<Record<"accept" | "reject", string>>;
+  blockedCodes: Partial<
+    Record<"accept" | "reject", { code: string; params?: Record<string, string | number> }>
+  >;
+}
+
 export interface AdminGroupRequest {
   id: string;
   status: "pending" | "accepted" | "rejected";
   priority: number;
   rejectionReason?: string | null;
   createdAt: string;
+  actions?: AdminGroupRequestActions;
   topic?: { id: string; title: string; status?: string } | null;
   leader?: {
     id: string;

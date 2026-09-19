@@ -120,7 +120,7 @@ describe("POST /api/auth/admin/login", () => {
   });
 
   it("حساب موظّف على مسار دخول الإدارة ⇒ يُرفض", async () => {
-    // البريد موجود، لكنه ليس بدور admin/owner.
+    // البريد موجود، لكنه ليس بدور admin.
     await request(app)
       .post("/api/auth/admin/login")
       .send({ email: f.profUser.email, password: TEST_PASSWORD })

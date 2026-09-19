@@ -11,7 +11,7 @@ import http from "http";
 import { Server } from "socket.io";
 
 import app from "./app";
-import { config } from "./core/config/app.config";
+import { config, isAllowedOrigin } from "./core/config/app.config";
 import { setRealtimeServer } from "./core/realtime/realtime";
 import { installSocketSecurity } from "./core/realtime/socket-auth";
 
@@ -22,7 +22,9 @@ const server = http.createServer(app);
    ============================================================ */
 export const io = new Server(server, {
   cors: {
-    origin: config.CORS_ORIGINS,
+    // نفس حدّ الـHTTP حرفاً بحرف: أصلٌ يُقبل هناك ويُردّ هنا يعني واجهةً
+    // تعمل ثم تصمت عن التحديث الحيّ بلا رسالة.
+    origin: (origin, cb) => cb(null, !origin || isAllowedOrigin(origin)),
     credentials: true,
   },
   maxHttpBufferSize: 1e6, // 1 MB: realtime payloads are tiny invalidations

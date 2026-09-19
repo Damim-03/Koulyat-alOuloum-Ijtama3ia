@@ -11,7 +11,7 @@ export const ACCOUNTS_FILE = path.join(HERE, ".accounts.json");
 export interface Accounts {
   password: string;
   admin: { email: string };
-  owner: { email: string };
+  admin2: { email: string };
   professor: { universityEmail: string };
   student: { registrationNumber: string };
   studentNoProject: { registrationNumber: string };

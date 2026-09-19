@@ -63,7 +63,7 @@ export const createNotifications = async (
 };
 
 // Notify every ACTIVE user that has one of the given roles.
-// Use this for "a professor proposed a topic" → notify all admins/owner.
+// Use this for "a professor proposed a topic" → notify every admin.
 export const notifyRoles = async (
   roles: Role[],
   input: Omit<NotifyInput, "userId">,
@@ -79,11 +79,11 @@ export const notifyRoles = async (
   );
 };
 
-// Convenience: notify all admins + the owner.
+// Convenience: notify every admin.
 export const notifyAdmins = (
   input: Omit<NotifyInput, "userId">,
   db: Db = prisma,
-) => notifyRoles(["admin", "owner"], input, db);
+) => notifyRoles(["admin"], input, db);
 
 /**
  * إشعارُ الإدارة لا يُفشِل ما تسبّب فيه.

@@ -37,6 +37,8 @@ import { TopicDialog } from "../../components/dialog/projects/topic-dialog.form"
 import { AssignedTopicDialog } from "../../components/dialog/projects/assigned-topic-dialog.form";
 import { EditAssignedTopicDialog } from "../../components/dialog/projects/edit-assigned-topic-dialog.form";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { None } from "../../../../lib/none";
+import { Select } from "../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -52,9 +54,6 @@ const STATUS_FILTERS = [
 ] as const;
 
 const PAGE_SIZE = 10;
-
-const selectCls =
-  "rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30";
 
 export function AdminTopicsPage() {
   const { t } = useTranslation();
@@ -411,118 +410,99 @@ export function AdminTopicsPage() {
               />
             </div>
 
-            <select
+            <Select
               value={professorId}
-              onChange={(e) => setProfessorId(e.target.value)}
-              className={selectCls}
-            >
-              <option value="">{t("admin.allProfessors")}</option>
+              onChange={setProfessorId}
+              aria-label={t("admin.allProfessors")}
+              options={[
+                { value: "", label: t("admin.allProfessors") },
+                ...professors.map((p: any) => ({
+                  value: p.id,
+                  label:
+                    [p.user?.firstName, p.user?.lastName]
+                      .filter(Boolean)
+                      .join(" ") || p.universityEmail,
+                })),
+              ]}
+            />
 
-              {professors.map((p: any) => (
-                <option key={p.id} value={p.id}>
-                  {[p.user?.firstName, p.user?.lastName]
-                    .filter(Boolean)
-                    .join(" ") || p.universityEmail}
-                </option>
-              ))}
-            </select>
-
-            <select
+            <Select
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className={selectCls}
-            >
-              {STATUS_FILTERS.map((st) => (
-                <option key={st || "all"} value={st}>
-                  {st ? t(`status.${st}`) : t("admin.statusAll")}
-                </option>
-              ))}
-            </select>
+              onChange={setStatus}
+              aria-label={t("admin.statusAll")}
+              options={STATUS_FILTERS.map((st) => ({
+                value: st,
+                label: st ? t(`status.${st}`) : t("admin.statusAll"),
+              }))}
+            />
           </div>
 
           {/* Academic Filters */}
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
-            <select
+            <Select
               value={facultyId}
-              onChange={(e) => {
-                setFacultyId(e.target.value);
+              onChange={(v) => {
+                setFacultyId(v);
                 setDepartmentId("");
                 setFiliereId("");
                 setSpecializationId("");
               }}
-              className={selectCls}
-            >
-              <option value="">{t("admin.allFaculties")}</option>
+              aria-label={t("admin.allFaculties")}
+              options={[
+                { value: "", label: t("admin.allFaculties") },
+                ...facultyOptions.map((f) => ({ value: f.id, label: f.name })),
+              ]}
+            />
 
-              {facultyOptions.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-
-            <select
+            <Select
               value={departmentId}
-              onChange={(e) => {
-                setDepartmentId(e.target.value);
+              onChange={(v) => {
+                setDepartmentId(v);
                 setFiliereId("");
                 setSpecializationId("");
               }}
-              className={selectCls}
-            >
-              <option value="">{t("admin.allDepartments")}</option>
+              aria-label={t("admin.allDepartments")}
+              options={[
+                { value: "", label: t("admin.allDepartments") },
+                ...deptOptions.map((d) => ({ value: d.id, label: d.name })),
+              ]}
+            />
 
-              {deptOptions.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-
-            <select
+            <Select
               value={filiereId}
-              onChange={(e) => {
-                setFiliereId(e.target.value);
+              onChange={(v) => {
+                setFiliereId(v);
                 setSpecializationId("");
               }}
-              className={selectCls}
-            >
-              <option value="">{t("admin.allFilieres")}</option>
+              aria-label={t("admin.allFilieres")}
+              options={[
+                { value: "", label: t("admin.allFilieres") },
+                ...filiereOptions.map((f) => ({ value: f.id, label: f.name })),
+              ]}
+            />
 
-              {filiereOptions.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-
-            <select
+            <Select
               value={specializationId}
-              onChange={(e) => setSpecializationId(e.target.value)}
-              className={selectCls}
-            >
-              <option value="">{t("admin.allSpecializations")}</option>
+              onChange={setSpecializationId}
+              aria-label={t("admin.allSpecializations")}
+              options={[
+                { value: "", label: t("admin.allSpecializations") },
+                ...specOptions.map((sp) => ({ value: sp.id, label: sp.name })),
+              ]}
+            />
 
-              {specOptions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-
-            <select
+            <Select
               value={academicYearId}
-              onChange={(e) => setAcademicYearId(e.target.value)}
-              className={selectCls}
-            >
-              <option value="">{t("admin.allYears")}</option>
-
-              {(years ?? []).map((y: any) => (
-                <option key={y.id} value={y.id}>
-                  {y.title}
-                </option>
-              ))}
-            </select>
+              onChange={setAcademicYearId}
+              aria-label={t("admin.allYears")}
+              options={[
+                { value: "", label: t("admin.allYears") },
+                ...(years ?? []).map((y: any) => ({
+                  value: y.id,
+                  label: y.title,
+                })),
+              ]}
+            />
           </div>
         </div>
       </div>
@@ -616,9 +596,9 @@ export function AdminTopicsPage() {
             <div className="h-full w-1/3 animate-[bulkSweep_1s_ease-in-out_infinite] bg-gold" />
           )}
         </div>
-        <div className="overflow-x-auto">
+        <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-start">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-forest text-cream">
                 <th className="w-10 px-4 py-3">
                   <input
@@ -712,7 +692,7 @@ export function AdminTopicsPage() {
                 return (
                   <tr
                     key={tp.id}
-                    className={`transition-colors ${checked ? "bg-gold/5" : "hover:bg-forest/3"}`}
+                    className={`transition-colors ${checked ? "bg-gold/5" : "odd:bg-forest/[0.03] hover:bg-forest/7"}`}
                   >
                     <td className="px-4 py-3.5">
                       <input
@@ -741,7 +721,7 @@ export function AdminTopicsPage() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-sm text-clay">
-                      {tp.specialization?.name ?? "\u2014"}
+                      {tp.specialization?.name ?? <None />}
                     </td>
                     <td className="px-5 py-3.5">
                       <span

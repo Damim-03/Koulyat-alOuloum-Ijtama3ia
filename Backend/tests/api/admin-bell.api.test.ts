@@ -67,7 +67,7 @@ const arrived = async (userId: string, before: Set<string>) =>
 /** كل من يُحتمل أن يصله شيء في هذا الملفّ. */
 const everyone = () => [
   f.admin.id,
-  f.owner.id,
+  f.admin2.id,
   f.profUser.id,
   f.prof2User.id,
   ...f.students.map((s) => s.userId),
@@ -114,7 +114,7 @@ describe("ما يصل جرس الإدارة", () => {
       })
       .expect(201);
 
-    for (const who of [f.admin, f.owner]) {
+    for (const who of [f.admin, f.admin2]) {
       const bell = await arrived(who.id, before);
       expect(bell).toHaveLength(1);
       expect(bell[0]!.title).toContain("بانتظار القرار");
@@ -278,7 +278,7 @@ describe("مَن يُبلَّغ", () => {
    */
   it("والمدير الموقوف لا يُبلَّغ", async () => {
     await prisma.user.update({
-      where: { id: f.owner.id },
+      where: { id: f.admin2.id },
       data: { status: "suspended" },
     });
 
@@ -296,12 +296,12 @@ describe("مَن يُبلَّغ", () => {
         })
         .expect(201);
 
-      expect(await arrived(f.owner.id, before)).toHaveLength(0);
+      expect(await arrived(f.admin2.id, before)).toHaveLength(0);
       // والمدير النشط يبقى مُبلَّغاً: الترشيح لا يُسكت الجرس كلّه.
       expect(await arrived(f.admin.id, before)).toHaveLength(1);
     } finally {
       await prisma.user.update({
-        where: { id: f.owner.id },
+        where: { id: f.admin2.id },
         data: { status: "active" },
       });
     }

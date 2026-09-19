@@ -16,7 +16,6 @@ export function RoleRedirect() {
     case Role.STUDENT:
       return <Navigate to={localePath(PATHS.student.root)} replace />;
     case Role.ADMIN:
-    case Role.OWNER:
       return <Navigate to={localePath(PATHS.admin.root)} replace />;
     default:
       return <Navigate to={localePath(PATHS.unauthorized)} replace />;

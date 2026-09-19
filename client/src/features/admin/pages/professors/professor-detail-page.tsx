@@ -28,11 +28,16 @@ import {
 } from "lucide-react";
 import type { Professor, ProfessorTopicLite } from "../../../../types/admin";
 import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
-import { useProfessor, useDeleteProfessor } from "../../hooks/admin-hook";
+import {
+  useProfessor,
+  useDeleteProfessor,
+  useSetUserVerification,
+} from "../../hooks/admin-hook";
 import { ProfessorEditDialog } from "../../components/dialog/professor/professor-edit-dialog.form";
 import { HeaderTrail } from "../../components/ui/hierarchy-header";
 import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { isNone, noneText } from "../../../../lib/none-text";
 
 const TOPIC_STATUS: Record<
   string,
@@ -94,10 +99,10 @@ function fullName(p: Professor) {
   );
 }
 function fmtDate(iso?: string | null) {
-  if (!iso) return "\u2014";
+  if (!iso) return i18n.t("common.none");
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
-    ? "\u2014"
+    ? i18n.t("common.none")
     : d.toLocaleDateString(i18n.language, {
         year: "numeric",
         month: "long",
@@ -111,15 +116,34 @@ export function AdminProfessorDetailPage() {
   const navigate = useNavigate();
   const { lang, id } = useParams();
 
-  const { data: professor, isLoading } = useProfessor(id ?? null);
+  const { data: professor, isLoading, refetch } = useProfessor(id ?? null);
   const deleteProfessor = useDeleteProfessor();
+  const setVerification = useSetUserVerification();
 
   const [editOpen, setEditOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
 
   const backToList = () => navigate(`/${lang}/admin/professors`);
   const goToTopic = (topicId: string) =>
     navigate(`/${lang}/admin/topics/${topicId}`);
+
+  /**
+   * كما في صفحة الطالب: المُرسَل `userId` لا `professor.id` — المسار على
+   * الحساب لا على صفّ الأستاذ.
+   */
+  function confirmVerification() {
+    if (!professor) return;
+    setVerification.mutate(
+      { id: professor.userId, isVerified: !professor.user?.isVerified },
+      {
+        onSuccess: () => {
+          setVerifyOpen(false);
+          refetch();
+        },
+      },
+    );
+  }
 
   function confirmDelete() {
     if (!professor) return;
@@ -182,35 +206,35 @@ export function AdminProfessorDetailPage() {
     {
       icon: Hash,
       label: t("admin.employeeNumber"),
-      value: p.employeeNumber || "\u2014",
+      value: p.employeeNumber || i18n.t("common.none"),
       dir: "ltr",
     },
     {
       icon: Mail,
       label: t("admin.searchByEmail"),
-      value: p.universityEmail || "\u2014",
+      value: p.universityEmail || i18n.t("common.none"),
       dir: "ltr",
     },
     {
       icon: AtSign,
       label: t("admin.personalEmail"),
-      value: p.user?.email || "\u2014",
+      value: p.user?.email || i18n.t("common.none"),
       dir: "ltr",
     },
     {
       icon: Phone,
       label: t("admin.phone"),
-      value: p.user?.phone || "\u2014",
+      value: p.user?.phone || i18n.t("common.none"),
       dir: "ltr",
     },
     {
       icon: IdCard,
       label: t("admin.username"),
-      value: p.user?.username || "\u2014",
+      value: p.user?.username || i18n.t("common.none"),
       dir: "ltr",
     },
-    { icon: Building2, label: t("admin.department"), value: p.department?.name ?? "\u2014" },
-    { icon: GraduationCap, label: t("admin.facultyLabel"), value: facultyName ?? "\u2014" },
+    { icon: Building2, label: t("admin.department"), value: p.department?.name ?? i18n.t("common.none") },
+    { icon: GraduationCap, label: t("admin.facultyLabel"), value: facultyName ?? noneText(true) },
     { icon: Clock, label: t("admin.lastSignIn"), value: fmtDate(p.user?.lastLoginAt) },
     {
       icon: CalendarDays,
@@ -306,6 +330,23 @@ export function AdminProfessorDetailPage() {
               >
                 <Pencil size={15} />{t("pro.edit")}</button>
               <button
+                onClick={() => setVerifyOpen(true)}
+                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
+                  p.user?.isVerified
+                    ? "border-forest/20 text-clay hover:bg-forest/5"
+                    : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                }`}
+              >
+                {p.user?.isVerified ? (
+                  <ShieldAlert size={15} />
+                ) : (
+                  <BadgeCheck size={15} />
+                )}
+                {p.user?.isVerified
+                  ? t("admin.unverifyAccount")
+                  : t("admin.verifyAccount")}
+              </button>
+              <button
                 onClick={() => setConfirmOpen(true)}
                 className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-500 transition hover:bg-red-50"
               >
@@ -316,10 +357,10 @@ export function AdminProfessorDetailPage() {
           {/* quick meta */}
           <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-clay">
             <span className="inline-flex items-center gap-1.5" dir="ltr">
-              <Mail size={14} /> {p.universityEmail || "\u2014"}
+              <Mail size={14} /> {p.universityEmail || i18n.t("common.none")}
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Building2 size={14} /> {p.department?.name ?? "\u2014"}
+              <Building2 size={14} /> {p.department?.name ?? i18n.t("common.none")}
             </span>
             {facultyName && (
               <span className="inline-flex items-center gap-1.5">
@@ -475,6 +516,22 @@ export function AdminProfessorDetailPage() {
         onClose={() => setEditOpen(false)}
       />
       <ConfirmDialog
+        open={verifyOpen}
+        onClose={() => setVerifyOpen(false)}
+        title={
+          p.user?.isVerified ? t("admin.unverifyAccount") : t("admin.verifyAccount")
+        }
+        message={
+          p.user?.isVerified
+            ? t("admin.confirmUnverifyUser", { name: fullName(p) })
+            : t("admin.confirmVerifyUser", { name: fullName(p) })
+        }
+        confirmLabel={p.user?.isVerified ? t("admin.unverify") : t("admin.verify")}
+        loading={setVerification.isPending}
+        onConfirm={confirmVerification}
+      />
+
+      <ConfirmDialog
         open={confirmOpen}
         tone="danger"
         title={t("admin.deleteProfessor")}
@@ -588,6 +645,9 @@ function InfoRow({
   value: string;
   dir?: "ltr";
 }) {
+  // الفراغ مكتوبٌ ومُخفَت — انظر `Info` في صفحة المستخدم.
+  const empty = isNone(value);
+
   return (
     <div className="flex items-start gap-3 border-b border-forest/5 pb-3">
       <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-forest/5 text-forest">
@@ -595,7 +655,12 @@ function InfoRow({
       </div>
       <div className="min-w-0">
         <p className="text-[11px] font-medium text-clay">{label}</p>
-        <p className="truncate text-sm font-semibold text-forest" dir={dir}>
+        <p
+          className={`truncate text-sm ${
+            empty ? "text-clay/75" : "font-semibold text-forest"
+          }`}
+          dir={dir}
+        >
           {value}
         </p>
       </div>

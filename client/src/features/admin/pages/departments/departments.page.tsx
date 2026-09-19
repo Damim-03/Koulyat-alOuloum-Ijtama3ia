@@ -17,6 +17,7 @@ import { useDepartments, useDeleteDepartment } from "../../hooks/admin-hook";
 import type { Department } from "../../../../types/admin";
 import { DepartmentFormDialog } from "../../components/dialog/department/department.form";
 import { CoverBanner } from "../../components/ui/cover-banner";
+import { None } from "../../../../lib/none";
 
 const PAGE_SIZE = 9;
 
@@ -192,7 +193,7 @@ export function AdminDepartmentsPage() {
                   </h3>
                   <p className="flex items-center gap-1 text-[11px] text-clay">
                     <Building2 size={12} />
-                    {d.faculty?.name ?? "\u2014"}
+                    {d.faculty?.name ?? <None fem />}
                   </p>
                 </div>
 

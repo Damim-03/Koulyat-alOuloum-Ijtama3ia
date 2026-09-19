@@ -11,6 +11,8 @@ import {
 import { useLangNavigate } from "../../../../hooks/useLangNavigate";
 import { useAcademicYears, useStudents, useAdminTopics } from "../../hooks/admin-hook";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { None } from "../../../../lib/none";
+import { Select } from "../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -67,19 +69,16 @@ export function AdminArchivePage() {
             className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-clay"
             size={16}
           />
-          <select
+          <Select
             value={yearId}
-            onChange={(e) => setYearId(e.target.value)}
-            className="appearance-none rounded-xl border border-forest/15 bg-cream-2 py-2.5 pr-9 pl-4 text-sm font-semibold text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-            dir="ltr"
-          >
-            {(years ?? []).map((y: any) => (
-              <option key={y.id} value={y.id}>
-                {y.title}
-                {y.isActive ? " \u2713" : ""}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setYearId(v)}
+            options={[
+              ...(years ?? []).map((y: any) => ({
+                value: y.id,
+                label: `${y.title}${y.isActive ? " \u2713" : ""}`,
+              })),
+            ]}
+          />
         </div>
       </div>
 
@@ -203,10 +202,10 @@ function ArchiveBody({
 
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="overflow-x-auto">
+        <div className="max-h-[70vh] overflow-auto">
           {isStudents ? (
             <table className="w-full text-start">
-              <thead>
+              <thead className="sticky top-0 z-10">
                 <tr className="bg-forest text-cream">
                   <th className="px-5 py-3 text-xs font-medium">
                     {t("admin.student")}
@@ -230,7 +229,7 @@ function ArchiveBody({
                   <tr
                     key={s.id}
                     onClick={() => navigate(`/admin/students/${s.id}`)}
-                    className="cursor-pointer transition-colors hover:bg-forest/4"
+                    className="cursor-pointer transition-colors odd:bg-forest/[0.03] hover:bg-forest/7"
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
@@ -243,10 +242,10 @@ function ArchiveBody({
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-sm text-clay" dir="ltr">
-                      {s.registrationNumber ?? "\u2014"}
+                      {s.registrationNumber ?? <None />}
                     </td>
                     <td className="px-5 py-3.5 text-sm text-clay">
-                      {s.specialization?.name ?? "\u2014"}
+                      {s.specialization?.name ?? <None />}
                     </td>
                     <td className="px-5 py-3.5 text-clay">
                       <ChevronLeft size={16} className="opacity-50 ltr:rotate-180" />
@@ -257,7 +256,7 @@ function ArchiveBody({
             </table>
           ) : (
             <table className="w-full text-start">
-              <thead>
+              <thead className="sticky top-0 z-10">
                 <tr className="bg-forest text-cream">
                   <th className="px-5 py-3 text-xs font-medium">
                     {t("admin.topicTitle")}
@@ -283,7 +282,7 @@ function ArchiveBody({
                   <tr
                     key={tp.id}
                     onClick={() => navigate(`/admin/topics/${tp.id}`)}
-                    className="cursor-pointer transition-colors hover:bg-forest/4"
+                    className="cursor-pointer transition-colors odd:bg-forest/[0.03] hover:bg-forest/7"
                   >
                     <td className="px-5 py-3.5 text-sm font-medium text-forest">
                       {tp.title}

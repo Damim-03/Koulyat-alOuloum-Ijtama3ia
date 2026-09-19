@@ -28,6 +28,7 @@ import {
   useUpdateAssignedTopic,
 } from "../../../hooks/admin-hook";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
+import { None } from "../../../../../lib/none";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -387,7 +388,7 @@ function MembersEditor({
                                 className="inline-flex items-center gap-1"
                                 dir="ltr"
                               >
-                                <IdCard size={11} /> {r.reg || "—"}
+                                <IdCard size={11} /> {r.reg || <None />}
                               </span>
                               {r.email && (
                                 <span

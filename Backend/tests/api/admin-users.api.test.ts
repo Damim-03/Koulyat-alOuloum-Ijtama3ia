@@ -7,8 +7,9 @@
  *
  * وثلاثة أسئلة تحكم المجال:
  *
- *   **من يحذف؟** — ثلاثة مسارات محميّة بـ`ownerOnly()`، أي أن المدير نفسه
- *   لا يملك الحذف. وهذا فرقٌ في الامتياز لا يُختبَر بحساب واحد.
+ *   **من يحذف؟** — ثلاثة مسارات محميّة بـ`adminOnly()`. وكان الحذف محجوزاً
+ *   لدور `owner` فوق المدير؛ فلمّا أُلغي ذلك الدور انتقل إليه. والأستاذ
+ *   والطالب ممنوعان كما كانا — وهذا ما يجب أن يبقى مشهوداً.
  *
  *   **وماذا يُحذف معه؟** — حذف الطالب يمسح طلباته وعضوياته وتسليماته في
  *   معاملة واحدة. وترك صفٍّ واحد يعني مفتاحاً أجنبياً معلّقاً أو بياناتٍ
@@ -30,9 +31,8 @@ import {
 } from "../helpers/fixture";
 
 let f: Fixture;
-const tok: Record<"admin" | "owner" | "professor" | "student", string> = {
+const tok: Record<"admin" | "professor" | "student", string> = {
   admin: "",
-  owner: "",
   professor: "",
   student: "",
 };
@@ -68,13 +68,6 @@ beforeAll(async () => {
     await request(app)
       .post("/api/auth/admin/login")
       .send({ email: f.admin.email, password: TEST_PASSWORD })
-      .expect(200)
-  ).body.accessToken;
-
-  tok.owner = (
-    await request(app)
-      .post("/api/auth/admin/login")
-      .send({ email: f.owner.email, password: TEST_PASSWORD })
       .expect(200)
   ).body.accessToken;
 
@@ -121,6 +114,35 @@ describe("POST /api/admin/users", () => {
     expect(created).not.toBeNull();
     expect(created!.password).not.toBe(data.password);
     expect(created!.password.startsWith("$2")).toBe(true);
+  });
+
+  /**
+   * التوثيق عمودٌ ظلّ يُقرأ ولا يُكتب: تعرضه ثلاث صفحات وتُرشّح به القائمة،
+   * ولم يكن في المنصّة كلّها مسارٌ يجعله `true`. فمن هنا يُكتب الآن، ومن
+   * هنا يجب أن يُختبَر — وإلّا عاد الحقل زينةً في استمارة.
+   */
+  it("والتوثيق يُحفظ كما أرسلته الإدارة", async () => {
+    const data = { ...newUser(), isVerified: true };
+    const res = await as(
+      request(app).post("/api/admin/users").send(data),
+      "admin",
+    );
+    expect([200, 201]).toContain(res.status);
+
+    const created = await prisma.user.findUnique({
+      where: { email: data.email },
+    });
+    expect(created!.isVerified).toBe(true);
+  });
+
+  it("وإن لم تُرسله بقي الحساب غير موثّق", async () => {
+    const data = newUser();
+    await as(request(app).post("/api/admin/users").send(data), "admin");
+
+    const created = await prisma.user.findUnique({
+      where: { email: data.email },
+    });
+    expect(created!.isVerified).toBe(false);
   });
 
   it("ولا يُعيد الردّ كلمة السرّ ولا تجزئتها", async () => {
@@ -281,6 +303,69 @@ describe("PATCH /api/admin/users/:id/status", () => {
   });
 });
 
+describe("PATCH /api/admin/users/:id/verification", () => {
+  /**
+   * التوثيق عند الإنشاء وحده يترك الحسابات التي سبقته بلا طريق: وهي كل
+   * حسابٍ في القاعدة اليوم. فالمسار هنا هو ما يجعل العمود قابلاً للتصحيح
+   * لا للتعيين مرّةً واحدةً إلى الأبد.
+   */
+  it("التوثيق يُرفع ويُرجَع", async () => {
+    const data = newUser();
+    await as(request(app).post("/api/admin/users").send(data), "admin");
+    const created = (await prisma.user.findUnique({
+      where: { email: data.email },
+    }))!;
+    expect(created.isVerified).toBe(false);
+
+    await as(
+      request(app)
+        .patch(`/api/admin/users/${created.id}/verification`)
+        .send({ isVerified: true }),
+      "admin",
+    ).expect(200);
+    expect(
+      (await prisma.user.findUnique({ where: { id: created.id } }))!.isVerified,
+    ).toBe(true);
+
+    // ويُسحب: التوثيق قرارٌ يُراجَع، لا بابٌ يُغلق خلفه.
+    await as(
+      request(app)
+        .patch(`/api/admin/users/${created.id}/verification`)
+        .send({ isVerified: false }),
+      "admin",
+    ).expect(200);
+    expect(
+      (await prisma.user.findUnique({ where: { id: created.id } }))!.isVerified,
+    ).toBe(false);
+  });
+
+  it("وقيمةٌ ليست منطقية ⇒ 400", async () => {
+    const res = await as(
+      request(app)
+        .patch(`/api/admin/users/${f.admin.id}/verification`)
+        .send({ isVerified: "yes" }),
+      "admin",
+    );
+    expect(res.status).toBe(400);
+  });
+
+  /**
+   * ولا يوثّق أحدٌ نفسه: الطالب والأستاذ ممنوعان من المسار كلّه، وهو ما
+   * يجعل «موثّق» شهادةً من الإدارة لا إقراراً ذاتياً.
+   */
+  it("والطالب والأستاذ ممنوعان", async () => {
+    for (const who of ["student", "professor"] as const) {
+      const res = await as(
+        request(app)
+          .patch(`/api/admin/users/${f.admin.id}/verification`)
+          .send({ isVerified: true }),
+        who,
+      );
+      expect(res.status).toBe(403);
+    }
+  });
+});
+
 describe("POST /api/admin/users/:id/reset-password", () => {
   it("كلمة السرّ الجديدة تعمل، والقديمة تتوقّف", async () => {
     const data = newUser();
@@ -310,47 +395,61 @@ describe("POST /api/admin/users/:id/reset-password", () => {
 });
 
 //
-// ═══ الحذف: امتياز المالك وحده ═══
+// ═══ الحذف: من يملكه ومن لا يملكه ═══
 //
 
-describe("DELETE — للمالك دون المدير", () => {
+describe("DELETE — للمدير دون غيره", () => {
   async function aPlainUser() {
     const data = newUser();
     await as(request(app).post("/api/admin/users").send(data), "admin");
     return (await prisma.user.findUnique({ where: { email: data.email } }))!;
   }
 
-  it("المدير لا يحذف حساباً ⇒ 403، والحساب باقٍ", async () => {
+  /**
+   * كان هذا المسار محجوزاً لدور `owner`، والمدير يُردّ عنه بـ403. ويوم أُلغي
+   * ذلك الدور انتقل الحذف إلى المدير — **بقرارٍ صريح**: لولا نقله لَما بقي
+   * في المنصّة من يحذف حساباً.
+   */
+  it("المدير يحذف حساباً ⇒ 200، والحساب يزول", async () => {
     const u = await aPlainUser();
 
     await as(request(app).delete(`/api/admin/users/${u.id}`), "admin").expect(
-      403,
-    );
-    expect(await prisma.user.findUnique({ where: { id: u.id } })).not.toBeNull();
-  });
-
-  it("والمالك يحذفه ⇒ 200", async () => {
-    const u = await aPlainUser();
-
-    await as(request(app).delete(`/api/admin/users/${u.id}`), "owner").expect(
       200,
     );
     expect(await prisma.user.findUnique({ where: { id: u.id } })).toBeNull();
   });
 
-  it("والمدير لا يحذف طالباً ولا أستاذاً", async () => {
+  /**
+   * وما لم ينتقل: الأستاذ والطالب ممنوعان من مسارات الحذف كما كانا. وهذا
+   * هو الحدّ الذي كان يحرسه الفرق بين المالك والمدير، وقد بقي بعده.
+   */
+  it.each(["professor", "student"] as const)(
+    "و«%s» لا يحذف حساباً ⇒ 403، والحساب باقٍ",
+    async (who) => {
+      const u = await aPlainUser();
+
+      await as(request(app).delete(`/api/admin/users/${u.id}`), who).expect(403);
+      expect(
+        await prisma.user.findUnique({ where: { id: u.id } }),
+      ).not.toBeNull();
+    },
+  );
+
+  it("ولا يحذفان طالباً ولا أستاذاً", async () => {
     const [s] = f.nextStudents(1);
 
     await as(
       request(app).delete(`/api/admin/students/${s.id}`),
-      "admin",
+      "professor",
     ).expect(403);
     await as(
       request(app).delete(`/api/admin/professors/${f.professor2.id}`),
-      "admin",
+      "student",
     ).expect(403);
 
-    expect(await prisma.student.findUnique({ where: { id: s.id } })).not.toBeNull();
+    expect(
+      await prisma.student.findUnique({ where: { id: s.id } }),
+    ).not.toBeNull();
   });
 });
 
@@ -364,7 +463,7 @@ describe("حسابٌ يخصّ طالباً أو أستاذاً لا يُحذف �
     const [s] = f.nextStudents(1);
     const res = await as(
       request(app).delete(`/api/admin/users/${s.userId}`),
-      "owner",
+      "admin",
     ).expect(400);
 
     expect(res.body.message).toContain("الطلبة");
@@ -374,7 +473,7 @@ describe("حسابٌ يخصّ طالباً أو أستاذاً لا يُحذف �
   it("وحساب أستاذ ⇒ 400 مع توجيه إلى إدارة الأساتذة", async () => {
     const res = await as(
       request(app).delete(`/api/admin/users/${f.prof2User.id}`),
-      "owner",
+      "admin",
     ).expect(400);
 
     expect(res.body.message).toContain("الأساتذة");
@@ -426,6 +525,35 @@ describe("الطلبة", () => {
   });
 
   /**
+   * والطالب يمرّ بمسارٍ آخر: حسابه يُنشأ **متداخلاً** داخل `student.create`،
+   * لا باستدعاءٍ مستقلّ. فنجاح التوثيق في `POST /users` لا يضمنه هنا — وقد
+   * يسقط الحقل في التداخل وحده فلا يشعر به أحد.
+   */
+  it("وتوثيق الطالب يبلغ حسابه المتداخل", async () => {
+    const email = `${TAG}.verified.student@test.local`;
+
+    const res = await as(
+      request(app)
+        .post("/api/admin/students")
+        .send({
+          firstName: TAG,
+          lastName: "Verified",
+          email,
+          password: "A-strong-Passw0rd!",
+          registrationNumber: `${TAG}VR${Date.now()}`,
+          specializationId: f.specialization.id,
+          academicYearId: f.academicYear.id,
+          isVerified: true,
+        }),
+      "admin",
+    );
+    expect([200, 201]).toContain(res.status);
+
+    const created = await prisma.user.findUnique({ where: { email } });
+    expect(created!.isVerified).toBe(true);
+  });
+
+  /**
    * أثمن تأكيد في الملفّ: الحذف يمسح كل ما تعلّق بالطالب في معاملة واحدة.
    * صفٌّ واحد يبقى يعني مفتاحاً أجنبياً معلّقاً أو بياناتٍ يتيمة.
    */
@@ -464,7 +592,7 @@ describe("الطلبة", () => {
 
     await as(
       request(app).delete(`/api/admin/students/${leader.id}`),
-      "owner",
+      "admin",
     ).expect(200);
 
     expect(await prisma.student.findUnique({ where: { id: leader.id } })).toBeNull();
@@ -492,7 +620,7 @@ describe("الطلبة", () => {
       request(app).delete(
         "/api/admin/students/00000000-0000-0000-0000-000000000000",
       ),
-      "owner",
+      "admin",
     ).expect(404);
   });
 });
@@ -540,7 +668,7 @@ describe("الأساتذة", () => {
 
     const res = await as(
       request(app).delete(`/api/admin/professors/${f.professor2.id}`),
-      "owner",
+      "admin",
     ).expect(400);
 
     expect(res.body.message).toMatch(/\d/); // العدد مذكور
@@ -570,7 +698,7 @@ describe("الأساتذة", () => {
 
     await as(
       request(app).delete(`/api/admin/professors/${spare.id}`),
-      "owner",
+      "admin",
     ).expect(200);
 
     expect(

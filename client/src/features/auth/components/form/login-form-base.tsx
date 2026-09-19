@@ -52,7 +52,7 @@ function formSchema(role: LoginRole) {
 type FormValues = { identifier: string; password: string };
 
 const inputWrap =
-  "relative flex items-center rounded-xl border bg-cream-2 transition focus-within:border-sage focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(74,112,102,0.16)]";
+  "relative flex items-center rounded-xl border bg-cream-2 transition focus-within:border-sage focus-within:bg-cream-card focus-within:shadow-[0_0_0_3px_rgba(74,112,102,0.16)]";
 const inputBase =
   "w-full rounded-xl border-0 bg-transparent py-3 pr-10 text-[14px] text-forest outline-none placeholder:text-clay/50";
 

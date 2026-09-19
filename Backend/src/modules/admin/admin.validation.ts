@@ -22,7 +22,7 @@ export const listQuerySchema = z.object({
 });
 export type ListQueryDTO = z.infer<typeof listQuerySchema>;
 
-const RoleEnum = z.enum(["owner", "admin", "professor", "student"]);
+const RoleEnum = z.enum(["admin", "professor", "student"]);
 const StatusEnum = z.enum(["active", "suspended"]);
 const GenderEnum = z.enum(["male", "female"]);
 const LevelEnum = z.enum(["licence", "master", "doctorate"]);
@@ -61,6 +61,13 @@ export const createUserSchema = z.object({
   password: passwordSchema,
   role: RoleEnum,
   gender: GenderEnum.optional(),
+  /**
+   * Verification is an administrative mark, so it is settable at creation:
+   * nothing else in the system ever writes the column, and an account the
+   * administration created by hand is exactly the case where "we know who
+   * this is" is true from the start. Omitted stays false (the DB default).
+   */
+  isVerified: z.boolean().optional(),
 });
 export type CreateUserDTO = z.infer<typeof createUserSchema>;
 
@@ -77,6 +84,21 @@ export const updateUserStatusSchema = z.object({
   status: StatusEnum,
 });
 export type UpdateUserStatusDTO = z.infer<typeof updateUserStatusSchema>;
+
+/**
+ * Verification of an existing account.
+ *
+ * A route of its own rather than a field on updateUserSchema: verification is
+ * an administrative attestation, not profile data, and the account's other
+ * state flag (`status`) is already handled this way. Keeping them alike keeps
+ * the audit surface — who may flip what — readable in the route table.
+ */
+export const updateUserVerificationSchema = z.object({
+  isVerified: z.boolean(),
+});
+export type UpdateUserVerificationDTO = z.infer<
+  typeof updateUserVerificationSchema
+>;
 
 export const resetPasswordSchema = z.object({
   password: passwordSchema,
@@ -124,6 +146,8 @@ export const createStudentSchema = z.object({
   // final specializationId is persisted (the chain is derivable from it).
   specializationId: entityId,
   academicYearId: entityId,
+  // As in createUserSchema — an administrative mark, optional at creation.
+  isVerified: z.boolean().optional(),
 });
 export type CreateStudentDTO = z.infer<typeof createStudentSchema>;
 
@@ -248,6 +272,8 @@ export const createProfessorSchema = z.object({
   departmentId: entityId,
   grade: z.array(z.string().trim().min(1)).max(20).optional(), // ← جديد
   tags: z.array(z.string().trim().min(1)).max(20).optional(), // ← جديد
+  // As in createUserSchema — an administrative mark, optional at creation.
+  isVerified: z.boolean().optional(),
 });
 export type CreateProfessorDTO = z.infer<typeof createProfessorSchema>;
 

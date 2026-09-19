@@ -5,6 +5,7 @@ import {
   setTopicPublished,
   readOccupancy,
   topicActions,
+  requestActions,
   occupancyFromRelations,
   OCCUPANCY_INCLUDE,
   type TopicDecision,
@@ -22,6 +23,7 @@ import {
   CreateUserDTO,
   UpdateUserDTO,
   UpdateUserStatusDTO,
+  UpdateUserVerificationDTO,
   ResetPasswordDTO,
   ListStudentsDTO,
   CreateStudentDTO,
@@ -998,6 +1000,8 @@ export const createUserService = async (data: CreateUserDTO) => {
       password: hashed,
       role: data.role as Role,
       gender: data.gender,
+      // undefined leaves the column at its default (false).
+      isVerified: data.isVerified,
     },
     select: userSelect,
   });
@@ -1022,6 +1026,19 @@ export const updateUserStatusService = async (
   const user = await prisma.user.update({
     where: { id },
     data: { status: data.status },
+    select: userSelect,
+  });
+  return user;
+};
+
+export const updateUserVerificationService = async (
+  id: string,
+  data: UpdateUserVerificationDTO,
+) => {
+  await getUserByIdService(id);
+  const user = await prisma.user.update({
+    where: { id },
+    data: { isVerified: data.isVerified },
     select: userSelect,
   });
   return user;
@@ -1236,6 +1253,7 @@ export const createStudentService = async (data: CreateStudentDTO) => {
           gender: data.gender,
           password: hashed,
           role: "student" as Role,
+          isVerified: data.isVerified,
         },
       },
     },
@@ -1785,6 +1803,7 @@ export const createProfessorService = async (data: CreateProfessorDTO) => {
           gender: data.gender,
           password: hashed,
           role: "professor" as Role,
+          isVerified: data.isVerified,
         },
       },
     },
@@ -3582,12 +3601,24 @@ export const listGroupRequestsService = async (q: ListQueryDTO) => {
     dateTo?: string;
   };
 
+  /*
+   * شرطان لا واحد.
+   *
+   * `where` للقائمة، و`whereAnyStatus` للعدّادات — وهو هو ناقصاً شرط الحالة.
+   * فشريط الأرقام يجب أن يبقى يعرض الثلاثة كلّها وأنت مُرشِّحٌ بحالةٍ واحدة،
+   * وإلّا صار عديم الفائدة: يقول «١ معلّقة» وأنت تنظر إلى المعلّقات وحدها.
+   *
+   * وكانت الواجهة تحسبها بثلاثة نداءات إضافية بـ`limit: 1` تقرأ `total` —
+   * **بلا تمرير الفلاتر**. فترشيحٌ بأستاذٍ أو تاريخ يُضيّق القائمة ويترك
+   * الشريط على الإجمالي العامّ: أرقامٌ تناقض ما تحتها مباشرةً.
+   */
+  const whereAnyStatus: Record<string, unknown> = {};
   const where: Record<string, unknown> = {};
 
   if (statusFilter && statusFilter !== "all") where.status = statusFilter;
 
   if (q.search) {
-    where.OR = [
+    whereAnyStatus.OR = where.OR = [
       { topic: { title: { contains: q.search } } },
       {
         leader: {
@@ -3616,17 +3647,18 @@ export const listGroupRequestsService = async (q: ListQueryDTO) => {
     topicWhere.specialization = { filiere: { departmentId } };
   else if (facultyId)
     topicWhere.specialization = { filiere: { department: { facultyId } } };
-  if (Object.keys(topicWhere).length > 0) where.topic = topicWhere;
+  if (Object.keys(topicWhere).length > 0)
+    whereAnyStatus.topic = where.topic = topicWhere;
 
   // مدى التاريخ
   if (dateFrom || dateTo) {
-    where.createdAt = {
+    whereAnyStatus.createdAt = where.createdAt = {
       ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
       ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999`) } : {}),
     };
   }
 
-  const [items, total] = await Promise.all([
+  const [items, total, grouped] = await Promise.all([
     prisma.groupRequest.findMany({
       where,
       include: {
@@ -3634,6 +3666,9 @@ export const listGroupRequestsService = async (q: ListQueryDTO) => {
           include: {
             professor: { include: { user: { select: userSelect } } },
             specialization: true,
+            // بدونه يبقى `hasGroup` كاذباً أبداً، فيصير جدول القواعد أسوأ
+            // من غيابه: يقول «يجوز» عن إجراءٍ يردّه الخادم.
+            projectGroup: { select: { id: true } },
           },
         },
         leader: { include: { user: { select: userSelect } } },
@@ -3646,8 +3681,42 @@ export const listGroupRequestsService = async (q: ListQueryDTO) => {
       take: q.limit,
     }),
     prisma.groupRequest.count({ where }),
+    prisma.groupRequest.groupBy({
+      by: ["status"],
+      where: whereAnyStatus,
+      _count: { _all: true },
+    }),
   ]);
-  return { items, total, page: q.page, limit: q.limit };
+
+  /*
+   * جدول القواعد يُرفَق بكل طلب. وبدونه تُخمّن الشاشة من حالة الطلب وحدها
+   * بينما ثلاثةٌ من شروط الخادم الأربعة لا تصلها أصلاً — فتعرض أزراراً
+   * لإجراءاتٍ مستحيلة.
+   */
+  const withActions = items.map((r) => ({
+    ...r,
+    actions: requestActions({
+      status: r.status,
+      memberCount: r.members.length,
+      topic: {
+        status: r.topic.status,
+        maxStudents: r.topic.maxStudents,
+        hasGroup: !!r.topic.projectGroup,
+      },
+    }),
+  }));
+
+  // الحالات الثلاث معلنةٌ ولو بأصفار: شريطٌ يختفي منه رقمٌ تتزحزح بقيّته،
+  // والصفر خبرٌ لا غياب.
+  const byStatus = new Map(grouped.map((g) => [g.status, g._count._all]));
+  const counts = {
+    pending: byStatus.get("pending") ?? 0,
+    accepted: byStatus.get("accepted") ?? 0,
+    rejected: byStatus.get("rejected") ?? 0,
+    all: [...byStatus.values()].reduce((a, b) => a + b, 0),
+  };
+
+  return { items: withActions, total, counts, page: q.page, limit: q.limit };
 };
 
 export const getGroupRequestService = async (id: string) => {
@@ -3659,6 +3728,7 @@ export const getGroupRequestService = async (id: string) => {
           professor: { include: { user: { select: userSelect } } },
           specialization: true,
           academicYear: true,
+          projectGroup: { select: { id: true } },
         },
       },
       leader: { include: { user: { select: userSelect } } },
@@ -3672,7 +3742,20 @@ export const getGroupRequestService = async (id: string) => {
       "Group request not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
-  return request;
+
+  // نفس الجدول الذي تقرأه القائمة، فلا تختلف صفحة التفصيل عنها في ما تعرضه.
+  return {
+    ...request,
+    actions: requestActions({
+      status: request.status,
+      memberCount: request.members.length,
+      topic: {
+        status: request.topic.status,
+        maxStudents: request.topic.maxStudents,
+        hasGroup: !!request.topic.projectGroup,
+      },
+    }),
+  };
 };
 
 export const acceptGroupRequestService = async (id: string) => {
@@ -3688,36 +3771,25 @@ export const acceptGroupRequestService = async (id: string) => {
       "Group request not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
-  if (request.status === "accepted")
-    throw new BadRequestException(
-      "Request is already accepted",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-
   const topic = request.topic;
-  // `pending` is here because a professor may propose a topic together with
-  // its team: the request then carries the topic's approval too, and
-  // accepting it below moves the topic straight to `full`. A student can
-  // never produce this state — student requests are refused on a topic that
-  // is not already approved or open.
-  if (
-    topic.status !== "pending" &&
-    topic.status !== "approved" &&
-    topic.status !== "open" &&
-    topic.status !== "full"
-  )
+
+  /*
+   * الحارس هو جدول القواعد نفسه الذي تقرأه الشاشة. وكان هنا أربعة فحوصٍ
+   * مكتوبةً بيد، والشاشة تُخمّن مقابلها من حالة الطلب وحدها — فتباعدا.
+   * الآن موضعٌ واحد: ما يمنع هنا هو ما يُطفئ الزرّ هناك، بالنصّ نفسه.
+   */
+  const gate = requestActions({
+    status: request.status,
+    memberCount: request.members.length,
+    topic: {
+      status: topic.status,
+      maxStudents: topic.maxStudents,
+      hasGroup: !!topic.projectGroup,
+    },
+  });
+  if (!gate.canAccept)
     throw new BadRequestException(
-      "هذا الموضوع لم يعد متاحاً (تمّت معالجته بالفعل)",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  if (topic.projectGroup)
-    throw new BadRequestException(
-      "تمّت الموافقة على مجموعة لهذا الموضوع بالفعل",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  if (request.members.length > topic.maxStudents)
-    throw new BadRequestException(
-      `عدد الأعضاء يتجاوز الحد الأقصى للموضوع (${topic.maxStudents})`,
+      gate.blockedReasons.accept!,
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3825,9 +3897,18 @@ export const rejectGroupRequestService = async (
    * الشرط على المجموعة لا على حالة الطلب: طلبٌ `accepted` فُسخت مجموعته
    * (حالة عالقة من بيانات قديمة) يجب أن يبقى رفضه ممكناً — فهو الإصلاح.
    */
-  if (request.status === "accepted" && request.topic.projectGroup)
+  const gate = requestActions({
+    status: request.status,
+    memberCount: 0, // لا يدخل في قاعدة الرفض
+    topic: {
+      status: request.topic.status,
+      maxStudents: request.topic.maxStudents,
+      hasGroup: !!request.topic.projectGroup,
+    },
+  });
+  if (!gate.canReject)
     throw new BadRequestException(
-      "لا يمكن رفض طلب تشكّل له مشروع بالفعل. إن أردت التراجع عن الاكتمال فافسخ المشروع من صفحة «المشاريع» — عندها يتحرّر الموضوع ويعود قابلاً للتداول.",
+      gate.blockedReasons.reject!,
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 

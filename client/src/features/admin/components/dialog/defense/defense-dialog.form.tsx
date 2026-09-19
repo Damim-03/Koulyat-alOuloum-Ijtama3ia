@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
 import { CalendarClock, FolderKanban, MapPin, Award, Save } from "lucide-react";
@@ -10,6 +10,7 @@ import {
   type CreateDefenseFormValues,
   createDefenseSchema,
 } from "../../../validation/admin.schema";
+import { Select } from "../../../../../components/ui/select";
 
 interface Props {
   open: boolean;
@@ -35,6 +36,7 @@ export function DefenseFormDialog({ open, onClose }: Props) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -95,14 +97,23 @@ export function DefenseFormDialog({ open, onClose }: Props) {
           icon={FolderKanban}
           error={errors.groupId?.message}
         >
-          <select {...register("groupId")} className={inputClass}>
-            <option value="">{t("admin.selectProject")}</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.topic?.title ?? p.id}
-              </option>
-            ))}
-          </select>
+          <Controller
+            control={control}
+            name="groupId"
+            render={({ field }) => (
+              <Select
+                ref={field.ref}
+                value={(field.value as string) ?? ""}
+                onChange={(v) => {
+                  field.onChange(v);
+                }}
+                options={[
+                  { value: "", label: t("admin.selectProject") },
+                  ...projects.map((p) => ({ value: p.id, label: p.topic?.title ?? p.id })),
+                ]}
+              />
+            )}
+          />
         </Field>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

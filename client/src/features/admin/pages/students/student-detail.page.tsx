@@ -25,13 +25,19 @@ import {
   ChevronLeft,
   Sparkles,
 } from "lucide-react";
-import { useStudent, useDeleteStudent } from "../../hooks/admin-hook";
+import {
+  useStudent,
+  useDeleteStudent,
+  useSetUserVerification,
+} from "../../hooks/admin-hook";
 import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
 import { StudentEditDialog } from "../../components/dialog/student/student-edit-dialog.form";
 import { HeaderTrail } from "../../components/ui/hierarchy-header";
 import { useTranslation } from "react-i18next";
 import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { isNone, noneText } from "../../../../lib/none-text";
+import { None } from "../../../../lib/none";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -48,10 +54,10 @@ const pill = (s: string) =>
   STATUS[s] ?? { label: s, cls: "bg-clay/15 text-clay" };
 
 function fmtDate(iso?: string | null) {
-  if (!iso) return "\u2014";
+  if (!iso) return i18n.t("common.none");
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
-    ? "\u2014"
+    ? i18n.t("common.none")
     : d.toLocaleDateString(i18n.language, {
         year: "numeric",
         month: "long",
@@ -67,18 +73,45 @@ export function AdminStudentDetailPage() {
   const navigate = useNavigate();
   const { id, lang } = useParams<{ id: string; lang: string }>();
 
-  const { data: student, isLoading } = useStudent(id ?? null) as {
+  const {
+    data: student,
+    isLoading,
+    refetch,
+  } = useStudent(id ?? null) as {
     data: any;
     isLoading: boolean;
+    refetch: () => void;
   };
   const deleteStudent = useDeleteStudent();
+  const setVerification = useSetUserVerification();
 
   const [editOpen, setEditOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
 
   const backToList = () => navigate(`/${lang}/admin/students`);
   const goToTopic = (topicId?: string) =>
     topicId && navigate(`/${lang}/admin/topics/${topicId}`);
+
+  /**
+   * التوثيق يُرفع ويُسحب من هنا أيضاً.
+   *
+   * وحساب الطالب هو المقصود لا صفّ الطالب: المسار على `/users/:id`، فالمعرَّف
+   * المُرسَل `userId` لا `student.id` — وهما مختلفان، والخلط بينهما يوثّق
+   * حساباً آخر أو يردّ ٤٠٤.
+   */
+  function confirmVerification() {
+    if (!student) return;
+    setVerification.mutate(
+      { id: student.userId, isVerified: !student.user?.isVerified },
+      {
+        onSuccess: () => {
+          setVerifyOpen(false);
+          refetch();
+        },
+      },
+    );
+  }
 
   function confirmDelete() {
     if (!student) return;
@@ -139,35 +172,35 @@ export function AdminStudentDetailPage() {
     {
       icon: Mail,
       label: t("admin.email"),
-      value: u.email || "\u2014",
+      value: u.email || i18n.t("common.none"),
       dir: "ltr",
     },
     {
       icon: AtSign,
       label: t("admin.username"),
-      value: u.username || "\u2014",
+      value: u.username || i18n.t("common.none"),
       dir: "ltr",
     },
     {
       icon: Phone,
       label: t("admin.phone"),
-      value: u.phone || "\u2014",
+      value: u.phone || i18n.t("common.none"),
       dir: "ltr",
     },
     {
       icon: IdCard,
       label: t("pro.regNumber"),
-      value: student.registrationNumber || "\u2014",
+      value: student.registrationNumber || i18n.t("common.none"),
       dir: "ltr",
     },
-    { icon: Layers, label: t("admin.specializationLabelAlt"), value: spec?.name ?? "\u2014" },
-    { icon: Network, label: t("admin.filiere"), value: filiere?.name ?? "\u2014" },
-    { icon: Building2, label: t("admin.department"), value: dept?.name ?? "\u2014" },
-    { icon: GraduationCap, label: t("admin.facultyLabel"), value: faculty?.name ?? "\u2014" },
+    { icon: Layers, label: t("admin.specializationLabelAlt"), value: spec?.name ?? i18n.t("common.none") },
+    { icon: Network, label: t("admin.filiere"), value: filiere?.name ?? noneText(true) },
+    { icon: Building2, label: t("admin.department"), value: dept?.name ?? i18n.t("common.none") },
+    { icon: GraduationCap, label: t("admin.facultyLabel"), value: faculty?.name ?? noneText(true) },
     {
       icon: CalendarDays,
       label: t("pro.academicYear"),
-      value: student.academicYear?.title ?? "\u2014",
+      value: student.academicYear?.title ?? noneText(true),
     },
     { icon: Clock, label: t("admin.lastSignIn"), value: fmtDate(u.lastLoginAt) },
     {
@@ -291,6 +324,23 @@ export function AdminStudentDetailPage() {
               >
                 <Pencil size={15} />{t("pro.edit")}</button>
               <button
+                onClick={() => setVerifyOpen(true)}
+                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
+                  u.isVerified
+                    ? "border-forest/20 text-clay hover:bg-forest/5"
+                    : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                }`}
+              >
+                {u.isVerified ? (
+                  <ShieldAlert size={15} />
+                ) : (
+                  <BadgeCheck size={15} />
+                )}
+                {u.isVerified
+                  ? t("admin.unverifyAccount")
+                  : t("admin.verifyAccount")}
+              </button>
+              <button
                 onClick={() => setConfirmOpen(true)}
                 className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-500 transition hover:bg-red-50"
               >
@@ -301,7 +351,7 @@ export function AdminStudentDetailPage() {
           {/* quick meta */}
           <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-clay">
             <span className="inline-flex items-center gap-1.5" dir="ltr">
-              <Mail size={14} /> {u.email || "\u2014"}
+              <Mail size={14} /> {u.email || i18n.t("common.none")}
             </span>
             {spec?.name && (
               <span className="inline-flex items-center gap-1.5">
@@ -400,7 +450,7 @@ export function AdminStudentDetailPage() {
               {ledRequests.map((r: any) => (
                 <LinkRow
                   key={r.id}
-                  title={r.topic?.title ?? "\u2014"}
+                  title={r.topic?.title ?? noneText()}
                   status={r.status}
                   meta={[
                     r.members && t("admin.membersCountN", { count: r.members.length }),
@@ -425,7 +475,7 @@ export function AdminStudentDetailPage() {
               {memberRequests.map((m: any) => (
                 <LinkRow
                   key={m.id ?? m.request?.id}
-                  title={m.request?.topic?.title ?? "\u2014"}
+                  title={m.request?.topic?.title ?? noneText()}
                   status={m.request?.status}
                   meta={[
                     m.request?.leader?.user &&
@@ -457,7 +507,7 @@ export function AdminStudentDetailPage() {
                     >
                       <div className="min-w-0">
                         <p className="flex items-center gap-1.5 text-sm font-semibold text-forest group-hover:text-forest-deep">
-                          {g.topic?.title ?? "\u2014"}
+                          {g.topic?.title ?? <None />}
                           {pm.isLeader && (
                             <span className="rounded-full bg-gold/15 px-1.5 py-0.5 text-[9px] font-bold text-gold">
                               {t("admin.leader")}
@@ -524,6 +574,22 @@ export function AdminStudentDetailPage() {
           onClose={() => setEditOpen(false)}
         />
       )}
+      <ConfirmDialog
+        open={verifyOpen}
+        onClose={() => setVerifyOpen(false)}
+        title={
+          u.isVerified ? t("admin.unverifyAccount") : t("admin.verifyAccount")
+        }
+        message={
+          u.isVerified
+            ? t("admin.confirmUnverifyUser", { name })
+            : t("admin.confirmVerifyUser", { name })
+        }
+        confirmLabel={u.isVerified ? t("admin.unverify") : t("admin.verify")}
+        loading={setVerification.isPending}
+        onConfirm={confirmVerification}
+      />
+
       <ConfirmDialog
         open={confirmOpen}
         tone="danger"
@@ -663,6 +729,9 @@ function InfoRow({
   value: string;
   dir?: "ltr";
 }) {
+  // الفراغ مكتوبٌ ومُخفَت — انظر `Info` في صفحة المستخدم.
+  const empty = isNone(value);
+
   return (
     <div className="flex items-start gap-3 border-b border-forest/5 pb-3">
       <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-forest/5 text-forest">
@@ -670,7 +739,12 @@ function InfoRow({
       </div>
       <div className="min-w-0">
         <p className="text-[11px] font-medium text-clay">{label}</p>
-        <p className="truncate text-sm font-semibold text-forest" dir={dir}>
+        <p
+          className={`truncate text-sm ${
+            empty ? "text-clay/75" : "font-semibold text-forest"
+          }`}
+          dir={dir}
+        >
           {value}
         </p>
       </div>

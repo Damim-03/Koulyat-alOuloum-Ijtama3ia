@@ -1,7 +1,6 @@
 // Mirrors the backend Prisma enums.
 
 export const Role = {
-  OWNER: "owner",
   ADMIN: "admin",
   PROFESSOR: "professor",
   STUDENT: "student",

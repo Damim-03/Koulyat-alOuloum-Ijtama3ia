@@ -73,7 +73,7 @@ export const sendMessageService = async (
     } else if (sender.role === "professor") {
         await assertProfessorCanMessage(senderId, recipients);
     }
-    // admin / owner: may message anyone.
+    // admin: may message anyone.
 
     const message = await prisma.$transaction(async (tx) => {
         const msg = await tx.message.create({
@@ -98,16 +98,14 @@ export const sendMessageService = async (
     });
 };
 
-/* Students may message: admins/owners, their supervising professors
+/* Students may message: admins, their supervising professors
    (topic professor of any project/group-request/application they belong to),
    and their own team members. */
 async function assertStudentCanMessage(
     senderUserId: string,
     recipients: { id: string; role: string }[],
 ) {
-    const nonStaff = recipients.filter(
-        (r) => r.role !== "admin" && r.role !== "owner",
-    );
+    const nonStaff = recipients.filter((r) => r.role !== "admin");
     if (nonStaff.length === 0) return;
 
     const student = await prisma.student.findUnique({
@@ -185,7 +183,7 @@ async function assertStudentCanMessage(
         );
 }
 
-/* Professors may message: admins/owners, other professors, and students
+/* Professors may message: admins, other professors, and students
    related to their topics (project members, group-request members/leaders). */
 async function assertProfessorCanMessage(
     senderUserId: string,
@@ -238,7 +236,7 @@ async function assertProfessorCanMessage(
 }
 
 /* ════════════════════════════════════════════════════════════
-   BROADCAST — admin/owner only (enforced at the route level too)
+   BROADCAST — admins only (enforced at the route level too)
    target: all | students | professors  (+ optional specializationId)
    ════════════════════════════════════════════════════════════ */
 export const broadcastMessageService = async (

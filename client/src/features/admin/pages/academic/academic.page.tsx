@@ -21,6 +21,8 @@ import {
 import type { Specialization } from "../../../../types/admin";
 import { SpecializationFormDialog } from "../../components/dialog/faculty/specialization.form-dialog.form";
 import { CoverBanner } from "../../components/ui/cover-banner";
+import { None } from "../../../../lib/none";
+import { Select } from "../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -132,8 +134,6 @@ export function AdminAcademicStructurePage() {
       deleteSpec.mutate(s.id);
   }
 
-  const selectCls =
-    "rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30";
 
   return (
     <div className="font-body">
@@ -268,40 +268,30 @@ export function AdminAcademicStructurePage() {
 
               {/* Faculty + Filiere + Empty */}
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                <select
+                <Select
                   value={facultyId}
-                  onChange={(e) => {
-                    setFacultyId(e.target.value);
+                  onChange={(v) => {
+                    setFacultyId(v);
                     setFiliereId("");
                     resetPage();
                   }}
-                  className={selectCls}
-                >
-                  <option value="">{t("admin.allFaculties")}</option>
+                  options={[
+                    { value: "", label: t("admin.allFaculties") },
+                    ...facultyOptions.map((f) => ({ value: f.id, label: f.name })),
+                  ]}
+                />
 
-                  {facultyOptions.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-
-                <select
+                <Select
                   value={filiereId}
-                  onChange={(e) => {
-                    setFiliereId(e.target.value);
+                  onChange={(v) => {
+                    setFiliereId(v);
                     resetPage();
                   }}
-                  className={selectCls}
-                >
-                  <option value="">{t("admin.allFilieres")}</option>
-
-                  {filiereOptions.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: t("admin.allFilieres") },
+                    ...filiereOptions.map((f) => ({ value: f.id, label: f.name })),
+                  ]}
+                />
 
                 <button
                   onClick={() => {
@@ -465,12 +455,12 @@ function SpecializationCard({
 
         {/* Where it sits: faculty ← department ← filiere */}
         <div className="mb-5 flex flex-wrap items-center gap-1 text-[10px] text-clay">
-          <span>{faculty?.name ?? "\u2014"}</span>
+          <span>{faculty?.name ?? <None fem />}</span>
           <ChevronLeft size={9} className="text-clay/40 ltr:rotate-180" />
-          <span>{dept?.name ?? "\u2014"}</span>
+          <span>{dept?.name ?? <None />}</span>
           <ChevronLeft size={9} className="text-clay/40 ltr:rotate-180" />
           <span className="font-medium text-sage">
-            {filiere?.name ?? "\u2014"}
+            {filiere?.name ?? <None fem />}
           </span>
         </div>
 
