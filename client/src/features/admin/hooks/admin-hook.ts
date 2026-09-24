@@ -175,10 +175,15 @@ export function useDeleteDomain() {
 }
 
 // ─── STUDENTS ───
-export function useStudents(params?: ListParams) {
+/**
+ * `enabled` لمقاعد الإسناد: المقعد يبحث برقمٍ يُكتب حرفاً حرفاً، فلا يُطلب
+ * شيءٌ قبل أن يستقرّ النصّ. والقيمة الافتراضية تُبقي كل نداءٍ قائمٍ كما هو.
+ */
+export function useStudents(params?: ListParams, enabled = true) {
   return useQuery({
     queryKey: KEYS.students(params),
     queryFn: () => adminApi.listStudents(params),
+    enabled,
   });
 }
 
@@ -798,6 +803,30 @@ export function useRejectGroupRequest() {
       toast.success(t("toast.requestRejected"));
     },
     onError: () => toast.error(t("toast.rejectRequestFailed")),
+  });
+}
+
+/**
+ * حذفُ طلبٍ منتهٍ من السجلّ.
+ *
+ * ورسالةُ الخطأ تُعرض كما جاءت من الخادم لا مُستبدَلةً بعبارةٍ عامّة: هو
+ * وحده يعرف **لماذا** رُفض الحذف — أطلبٌ ينتظر قراراً أم مشروعٌ قائم — وكلٌّ
+ * منهما يُحيل المسؤول إلى بابٍ مختلف.
+ */
+export function useDeleteGroupRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.deleteGroupRequest(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "group-requests"] });
+      qc.invalidateQueries({ queryKey: ["admin", "topic"] });
+      toast.success(t("toast.deleted"));
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response
+        ?.data?.message;
+      toast.error(msg ?? t("toast.deleteFailed"));
+    },
   });
 }
 

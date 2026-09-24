@@ -64,7 +64,7 @@ function uniqueFieldsOf(error: unknown): string[] {
   const index = blob.match(/([A-Za-z0-9_]+)_key/)?.[1];
   if (!index) return [];
 
-  // `User_email` ⇒ ["email"]  ·  `GroupRequest_leaderStudentId_topicId` ⇒ اثنان
+  // `User_email` ⇒ ["email"]  ·  `Student_userId_registrationNumber` ⇒ اثنان
   const [, ...parts] = index.split("_");
   return parts.length ? parts : [index];
 }

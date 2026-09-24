@@ -6,6 +6,9 @@ import commonRoutes from "../modules/common/common.routes";
 import studentRoutes from "../modules/student/student.routes";
 import publicRoutes from "../modules/public/public.routes";
 import messagesRoutes from "../modules/messages/messages.routes";
+import supervisionRoutes, {
+  verifyRoutes,
+} from "../modules/supervision/supervision.routes";
 import { realtimeBroadcast } from "../core/middleware/realtime.middleware";
 
 const mainRoute: Router = Router();
@@ -26,5 +29,10 @@ mainRoute.use("/student", studentRoutes);
 mainRoute.use("/common", commonRoutes);
 
 mainRoute.use("/public", publicRoutes);
+
+mainRoute.use("/supervision-documents", supervisionRoutes);
+
+// التحقّق من ورقةٍ مطبوعة: عامٌّ بلا تسجيل دخول — انظر `verifyRoutes`.
+mainRoute.use("/verify", verifyRoutes);
 
 export default mainRoute;

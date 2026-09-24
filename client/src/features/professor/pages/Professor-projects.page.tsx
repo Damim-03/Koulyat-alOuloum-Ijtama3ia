@@ -7,11 +7,13 @@ import { useMyGroups } from "../hooks/Professor-hook";
 import { StatusBadge } from "../components/status-badge";
 import type { ProjectGroup } from "../../../types/professor.types";
 import { UserAvatar } from "../../../components/ui/user-avatar";
+import { LoadingArea } from "../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../components/ui/error-retry";
 
 
 export function ProfessorProjectsPage() {
   const { t } = useTranslation();
-  const { data: groups, isLoading } = useMyGroups();
+  const { data: groups, isLoading, isError, refetch } = useMyGroups();
 
   const list = groups ?? [];
 
@@ -24,7 +26,9 @@ export function ProfessorProjectsPage() {
       </div>
 
       {isLoading ? (
-        <div className="py-20 text-center text-sm text-clay">{"\u2026"}</div>
+        <LoadingArea className="py-20" />
+      ) : isError ? (
+        <ErrorRetry onRetry={() => refetch()} />
       ) : list.length === 0 ? (
         <div className="rounded-2xl border border-forest/10 bg-cream-card py-20 text-center text-sm text-clay">
           {t("pro.noProjectsYet")}

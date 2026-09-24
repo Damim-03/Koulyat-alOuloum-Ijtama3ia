@@ -29,6 +29,8 @@ import { SearchField } from "../../components/ui/search-field";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
 import { Select as UiSelect } from "../../../../components/ui/select";
+import { LoadingArea } from "../../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../../components/ui/error-retry";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -117,7 +119,8 @@ export function AdminStudentsPage() {
     ],
   );
 
-  const { data, isLoading, isFetching } = useStudents(params);
+  const { data, isLoading, isFetching, isError, refetch } =
+    useStudents(params);
   // عدّاد الطلبة دون موضوع (صفحة واحدة تكفي لقراءة total)
   const { data: unassignedData } = useStudents({
     page: 1,
@@ -515,11 +518,19 @@ export function AdminStudentsPage() {
                     colSpan={10}
                     className="px-5 py-10 text-center text-sm text-clay"
                   >
-                    {"\u2026"}
+                    <LoadingArea size={96} className="py-10" />
                   </td>
                 </tr>
               )}
-              {!isLoading && students.length === 0 && (
+
+              {!isLoading && isError && (
+                <tr>
+                  <td colSpan={10} className="px-5">
+                    <ErrorRetry compact onRetry={() => refetch()} />
+                  </td>
+                </tr>
+              )}
+              {!isLoading && !isError && students.length === 0 && (
                 <tr>
                   <td
                     colSpan={10}

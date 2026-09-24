@@ -18,6 +18,8 @@ import { StatusBadge } from "../components/status-badge";
 import type { Milestone } from "../../../types/professor.types";
 import { MilestoneFormDialog } from "../components/milestone-form-dialog";
 import { UserAvatar } from "../../../components/ui/user-avatar";
+import { LoadingArea } from "../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../components/ui/error-retry";
 
 
 const MS_ACCENT: Record<string, string> = {
@@ -32,7 +34,8 @@ export function ProfessorProjectDetailPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
 
-  const { data: group, isLoading } = useGroup(groupId ?? null);
+  const { data: group, isLoading, isError, refetch } =
+    useGroup(groupId ?? null);
   const deleteMilestone = useDeleteMilestone();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -52,8 +55,13 @@ export function ProfessorProjectDetailPage() {
 
   if (isLoading)
     return (
-      <div className="py-20 text-center text-sm text-clay">{"\u2026"}</div>
+      <LoadingArea className="py-20" />
     );
+
+  // انقطاعُ الاتّصال ليس «غير موجود»: يُقال ما جرى ويُعرض زرُّ إعادة.
+  if (isError) {
+    return <ErrorRetry onRetry={() => refetch()} />;
+  }
   if (!group)
     return (
       <div className="py-20 text-center text-sm text-clay">

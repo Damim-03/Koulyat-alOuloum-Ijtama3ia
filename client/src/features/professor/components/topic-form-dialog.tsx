@@ -44,8 +44,8 @@ import {
   inputCls,
   SectionHead,
   Field,
-  StepTab,
 } from "../../../components/ui/form-bits";
+import { Stepper } from "../../../components/ui/stepper";
 import { ListInput } from "../../../components/ui/list-input";
 import { StudentPicker, type PickedStudent } from "./student-picker";
 import { UserAvatar } from "../../../components/ui/user-avatar";
@@ -297,25 +297,17 @@ export function TopicFormDialog({
           <div className="absolute inset-x-0 bottom-0 h-1 bg-linear-to-l from-gold to-gold-soft" />
         </header>
 
-        {/* ── stepper ── */}
+        {/* شريط الخطوات المشترك — كما في حوارَي الإدارة. */}
         {withGroup && (
-          <div className="grid shrink-0 grid-cols-2 border-b border-forest/10 bg-cream">
-            <StepTab
-              n={1}
-              active={step === 1}
-              done={step > 1 && step1Valid}
-              title={t("pro.stepTopicTitle")}
-              hint={t("pro.stepTopicHint")}
-              onClick={() => setStep(1)}
-            />
-            <StepTab
-              n={2}
-              active={step === 2}
-              done={false}
-              disabled={!step1Valid}
-              title={t("pro.stepTeamTitle")}
-              hint={step1Valid ? t("pro.stepTeamHint") : t("pro.completeStepFirst")}
-              onClick={() => step1Valid && setStep(2)}
+          <div className="shrink-0 border-b border-forest/10 bg-cream px-6 py-4">
+            <Stepper
+              steps={[
+                { key: "topic", label: t("pro.stepTopicTitle") },
+                { key: "team", label: t("pro.stepTeamTitle") },
+              ]}
+              current={step - 1}
+              onGo={(i) => setStep((i + 1) as 1 | 2)}
+              ariaLabel={t("pro.newTopic")}
             />
           </div>
         )}
@@ -800,6 +792,7 @@ export function TopicFormDialog({
                 type="button"
                 onClick={() => setStep(2)}
                 disabled={!step1Valid}
+                title={!step1Valid ? t("pro.completeStepFirst") : undefined}
                 className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t("pro.next")}

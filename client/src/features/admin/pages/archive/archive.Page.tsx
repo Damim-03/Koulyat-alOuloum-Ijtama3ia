@@ -13,6 +13,7 @@ import { useAcademicYears, useStudents, useAdminTopics } from "../../hooks/admin
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
 import { Select } from "../../../../components/ui/select";
+import { LoadingArea } from "../../../../components/ui/loading-area";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -64,13 +65,11 @@ export function AdminArchivePage() {
         </div>
 
         {/* Year selector */}
-        <div className="relative">
-          <CalendarCheck
-            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-clay"
-            size={16}
-          />
+        <div className="sm:w-56">
           <Select
             value={yearId}
+            icon={CalendarCheck}
+            aria-label={t("pro.academicYear")}
             onChange={(v) => setYearId(v)}
             options={[
               ...(years ?? []).map((y: any) => ({
@@ -220,7 +219,7 @@ function ArchiveBody({
                 </tr>
               </thead>
               <tbody className="divide-y divide-forest/10">
-                {studentsLoading && <Row colSpan={4}>{"\u2026"}</Row>}
+                {studentsLoading && <Row colSpan={4}><LoadingArea size={96} className="py-10" /></Row>}
                 {!studentsLoading &&
                   (studentsData?.items?.length ?? 0) === 0 && (
                     <Row colSpan={4}>{t("admin.noStudents")}</Row>
@@ -274,7 +273,7 @@ function ArchiveBody({
                 </tr>
               </thead>
               <tbody className="divide-y divide-forest/10">
-                {topicsLoading && <Row colSpan={5}>{"\u2026"}</Row>}
+                {topicsLoading && <Row colSpan={5}><LoadingArea size={96} className="py-10" /></Row>}
                 {!topicsLoading && (topicsData?.items?.length ?? 0) === 0 && (
                   <Row colSpan={5}>{t("admin.noTopics")}</Row>
                 )}

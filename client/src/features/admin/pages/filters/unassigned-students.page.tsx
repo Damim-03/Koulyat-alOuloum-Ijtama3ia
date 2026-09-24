@@ -11,6 +11,8 @@ import {
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
 import { Select } from "../../../../components/ui/select";
+import { LoadingArea } from "../../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../../components/ui/error-retry";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -70,7 +72,7 @@ export function AdminUnassignedStudentsPage() {
     ],
   );
 
-  const { data, isLoading } = useStudents(params);
+  const { data, isLoading, isError, refetch } = useStudents(params);
   const { data: specs } = useSpecializations();
   const { data: faculties } = useFaculties();
   const { data: years } = useAcademicYears();
@@ -264,11 +266,19 @@ export function AdminUnassignedStudentsPage() {
                     colSpan={5}
                     className="px-5 py-10 text-center text-sm text-clay"
                   >
-                    {"\u2026"}
+                    <LoadingArea size={96} className="py-10" />
                   </td>
                 </tr>
               )}
-              {!isLoading && students.length === 0 && (
+
+              {!isLoading && isError && (
+                <tr>
+                  <td colSpan={5} className="px-5">
+                    <ErrorRetry compact onRetry={() => refetch()} />
+                  </td>
+                </tr>
+              )}
+              {!isLoading && !isError && students.length === 0 && (
                 <tr>
                   <td
                     colSpan={5}

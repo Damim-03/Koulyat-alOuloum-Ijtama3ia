@@ -46,7 +46,7 @@ export function UnsavedChangesDialog({
     >
       <div
         onClick={onKeepEditing}
-        className="absolute inset-0 bg-forest-deep/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm"
       />
       <div className="animate-[fadeIn_0.15s_ease-out] relative w-full max-w-sm overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-2xl">
         <div className="flex items-start gap-3 p-6">

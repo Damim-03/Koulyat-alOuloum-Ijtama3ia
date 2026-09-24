@@ -14,14 +14,17 @@ import {
   Pencil,
   Trash2,
   Undo2,
-  ListChecks,
   Ban,
+  FileCheck2,
+  Inbox,
+  FileText,
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
   AlertTriangle,
   RotateCcw,
   FilterX,
+  ScanLine,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -42,6 +45,8 @@ import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
 import { Select } from "../../../../components/ui/select";
 import { DangerConfirm } from "../../../../components/dialog/danger-confirm";
+import { SupervisionDialog } from "../../../supervision/components/supervision-dialog";
+import { ScanDialog } from "../../../supervision/components/scan-dialog";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -79,6 +84,11 @@ export function AdminTopicsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  /** الموضوع الذي تُعرض ورقةُ الموافقة على إشرافه. */
+  const [scanOpen, setScanOpen] = useState(false);
+  const [supervisionTopicId, setSupervisionTopicId] = useState<string | null>(
+    null,
+  );
   const [confirmRejectOpen, setConfirmRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
@@ -262,6 +272,15 @@ export function AdminTopicsPage() {
   const archivable = filterByAction(selectedTopics, "archive");
   const unarchivable = filterByAction(selectedTopics, "unarchive");
   const deletable = filterByAction(selectedTopics, "delete");
+  /** ما رفضه الخادم من التحديد — ومعه سببه، وهو ما يُعرض. */
+  const excludedTopics = selectedTopics.filter(
+    (tp: any) => !deletable.some((d: any) => d.id === tp.id),
+  );
+  /** طلبات الفرق التي ستسقط مع المواضيع — من عدّاد كل موضوع. */
+  const deletableRequests = deletable.reduce(
+    (n: number, tp: any) => n + (tp._count?.groupRequests ?? 0),
+    0,
+  );
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
 
@@ -343,6 +362,19 @@ export function AdminTopicsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/*
+            مسحُ ورقةٍ في اليد للوصول إلى مشروعها — الطريقُ المعاكس للقائمة:
+            من الورق إلى الشاشة لا من الشاشة إلى الورق.
+          */}
+          <button
+            onClick={() => setScanOpen(true)}
+            title={t("supervision.scanSubtitle")}
+            className="inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2.5 text-sm font-semibold text-forest transition hover:border-sage hover:bg-sage/10"
+          >
+            <ScanLine size={18} />
+            {t("supervision.scan")}
+          </button>
+
           <button
             onClick={() => setCreateOpen(true)}
             title={t("admin.createTopicSubtitle")}
@@ -734,19 +766,55 @@ export function AdminTopicsPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className="inline-grid min-w-7 place-items-center rounded-full bg-forest/10 px-2 py-0.5 text-xs font-bold text-forest">
-                        {tp._count?.groupRequests ?? 0}
-                      </span>
+                      {/*
+                        العددُ وحده لا يقول شيئاً حين يكون للموضوع سقف: أهو
+                        قريبٌ من الإغلاق أم في أوّله؟ فيُعرض مع السقف، ويحمرّ
+                        حين يبلغه — فتراه الإدارة قبل أن يشتكي الطالب.
+                      */}
+                      {(() => {
+                        const used = tp._count?.groupRequests ?? 0;
+                        const cap = tp.maxRequests ?? null;
+                        const full = cap !== null && used >= cap;
+                        return (
+                          <span
+                            title={cap !== null ? t("admin.maxRequests") : undefined}
+                            className={`inline-grid min-w-7 place-items-center rounded-full px-2 py-0.5 text-xs font-bold ${
+                              full
+                                ? "bg-brick/15 text-brick"
+                                : "bg-forest/10 text-forest"
+                            }`}
+                          >
+                            {cap === null ? used : `${used} / ${cap}`}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-5 py-3.5">
-                      <button
-                        onClick={() => setEditId(tp.id)}
-                        title={t("admin.edit")}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-forest/15 px-2.5 py-1.5 text-xs font-medium text-forest/80 transition hover:border-gold hover:bg-gold/10 hover:text-forest"
-                      >
-                        <Pencil size={13} />
-                        {t("admin.edit")}
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setEditId(tp.id)}
+                          title={t("admin.edit")}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-forest/15 px-2.5 py-1.5 text-xs font-medium text-forest/80 transition hover:border-gold hover:bg-gold/10 hover:text-forest"
+                        >
+                          <Pencil size={13} />
+                          {t("admin.edit")}
+                        </button>
+
+                        {/*
+                          ورقةُ الموافقة لا تُعرض إلّا لموضوعٍ قامت عليه
+                          مجموعة: قبل ذلك لا طلبة لها تُسمّيهم.
+                        */}
+                        {tp.occupancy?.hasGroup && (
+                          <button
+                            onClick={() => setSupervisionTopicId(tp.id)}
+                            title={t("supervision.open")}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-forest/15 px-2.5 py-1.5 text-xs font-medium text-forest/80 transition hover:border-gold hover:bg-gold/10 hover:text-forest"
+                          >
+                            <FileCheck2 size={13} />
+                            {t("supervision.sheet")}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -832,8 +900,13 @@ export function AdminTopicsPage() {
       {/*
         الحذف بالجملة كان عدداً مجرَّداً: «سيُحذف ٧ مواضيع». والعدد لا يُراجَع
         — الإدارية حدّدت صفوفاً في جدولٍ مفلتَر، وقد يكون بينها ما لم تقصده.
-        فصارت النافذة تسمّي كل موضوعٍ سيُحذف، وتفصل عنه ما استثناه الخادم
-        وسببَه، فيُرى الفرق بين ما حُدِّد وما سيقع قبل وقوعه.
+        فصارت النافذة تسمّي ما سيُحذف.
+
+        وما لا يلزم لا يُعرض: الأعداد الثلاثة (المحدَّد، وسيُحذف، ويُستثنى)
+        كانت تُعرض دائماً، وهي في الحال الغالبة رقمٌ واحدٌ مكرَّرٌ ثلاثاً —
+        فلا تُعرض إلا حين يفترق ما حُدِّد عمّا سيقع. والتحذير الطويل الذي
+        كان يُعيد العدد ويعدّد ما يسقط صار سطراً واحداً، وما يسقط انتقل إلى
+        قائمة «سيُحذف معه» حيث يُقرأ مفصَّلاً.
       */}
       <DangerConfirm
         open={confirmDeleteOpen}
@@ -842,27 +915,24 @@ export function AdminTopicsPage() {
         loading={bulkBusy}
         title={t("admin.deleteTopicsTitle")}
         name={t("admin.topicsSelectedForDelete", { count: deletable.length })}
-        kicker={t("admin.bulkActionWord")}
-        facts={[
-          {
-            icon: ListChecks,
-            label: t("admin.selectedCount"),
-            value: selectedTopics.length,
-            dir: "ltr",
-          },
-          {
-            icon: Trash2,
-            label: t("admin.willBeDeleted"),
-            value: deletable.length,
-            dir: "ltr",
-          },
-          {
-            icon: Ban,
-            label: t("admin.excludedByServer"),
-            value: selectedTopics.length - deletable.length,
-            dir: "ltr",
-          },
-        ]}
+        facts={
+          excludedTopics.length > 0
+            ? [
+                {
+                  icon: Trash2,
+                  label: t("admin.willBeDeleted"),
+                  value: deletable.length,
+                  dir: "ltr",
+                },
+                {
+                  icon: Ban,
+                  label: t("admin.excludedByServer"),
+                  value: excludedTopics.length,
+                  dir: "ltr",
+                },
+              ]
+            : []
+        }
         block={
           deletable.length === 0
             ? {
@@ -871,46 +941,68 @@ export function AdminTopicsPage() {
               }
             : null
         }
-        warning={t("admin.confirmDeleteTopicsLong", {
-          count: deletable.length,
-        })}
+        impacts={[
+          {
+            icon: Inbox,
+            label: t("admin.impactTopicRequests"),
+            value: deletableRequests,
+            heavy: deletableRequests > 0,
+          },
+          { icon: FileText, label: t("admin.impactTopicApplications") },
+        ]}
+        warning={t("admin.irreversibleWarning")}
         confirmLabel={t("admin.confirmDelete")}
         cancelLabel={t("admin.cancel")}
       >
         {deletable.length > 0 && (
-          <ul className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-forest/10 bg-cream-2/60 p-2">
-            {deletable.map((tp: any) => (
+          <ol className="max-h-44 divide-y divide-forest/8 overflow-y-auto rounded-xl border border-forest/10 bg-cream-2/60">
+            {deletable.map((tp: any, i: number) => (
               <li
                 key={tp.id}
-                className="flex items-center gap-2 px-1 py-1 text-[12px] text-clay"
+                className="flex items-center gap-2.5 px-3 py-2 text-[13px] text-forest"
               >
-                <Trash2 size={12} className="shrink-0 text-brick/70" />
+                <span
+                  dir="ltr"
+                  className="grid size-5 shrink-0 place-items-center rounded-full bg-forest/8 text-[10px] font-bold text-clay"
+                >
+                  {i + 1}
+                </span>
                 <span className="min-w-0 truncate">{tp.title}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {/* المستثنى وسببه — معلومةٌ لا غنى عنها: هي الفرق بين ما حُدِّد وما يقع. */}
+        {excludedTopics.length > 0 && (
+          <ul className="mt-2 max-h-32 space-y-1.5 overflow-y-auto rounded-xl border border-brick/20 bg-brick/8 p-2">
+            {excludedTopics.map((tp: any) => (
+              <li key={tp.id} className="px-1 py-0.5 text-[12px]">
+                <span className="flex items-center gap-2 text-brick">
+                  <Ban size={12} className="shrink-0" />
+                  <span className="min-w-0 truncate font-medium">
+                    {tp.title}
+                  </span>
+                </span>
+                {blockReason(tp, "delete", t) && (
+                  <span className="mt-0.5 block pe-5 text-[11px] leading-relaxed text-clay">
+                    {blockReason(tp, "delete", t)}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         )}
-
-        {selectedTopics.length > deletable.length && (
-          <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-xl border border-brick/20 bg-brick/8 p-2">
-            {selectedTopics
-              .filter((tp: any) => !deletable.some((d: any) => d.id === tp.id))
-              .map((tp: any) => (
-                <li key={tp.id} className="px-1 py-1 text-[12px] text-brick">
-                  <span className="flex items-center gap-2">
-                    <Ban size={12} className="shrink-0" />
-                    <span className="min-w-0 truncate">{tp.title}</span>
-                  </span>
-                  {blockReason(tp, "delete", t) && (
-                    <span className="mt-0.5 block pr-5 text-[11px] text-clay">
-                      {blockReason(tp, "delete", t)}
-                    </span>
-                  )}
-                </li>
-              ))}
-          </ul>
-        )}
       </DangerConfirm>
+
+      {scanOpen && <ScanDialog onClose={() => setScanOpen(false)} />}
+
+      {supervisionTopicId && (
+        <SupervisionDialog
+          topicId={supervisionTopicId}
+          onClose={() => setSupervisionTopicId(null)}
+        />
+      )}
     </div>
   );
 }

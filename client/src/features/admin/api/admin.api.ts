@@ -331,6 +331,9 @@ export const adminApi = {
     client
       .patch(`${BASE}/group-requests/${id}/reject`, { reason })
       .then((r) => r.data),
+  /** حذفُ سطرٍ منتهٍ من السجلّ — للمرفوض وحده، والحارسُ في الخادم. */
+  deleteGroupRequest: (id: string) =>
+    client.delete(`${BASE}/group-requests/${id}`).then((r) => r.data),
 
   // ── Projects ──
   listProjects: (params?: ListParams) =>

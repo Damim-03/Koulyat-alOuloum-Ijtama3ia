@@ -1,18 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { capPayload, readCap, type CapValue } from "../../../lib/request-cap";
 import {
   X,
   FileText,
   Save,
-  Search,
-  UserX,
-  Star,
   UserPlus,
   SendHorizontal,
   Loader2,
   ChevronLeft,
-  Users,
 } from "lucide-react";
 import {
   useCreateAssignedTopic,
@@ -22,7 +19,6 @@ import {
   useFilieres,
   useSpecializations,
   useAcademicYears,
-  useStudents,
 } from "../../../hooks/admin-hook";
 import { statusChip } from "../../../utils/status-styles";
 import { ProfessorPicker } from "../../ui/professor-picker";
@@ -31,10 +27,13 @@ import {
   inputCls,
   SectionHead,
   Field,
-  StepTab,
   ReviewRow,
 } from "../../../../../components/ui/form-bits";
-import { UserAvatar } from "../../../../../components/ui/user-avatar";
+import { Stepper } from "../../../../../components/ui/stepper";
+import {
+  StudentSeat,
+  type SeatStudent,
+} from "../../ui/student-seat";
 import { Select } from "../../../../../components/ui/select";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -56,13 +55,6 @@ interface Props {
   onCreated?: () => void;
 }
 
-interface PickedStudent {
-  id: string;
-  name: string;
-  reg: string;
-}
-
-
 function fullName(u: any) {
   return [u?.firstName, u?.lastName].filter(Boolean).join(" ");
 }
@@ -77,6 +69,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [maxStudents, setMaxStudents] = useState(1);
+  const [maxRequests, setMaxRequests] = useState<CapValue>("");
   const [requirements, setRequirements] = useState<string[]>([]);
   const [objectives, setObjectives] = useState<string[]>([]);
   const [professorId, setProfessorId] = useState("");
@@ -87,9 +80,13 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
   const [specializationId, setSpecializationId] = useState("");
 
   // ── step 2: the people ──
-  const [studentSearch, setStudentSearch] = useState("");
-  const [picked, setPicked] = useState<PickedStudent[]>([]);
-  const [leaderId, setLeaderId] = useState("");
+  //
+  // مقعدٌ لكل طالبٍ يسمح به الموضوع، لا صندوقَ بحثٍ يُضيف حتى يمتلئ:
+  // `maxStudents` معروفٌ منذ الخطوة الأولى، فيُعرف عدد المقاعد قبل أن
+  // تُملأ. و`seatText` نصُّ كل مقعد، و`seatHit` من استقرّ عليه.
+  const [seatText, setSeatText] = useState<string[]>([]);
+  const [seatHit, setSeatHit] = useState<(SeatStudent | null)[]>([]);
+  const [leaderPick, setLeaderPick] = useState("");
 
   const [error, setError] = useState<string | null>(null);
 
@@ -108,9 +105,9 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
       setDepartmentId("");
       setFiliereId("");
       setSpecializationId("");
-      setStudentSearch("");
-      setPicked([]);
-      setLeaderId("");
+      setSeatText([]);
+      setSeatHit([]);
+      setLeaderPick("");
       setError(null);
     }
   }, [open]);
@@ -170,18 +167,6 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
     [specs, filiereId, departmentId, facultyId, departments],
   );
 
-  // Only search once a specialization is known — the query is scoped to it.
-  const { data: studentsData, isFetching: searching } = useStudents({
-    page: 1,
-    limit: 8,
-    search: studentSearch.trim() || undefined,
-    specializationId: specializationId || undefined,
-    unassigned: "true",
-  });
-  const searchResults = ((studentsData?.items ?? []) as any[]).filter(
-    (s) => !picked.some((p) => p.id === s.id),
-  );
-
   const professorName = useMemo(() => {
     const p = professors.find((x: any) => x.id === professorId);
     return p ? fullName(p.user) || p.universityEmail : "";
@@ -191,27 +176,45 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
   const yearName =
     (years ?? []).find((y: any) => y.id === academicYearId)?.title ?? "";
 
-  function addStudent(s: any) {
-    if (picked.length >= maxStudents) {
-      setError(t("admin.assignMaxReached", { count: maxStudents }));
-      return;
-    }
-    const entry: PickedStudent = {
-      id: s.id,
-      name: fullName(s.user) || "—",
-      reg: s.registrationNumber ?? "",
-    };
-    const next = [...picked, entry];
-    setPicked(next);
-    if (!leaderId) setLeaderId(entry.id);
-    setStudentSearch("");
-    setError(null);
-  }
-  function removeStudent(id: string) {
-    const next = picked.filter((p) => p.id !== id);
-    setPicked(next);
-    if (leaderId === id) setLeaderId(next[0]?.id ?? "");
-  }
+  const setSeat = useCallback((i: number, text: string) => {
+    setSeatText((prev) => {
+      const next = prev.slice();
+      while (next.length <= i) next.push("");
+      next[i] = text;
+      return next;
+    });
+  }, []);
+
+  const resolveSeat = useCallback((i: number, student: SeatStudent | null) => {
+    setSeatHit((prev) => {
+      if ((prev[i]?.id ?? null) === (student?.id ?? null)) return prev;
+      const next = prev.slice();
+      while (next.length <= i) next.push(null);
+      next[i] = student;
+      return next;
+    });
+  }, []);
+
+  const picked = useMemo(
+    () =>
+      seatHit.slice(0, maxStudents).filter(Boolean) as SeatStudent[],
+    [seatHit, maxStudents],
+  );
+
+  /**
+   * المرسِل يُشتقّ ولا يُخزَّن وحده.
+   *
+   * لو حُفظ في حالةٍ مستقلّة لبقي معرَّفُ طالبٍ مُسِحَ مقعدُه مرسِلاً —
+   * فيُرسَل `leaderStudentId` لا يقابله عضو. فالاختيار يُحفظ، والقيمة
+   * الفعلية تُصحَّح بما في المقاعد الآن.
+   */
+  const leaderId = useMemo(
+    () =>
+      picked.some((x) => x.id === leaderPick)
+        ? leaderPick
+        : (picked[0]?.id ?? ""),
+    [picked, leaderPick],
+  );
 
   // Step one stands on its own, so the wizard can refuse to advance rather
   // than letting an incomplete topic reach the assignment screen.
@@ -237,6 +240,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
         title: title.trim(),
         description: description.trim(),
         maxStudents,
+        maxRequests: capPayload(maxRequests),
         requirements,
         objectives,
         professorId,
@@ -266,7 +270,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
   return createPortal(
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-forest-deep/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-forest-deep/50 p-4 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -298,28 +302,22 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
           </button>
         </div>
 
-        {/* ── Stepper ── */}
-        <div className="grid shrink-0 grid-cols-2 border-b border-forest/10 bg-cream">
-          <StepTab
-            n={1}
-            active={step === 1}
-            done={step > 1 && step1Valid}
-            title={t("admin.stepTopicTitle")}
-            hint={t("admin.stepTopicHint")}
-            onClick={() => setStep(1)}
-          />
-          <StepTab
-            n={2}
-            active={step === 2}
-            done={false}
-            disabled={!step1Valid}
-            title={t("admin.stepStudentsTitle")}
-            hint={
-              step1Valid
-                ? t("admin.stepStudentsHint")
-                : t("admin.completeStepFirst")
-            }
-            onClick={() => step1Valid && setStep(2)}
+        {/*
+          شريط الخطوات المشترك — نفسه في معالج الهيكل الأكاديمي وإنشاء
+          الحساب وحذف الموضوع. وكان هنا شريطٌ خاصّ من لسانَين عريضين
+          (`StepTab`): يرسم الشيء نفسه بشيفرةٍ أخرى، ويسمح بالقفز إلى
+          الأمام متى صحّت الخطوة الأولى. والتقدّم الآن من «التالي» وحده —
+          فهو الذي يعرف ما يشترطه الانتقال — والرجوع بالنقر على خطوةٍ مرّت.
+        */}
+        <div className="shrink-0 border-b border-forest/10 bg-cream px-6 py-4">
+          <Stepper
+            steps={[
+              { key: "topic", label: t("admin.stepTopicTitle") },
+              { key: "students", label: t("admin.stepStudentsTitle") },
+            ]}
+            current={step - 1}
+            onGo={(i) => setStep((i + 1) as 1 | 2)}
+            ariaLabel={t("admin.assignTopicTitle")}
           />
         </div>
 
@@ -418,12 +416,38 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                           Math.min(10, Number(e.target.value) || 1),
                         );
                         setMaxStudents(v);
-                        if (picked.length > v) setPicked(picked.slice(0, v));
+                        // تقليص السعة يُلغي المقاعد الزائدة نصّاً وإصابةً،
+                        // فلا يبقى طالبٌ مسنَدٌ في مقعدٍ لم يعد موجوداً.
+                        setSeatText((prev) => prev.slice(0, v));
+                        setSeatHit((prev) => prev.slice(0, v));
                       }}
                       className={inputCls}
                       dir="ltr"
                     />
                   </Field>
+
+                  {/*
+                    سقفُ المحاولات — لا سقفُ المتزامن: الفهرسُ الفريد لا يسمح
+                    بأكثر من طلبٍ حيٍّ واحد أصلاً، وهذا يمنع إعادة الطلب بلا نهاية.
+                  */}
+                  <div className="col-span-2">
+                    <Field
+                      label={t("admin.maxRequests")}
+                      note={t("admin.optional")}
+                      hint={t("admin.maxRequestsHint")}
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={maxRequests}
+                        onChange={(e) => setMaxRequests(readCap(e.target.value))}
+                        placeholder={t("admin.maxRequestsNone")}
+                        className={inputCls}
+                        dir="ltr"
+                      />
+                    </Field>
+                  </div>
                 </div>
 
                 {/* Each level gets its own label: stacked, the four dropdowns
@@ -493,7 +517,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
           {/* ══════════ STEP 2 — students, assignment, status ══════════ */}
           {step === 2 && (
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_1fr]">
-              {/* ── picking ── */}
+              {/* ── seats ── */}
               <div className="rounded-2xl border border-forest/10 bg-cream p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <p className="flex items-center gap-1.5 text-sm font-semibold text-forest">
@@ -508,129 +532,37 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                   </span>
                 </div>
 
-                {picked.length === 0 && (
-                  <div className="mb-3 grid place-items-center rounded-xl border border-dashed border-forest/15 py-6 text-center">
-                    <Users size={22} className="mb-1.5 text-clay/60" />
-                    <p className="text-xs text-clay">
-                      {t("admin.noStudentsPicked")}
-                    </p>
-                  </div>
-                )}
-
-                {picked.length > 0 && (
-                  <div className="mb-3 space-y-2">
-                    {picked.map((p) => {
-                      const isLeader = leaderId === p.id;
-                      return (
-                        <div
-                          key={p.id}
-                          className={`flex items-center justify-between rounded-xl border px-3 py-2 ${
-                          isLeader
-                            ? "border-gold bg-gold/5"
-                            : "border-forest/10 bg-cream-card"
-                        }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <button
-                              type="button"
-                              onClick={() => setLeaderId(p.id)}
-                              title={t("admin.setLeader")}
-                              className={`grid size-7 place-items-center rounded-lg transition ${
-                                isLeader
-                                  ? "bg-gold/20 text-gold"
-                                  : "text-clay hover:bg-forest/5 hover:text-gold"
-                              }`}
-                            >
-                              {isLeader ? (
-                                <SendHorizontal size={15} />
-                              ) : (
-                                <Star size={15} />
-                              )}
-                            </button>
-                            <div>
-                              <p className="text-sm font-medium text-forest">
-                                {p.name}
-                                {isLeader && (
-                                  <span className="ms-2 rounded-full bg-gold/15 px-1.5 py-0.5 text-[9px] font-bold text-gold">
-                                    {t("admin.leader")}
-                                  </span>
-                                )}
-                              </p>
-                              <p className="text-[11px] text-clay" dir="ltr">
-                                {p.reg}
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeStudent(p.id)}
-                            className="grid size-7 place-items-center rounded-lg text-clay transition hover:bg-red-500/10 hover:text-red-500"
-                          >
-                            <X size={15} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {picked.length < maxStudents && (
-                  <div>
-                    <div className="relative">
-                      <Search
-                        className="pointer-events-none absolute top-1/2 end-3 -translate-y-1/2 text-clay"
-                        size={16}
+                <ul className="space-y-2.5">
+                  {Array.from({ length: maxStudents }).map((_, i) => {
+                    const hit = seatHit[i] ?? null;
+                    return (
+                      <StudentSeat
+                        key={i}
+                        seat={i + 1}
+                        index={i}
+                        value={seatText[i] ?? ""}
+                        onChange={setSeat}
+                        onResolve={resolveSeat}
+                        taken={seatText
+                          .slice(0, maxStudents)
+                          .map((x) => (x ?? "").trim())
+                          .filter((x, j) => x !== "" && j !== i)}
+                        specializationId={specializationId}
+                      specializationName={specName}
+                        isLeader={!!hit && hit.id === leaderId}
+                        onMakeLeader={() => hit && setLeaderPick(hit.id)}
+                        disabled={createTopic.isPending}
                       />
-                      <input
-                        value={studentSearch}
-                        onChange={(e) => setStudentSearch(e.target.value)}
-                        placeholder={t("admin.searchStudentToAssign")}
-                        className="w-full rounded-xl border border-forest/15 bg-cream-card py-2.5 pe-9 ps-3 text-sm text-forest outline-none transition focus:border-sage focus:ring-2 focus:ring-sage/20"
-                      />
-                    </div>
-                    {studentSearch.trim() && (
-                      <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-forest/10 bg-cream-card">
-                        {searching && (
-                          <p className="flex items-center justify-center gap-2 px-3 py-3 text-xs text-clay">
-                            <Loader2 size={14} className="animate-spin" />
-                            {t("admin.searching")}
-                          </p>
-                        )}
-                        {!searching && searchResults.length === 0 && (
-                          <p className="flex items-center justify-center gap-2 px-3 py-4 text-xs font-medium text-clay">
-                            <UserX size={15} className="shrink-0 text-brick" />
-                            {t("admin.noStudents")}
-                          </p>
-                        )}
-                        {searchResults.map((s: any) => (
-                          <button
-                            key={s.id}
-                            type="button"
-                            onClick={() => addStudent(s)}
-                            className="flex w-full items-center gap-2.5 px-3 py-2 text-start transition hover:bg-forest/5"
-                          >
-                            <UserAvatar user={s.user} size={32} />
-                            <div className="min-w-0">
-                              <p className="truncate text-sm text-forest">
-                                {fullName(s.user) || "—"}
-                              </p>
-                              <p className="text-[11px] text-clay" dir="ltr">
-                                {s.registrationNumber}
-                              </p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                    );
+                  })}
+                </ul>
 
-                <p className="mt-2.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-clay">
+                <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed text-clay">
                   <SendHorizontal size={12} className="mt-0.5 shrink-0 text-gold" />
                   {t("admin.leaderHint")}
                 </p>
                 <p className="mt-1.5 text-[11px] leading-relaxed text-clay/80">
-                  {t("admin.searchScopedToSpec")}
+                  {t("admin.seatsHint")} {t("admin.searchScopedToSpec")}
                 </p>
               </div>
 
@@ -727,6 +659,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                 type="button"
                 onClick={() => setStep(2)}
                 disabled={!step1Valid}
+                title={!step1Valid ? t("admin.completeStepFirst") : undefined}
                 className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t("admin.next")}

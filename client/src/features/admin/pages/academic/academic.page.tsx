@@ -23,6 +23,7 @@ import { SpecializationFormDialog } from "../../components/dialog/faculty/specia
 import { CoverBanner } from "../../components/ui/cover-banner";
 import { None } from "../../../../lib/none";
 import { Select } from "../../../../components/ui/select";
+import { LoadingArea } from "../../../../components/ui/loading-area";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -313,9 +314,7 @@ export function AdminAcademicStructurePage() {
 
           {/* Cards */}
           {specsLoading ? (
-            <div className="py-16 text-center text-sm text-clay">
-              {"\u2026"}
-            </div>
+            <LoadingArea className="py-16" />
           ) : pageItems.length === 0 ? (
             <div className="rounded-2xl border border-forest/10 bg-cream-card py-16 text-center text-sm text-clay">
               {t("admin.noSpecializations")}

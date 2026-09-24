@@ -177,7 +177,7 @@ function Cropper({
     >
       <div
         onClick={() => !busy && onCancel()}
-        className="absolute inset-0 bg-forest-deep/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm"
       />
 
       <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-forest/10 bg-cream-card shadow-2xl">

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,6 +11,7 @@ import {
   History,
   FileText,
   Star,
+  FileCheck2,
 } from "lucide-react";
 import {
   useMyGroupRequests,
@@ -17,6 +19,7 @@ import {
 } from "../hooks/Student-hook";
 import type { GroupRequestMember } from "../../../types/student.types";
 import { UserAvatar } from "../../../components/ui/user-avatar";
+import { SupervisionDialog } from "../../supervision/components/supervision-dialog";
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -35,6 +38,7 @@ export function StudentMyRequestsPage() {
   const { t, i18n } = useTranslation();
   const { data: requests, isLoading } = useMyGroupRequests();
   const cancel = useCancelGroupRequest();
+  const [sheetTopicId, setSheetTopicId] = useState<string | null>(null);
 
   const list = requests ?? [];
 
@@ -114,6 +118,7 @@ export function StudentMyRequestsPage() {
                 .filter(Boolean)
                 .join(" ") || null;
             const year = req.topic?.academicYear?.title ?? null;
+            const topicId = req.topic?.id ?? null;
             const created = fmtDate(req.createdAt);
 
             return (
@@ -246,14 +251,27 @@ export function StudentMyRequestsPage() {
                       </button>
                     )}
                     {req.status === "accepted" && (
-                      <Link
-                        to="../project"
-                        relative="path"
-                        className="inline-flex items-center gap-2 rounded-xl bg-forest px-5 py-2 text-sm font-bold text-cream transition hover:bg-forest-deep"
-                      >
-                        <FileText size={16} />
-                        {t("stu.viewProjectDetails")}
-                      </Link>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {/* ورقةُ الموافقة لا تُعرض إلّا للطلب المقبول. */}
+                        {topicId && (
+                          <button
+                            type="button"
+                            onClick={() => setSheetTopicId(topicId)}
+                            className="inline-flex items-center gap-2 rounded-xl border-2 border-forest px-5 py-2 text-sm font-bold text-forest transition hover:bg-forest hover:text-cream"
+                          >
+                            <FileCheck2 size={16} />
+                            {t("supervision.sheet")}
+                          </button>
+                        )}
+                        <Link
+                          to="../project"
+                          relative="path"
+                          className="inline-flex items-center gap-2 rounded-xl bg-forest px-5 py-2 text-sm font-bold text-cream transition hover:bg-forest-deep"
+                        >
+                          <FileText size={16} />
+                          {t("stu.viewProjectDetails")}
+                        </Link>
+                      </div>
                     )}
                     {req.status === "rejected" && req.topic?.id && (
                       <Link
@@ -288,6 +306,13 @@ export function StudentMyRequestsPage() {
           {t("stu.browseResources")}
         </Link>
       </div>
+
+      {sheetTopicId && (
+        <SupervisionDialog
+          topicId={sheetTopicId}
+          onClose={() => setSheetTopicId(null)}
+        />
+      )}
     </div>
   );
 }

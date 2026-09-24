@@ -571,6 +571,46 @@ body {
   animation: shimmer 1.5s infinite;
 }
 
+/* ── شاشةُ التحميل: نبضُ شعار الكلّية ──
+   حلقتان تتّسعان وتخبوان بفارقٍ بينهما فيُقرأ النبضُ متّصلاً لا متقطّعاً،
+   وقوسٌ يدور، والشعارُ يتنفّس. ثلاثُ حركاتٍ بدورةٍ واحدة (٢٫٤ث) فتبدو
+   حركةً واحدة لا ثلاثاً تتسابق. */
+@keyframes facultyPulse {
+  0% {
+    transform: scale(0.68);
+    opacity: 0.5;
+  }
+  70%,
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+@keyframes facultyBreathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.055);
+  }
+}
+@keyframes facultySpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.faculty-pulse {
+  animation: facultyPulse 2.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.faculty-breathe {
+  animation: facultyBreathe 2.4s ease-in-out infinite;
+}
+.faculty-spin {
+  animation: facultySpin 3s linear infinite;
+}
+
 /* ── احترام تفضيل تقليل الحركة ── */
 @media (prefers-reduced-motion: reduce) {
   .animate-slide-up,
@@ -578,6 +618,9 @@ body {
   .animate-scale-in,
   .animate-float,
   .animate-pulse-soft,
+  .faculty-pulse,
+  .faculty-breathe,
+  .faculty-spin,
   .stagger > * {
     animation: none !important;
     opacity: 1 !important;

@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from "express";
 import { HTTPSTATUS } from "../../core/config/http/http.config";
-import { config } from "../../core/config/app.config";
 import { verifyUploadedImage } from "../../core/middleware/upload.middleware";
 import { BadRequestException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
@@ -337,10 +336,18 @@ export const uploadImageController = (req: Request, res: Response) => {
     );
   }
 
-  // Built from configuration, not from the Host header: a request carrying
-  // `Host: attacker.example` would otherwise have this endpoint mint — and
-  // the caller then store — an image URL pointing at the attacker's server.
-  const url = `${config.PUBLIC_API_URL}/uploads/cards/${req.file.filename}`;
+  // **مسارٌ نسبيّ لا عنوانٌ مطلق.**
+  //
+  // ترويسة `Host` لا يُوثق بها — وكان الجواب عن ذلك أن يُبنى العنوان من
+  // `PUBLIC_API_URL`. والمسار النسبيّ يحقّق ذلك وزيادة: لا مضيفَ فيه أصلاً
+  // فلا شيء يُنتحَل.
+  //
+  // وهو الصواب في هذا المشروع بعينه: الصفحة والـAPI من أصلٍ واحد — وسيط
+  // Vite في التطوير (`/uploads` مُوجَّهٌ فيه)، وExpress نفسه في الإنتاج. وأما
+  // `http://localhost:3000` المخزَّن في صفٍّ فيعمل على حاسوب من رفع الصورة
+  // وحده: افتح التطبيق عبر نفقٍ أو من هاتفٍ على الشبكة، فكلّ صورةٍ تقصد
+  // **حاسوب الزائر**. وهو نفس ما يحذّر منه `client/src/config/env.ts`.
+  const url = `/uploads/cards/${req.file.filename}`;
   return res.status(HTTPSTATUS.OK).json({ url });
 };
 
@@ -1351,6 +1358,23 @@ export const rejectGroupRequestController = async (
     return res
       .status(HTTPSTATUS.OK)
       .json({ message: "Group request rejected", groupRequest });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const deleteGroupRequestController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const deleted = await svc.deleteGroupRequestService(
+      req.params.id as string,
+    );
+    return res
+      .status(HTTPSTATUS.OK)
+      .json({ message: "Group request deleted", ...deleted });
   } catch (e) {
     next(e);
   }

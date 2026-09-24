@@ -11,6 +11,10 @@ export const createTopicSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Description is required"),
   maxStudents: z.number().min(1).max(10),
+  /**
+   * سقفُ المحاولات على الموضوع — بما فيها المرفوضة. و`null` بلا سقف.
+   */
+  maxRequests: z.number().int().min(1).max(50).nullable().optional(),
   specializationId: z.string().min(1, "Specialization is required"),
   academicYearId: z.string().min(1, "Academic year is required"),
   // Rich project details — sent by the professor, reviewed by admin.
@@ -46,6 +50,10 @@ export const updateTopicSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
   maxStudents: z.number().min(1).max(10).optional(),
+  /**
+   * سقفُ المحاولات على الموضوع — بما فيها المرفوضة. و`null` بلا سقف.
+   */
+  maxRequests: z.number().int().min(1).max(50).nullable().optional(),
   requirements: z.array(z.string().trim().min(1)).optional(),
   objectives: z.array(z.string().trim().min(1)).optional(),
   references: z

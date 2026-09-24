@@ -54,6 +54,7 @@ export const createTopicService = async (
       title: data.title,
       description: data.description,
       maxStudents: data.maxStudents,
+      maxRequests: data.maxRequests ?? null,
       specializationId: data.specializationId,
       academicYearId: data.academicYearId,
       requirements: data.requirements ?? [],
@@ -171,6 +172,7 @@ export const createTopicWithGroupService = async (
         objectives: data.objectives ?? [],
         references: data.references ?? [],
         maxStudents: data.maxStudents,
+        maxRequests: data.maxRequests ?? null,
         status: "pending", // the administration still approves it
         professorId: professor.id,
         specializationId: data.specializationId,

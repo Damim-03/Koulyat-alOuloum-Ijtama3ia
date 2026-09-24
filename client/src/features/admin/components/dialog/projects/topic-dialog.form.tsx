@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { capPayload, readCap, type CapValue } from "../../../lib/request-cap";
 import { X, FilePlus2, Save, Loader2 } from "lucide-react";
 import {
   useCreateTopic,
@@ -45,6 +46,7 @@ export function TopicDialog({ open, onClose, onCreated }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [maxStudents, setMaxStudents] = useState(1);
+  const [maxRequests, setMaxRequests] = useState<CapValue>("");
   const [requirements, setRequirements] = useState<string[]>([]);
   const [objectives, setObjectives] = useState<string[]>([]);
   const [professorId, setProfessorId] = useState("");
@@ -151,6 +153,7 @@ export function TopicDialog({ open, onClose, onCreated }: Props) {
         title: title.trim(),
         description: description.trim(),
         maxStudents,
+        maxRequests: capPayload(maxRequests),
         requirements,
         objectives,
         professorId,
@@ -181,7 +184,7 @@ export function TopicDialog({ open, onClose, onCreated }: Props) {
   return createPortal(
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-forest-deep/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-forest-deep/50 p-4 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -307,6 +310,29 @@ export function TopicDialog({ open, onClose, onCreated }: Props) {
                       dir="ltr"
                     />
                   </Field>
+
+                  {/*
+                    سقفُ المحاولات — لا سقفُ المتزامن: الفهرسُ الفريد لا يسمح
+                    بأكثر من طلبٍ حيٍّ واحد أصلاً، وهذا يمنع إعادة الطلب بلا نهاية.
+                  */}
+                  <div className="col-span-2">
+                    <Field
+                      label={t("admin.maxRequests")}
+                      note={t("admin.optional")}
+                      hint={t("admin.maxRequestsHint")}
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={maxRequests}
+                        onChange={(e) => setMaxRequests(readCap(e.target.value))}
+                        placeholder={t("admin.maxRequestsNone")}
+                        className={inputCls}
+                        dir="ltr"
+                      />
+                    </Field>
+                  </div>
                 </div>
 
                 <div className="space-y-3 border-t border-forest/10 pt-4">

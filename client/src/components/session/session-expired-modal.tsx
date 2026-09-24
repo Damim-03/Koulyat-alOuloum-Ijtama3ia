@@ -37,7 +37,7 @@ export function SessionExpiredModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-100 grid place-items-center bg-forest-deep/60 p-6 backdrop-blur-sm">
+    <div className="fixed inset-0 z-100 grid place-items-center bg-forest-deep/50 p-6 backdrop-blur-sm">
       <div className="w-full max-w-100 overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-2xl">
         <div className="h-1 bg-linear-to-r from-forest via-gold to-forest" />
         <div className="p-6 text-center">

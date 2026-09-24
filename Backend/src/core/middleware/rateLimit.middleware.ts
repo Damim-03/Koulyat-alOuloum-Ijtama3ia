@@ -55,6 +55,18 @@ export const refreshLimiter = rateLimit({
   max: 60,
 });
 
+/**
+ * Public document verification. No login, and the short barcode on a printed
+ * sheet is only ten random digits wide — small enough that an unbounded
+ * endpoint is a guessing machine. Legitimate use is a handful of scans, so a
+ * low ceiling costs nothing and closes that door.
+ */
+export const verifyLimiter = rateLimit({
+  ...shared,
+  windowMs: 15 * 60 * 1000,
+  max: config.IS_PRODUCTION ? 60 : 600,
+});
+
 /** Writes that fan out (uploads, messages, bulk actions). */
 export const writeLimiter = rateLimit({
   ...shared,

@@ -23,6 +23,7 @@ import {
 import { StatusBadge } from "../components/status-badge";
 import { MilestoneFormDialog } from "../components/milestone-form-dialog";
 import type { Milestone, ProjectGroup } from "../../../types/professor.types";
+import { LoadingArea } from "../../../components/ui/loading-area";
 
 
 const MS_NODE: Record<string, string> = {
@@ -76,7 +77,7 @@ function ProjectPicker({ onPick }: { onPick: (id: string) => void }) {
       </div>
 
       {isLoading ? (
-        <div className="py-20 text-center text-sm text-clay">{"\u2026"}</div>
+        <LoadingArea className="py-20" />
       ) : list.length === 0 ? (
         <div className="rounded-2xl border border-forest/10 bg-cream-card py-20 text-center text-sm text-clay">
           {t("pro.noProjectsYet")}
@@ -156,7 +157,7 @@ function MilestonesManager({
 
   if (isLoading)
     return (
-      <div className="py-20 text-center text-sm text-clay">{"\u2026"}</div>
+      <LoadingArea className="py-20" />
     );
   if (!group)
     return (

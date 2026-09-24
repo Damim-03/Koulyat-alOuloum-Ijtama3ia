@@ -7,6 +7,7 @@ import i18n from "../../../../../i18n/i18n";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
 import { None } from "../../../../../lib/none";
 import { Select } from "../../../../../components/ui/select";
+import { LoadingArea } from "../../../../../components/ui/loading-area";
 
 interface Props {
   projectId: string | null;
@@ -59,7 +60,7 @@ export function ProjectDetailDialog({ projectId, open, onClose }: Props) {
       icon={FolderKanban}
     >
       {isLoading ? (
-        <div className="py-10 text-center text-sm text-clay">{"\u2026"}</div>
+        <LoadingArea className="py-10" />
       ) : !project ? (
         <div className="py-10 text-center text-sm text-clay">{<None />}</div>
       ) : (

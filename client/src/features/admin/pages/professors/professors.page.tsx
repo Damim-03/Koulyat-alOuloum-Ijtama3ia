@@ -27,6 +27,8 @@ import { SearchField } from "../../components/ui/search-field";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
 import { Select as UiSelect } from "../../../../components/ui/select";
+import { LoadingArea } from "../../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../../components/ui/error-retry";
 
 const PAGE_SIZE = 10;
 
@@ -103,7 +105,8 @@ export function AdminProfessorsPage() {
     ],
   );
 
-  const { data, isLoading, isFetching } = useProfessors(params);
+  const { data, isLoading, isFetching, isError, refetch } =
+    useProfessors(params);
   const { data: faculties } = useFaculties();
   const { data: departments } = useDepartments();
   const { data: filieres } = useFilieres();
@@ -411,11 +414,19 @@ export function AdminProfessorsPage() {
                     colSpan={11}
                     className="px-5 py-10 text-center text-sm text-clay"
                   >
-                    {"\u2026"}
+                    <LoadingArea size={96} className="py-10" />
                   </td>
                 </tr>
               )}
-              {!isLoading && professors.length === 0 && (
+
+              {!isLoading && isError && (
+                <tr>
+                  <td colSpan={11} className="px-5">
+                    <ErrorRetry compact onRetry={() => refetch()} />
+                  </td>
+                </tr>
+              )}
+              {!isLoading && !isError && professors.length === 0 && (
                 <tr>
                   <td
                     colSpan={11}

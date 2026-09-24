@@ -71,6 +71,7 @@ import {
   getGroupRequestController,
   acceptGroupRequestController,
   rejectGroupRequestController,
+  deleteGroupRequestController,
   // projects
   listProjectsController,
   getProjectController,
@@ -271,6 +272,8 @@ adminRoutes.get("/group-requests", listGroupRequestsController);
 adminRoutes.get("/group-requests/:id", getGroupRequestController);
 adminRoutes.patch("/group-requests/:id/accept", acceptGroupRequestController);
 adminRoutes.patch("/group-requests/:id/reject", rejectGroupRequestController);
+// الحذفُ للمنتهي وحده — الحارسُ في الخدمة، لا في المسار.
+adminRoutes.delete("/group-requests/:id", deleteGroupRequestController);
 
 adminRoutes.delete(
   "/group-requests/:id/members/:studentId",

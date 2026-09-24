@@ -18,6 +18,8 @@ import { noneText } from "../../../lib/none-text";
 import { useAuth } from "../../../hooks/use-auth";
 // ⚠️ طابِق المسار مع موقع GroupRequestDialog عندك (موجود ضمن ميزة الطالب).
 import { GroupRequestDialog } from "../../student/components/group-request-dialog";
+import { LoadingArea } from "../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../components/ui/error-retry";
 
 export function PublicTopicDetailPage() {
   const { t } = useTranslation();
@@ -27,7 +29,7 @@ export function PublicTopicDetailPage() {
 
   const { isAuthenticated, role } = useAuth();
 
-  const { data: topic, isLoading } = usePublicTopic(id);
+  const { data: topic, isLoading, isError, refetch } = usePublicTopic(id);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   function handleApply() {
@@ -61,10 +63,13 @@ export function PublicTopicDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="font-body py-20 text-center text-sm text-clay">
-        {"\u2026"}
-      </div>
+      <LoadingArea className="font-body py-20" />
     );
+  }
+
+  // انقطاعُ الاتّصال ليس «غير موجود»: يُقال ما جرى ويُعرض زرُّ إعادة.
+  if (isError) {
+    return <ErrorRetry onRetry={() => refetch()} />;
   }
   if (!topic) {
     return (

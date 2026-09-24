@@ -67,20 +67,19 @@ const supervisor = {
   user: { firstName: "خالد", lastName: "مرابط" },
 };
 
+const PROPS = {
+  onClose: () => {},
+  topicId: "t-1",
+  topicTitle: "موضوع",
+  groupId: "g-1" as string | null,
+  members,
+  supervisor,
+  supervisorUserId: "pu-1" as string | null,
+  onDeleted,
+};
+
 const open = (over: Record<string, unknown> = {}) =>
-  render(
-    <TopicDeleteDialog
-      onClose={() => {}}
-      topicId="t-1"
-      topicTitle="موضوع"
-      groupId="g-1"
-      members={members}
-      supervisor={supervisor}
-      supervisorUserId="pu-1"
-      onDeleted={onDeleted}
-      {...over}
-    />,
-  );
+  render(<TopicDeleteDialog {...PROPS} {...over} />);
 
 const current = () =>
   screen
@@ -193,6 +192,43 @@ describe("معالج حذف الموضوع", () => {
 
     expect(args(del.mutate)).toBe("t-1");
     expect(onDeleted).toHaveBeenCalled();
+  });
+
+  /**
+   * ما تفعله الصفحة بعد الفسخ — وهو ما لم يكن يُحاكى هنا.
+   *
+   * `useDissolveProject` يُبطِل ذاكرة الموضوع، فتُعيد الصفحةُ جلبه وتُمرّر
+   * `groupId: null` و`members: []`. وكان شكل المعالج يُحسب في كل رسمة، فتسقط
+   * خطوة المجموعة وينزلق الفهرس ١ من «المشرف» إلى «المراجعة»: تُقفَز خطوة
+   * المشرف، ويُحذف الموضوع دون أن يُبلَّغ أستاذه.
+   */
+  it("وإعادة جلب الصفحة بعد الفسخ لا تُقفِز خطوة المشرف", async () => {
+    const { rerender } = open();
+
+    await reason("سبب الطلبة");
+    await userEvent.click(screen.getByTestId("group-next"));
+    expect(current()).toBe("step-supervisor");
+
+    rerender(<TopicDeleteDialog {...PROPS} groupId={null} members={[]} />);
+
+    expect(current()).toBe("step-supervisor");
+    expect(screen.getByTestId("supervisor-next")).toBeInTheDocument();
+    expect(send.mutate).not.toHaveBeenCalled();
+  });
+
+  /** والمراجعة سجلٌّ لمن حُذفوا، لا لمن بقي في الصفحة بعد الفسخ. */
+  it("وتبقى المراجعة تسمّي الأعضاء وإن عادت الصفحة بلا أعضاء", async () => {
+    const { rerender } = open();
+
+    await reason("سبب الطلبة");
+    await userEvent.click(screen.getByTestId("group-next"));
+    rerender(<TopicDeleteDialog {...PROPS} groupId={null} members={[]} />);
+
+    await reason("سبب المشرف");
+    await userEvent.click(screen.getByTestId("supervisor-next"));
+
+    expect(current()).toBe("step-review");
+    expect(screen.getByRole("dialog")).toHaveTextContent("سارة بوعلام");
   });
 
   /**

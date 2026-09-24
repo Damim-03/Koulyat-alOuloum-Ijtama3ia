@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { Check } from "lucide-react";
 
 /**
  * Shared pieces of the topic dialogs, so the create and edit forms cannot
@@ -58,56 +57,6 @@ export function Field({
         )
       )}
     </label>
-  );
-}
-
-/** One tab of a two-step wizard header. */
-export function StepTab({
-  n,
-  title,
-  hint,
-  active,
-  done,
-  disabled,
-  onClick,
-}: {
-  n: number;
-  title: string;
-  hint: string;
-  active: boolean;
-  done: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex items-center gap-3 px-5 py-3.5 text-start transition ${
-        active ? "bg-cream-card" : "hover:bg-forest/5"
-      } ${disabled ? "cursor-not-allowed opacity-45" : ""}`}
-    >
-      <span
-        className={`grid size-8 shrink-0 place-items-center rounded-full text-[12px] font-bold transition ${
-          active
-            ? "bg-gold text-forest-deep"
-            : done
-              ? "bg-forest text-cream"
-              : "bg-forest/10 text-forest/60"
-        }`}
-      >
-        {done ? <Check size={15} /> : n}
-      </span>
-      <span className="min-w-0">
-        <span
-          className={`block truncate text-sm font-semibold ${active ? "text-forest" : "text-forest/70"}`}
-        >
-          {title}
-        </span>
-        <span className="block truncate text-[11px] text-clay">{hint}</span>
-      </span>
-    </button>
   );
 }
 

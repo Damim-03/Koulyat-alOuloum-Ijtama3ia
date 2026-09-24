@@ -176,17 +176,140 @@ describe("PATCH /api/admin/group-requests/:id/accept", () => {
   });
 });
 
+describe("GET /api/admin/topics/:id — المحاولات السابقة", () => {
+  /**
+   * الحيُّ والمرفوض لا يختلطان.
+   *
+   * الصفحة تحسب من `groupRequests` أنّ الموضوع «محجوز» فتُطفئ أزرار النشر
+   * والرفض والأرشفة. فلو وُسّع مرشِّحُها ليشمل المرفوضة لَأطفأتها محاولةٌ
+   * رُفضت قبل شهر — وهو عطبٌ صامت: الأزرار تختفي ولا شيء يقول لماذا.
+   */
+  it("تُعاد المرفوضة في pastRequests وحدها، وتبقى groupRequests للحيّ", async () => {
+    const { topic: t, request: r } = await withPendingRequest("APJ past");
+
+    await as(
+      request(app)
+        .patch(`/api/admin/group-requests/${r.id}/reject`)
+        .send({ reason: "سببٌ مسجَّل" }),
+    ).expect(200);
+
+    const res = await as(
+      request(app).get(`/api/admin/topics/${t.id}`),
+    ).expect(200);
+
+    const body = res.body.topic as {
+      groupRequests: unknown[];
+      pastRequests: { id: string; rejectionReason: string | null; members: unknown[] }[];
+      _count: { groupRequests: number };
+      occupancy: { hasPendingRequest: boolean };
+    };
+
+    expect(body.groupRequests).toHaveLength(0);
+    expect(body.occupancy.hasPendingRequest).toBe(false);
+
+    expect(body.pastRequests).toHaveLength(1);
+    expect(body.pastRequests[0]!.id).toBe(r.id);
+    expect(body.pastRequests[0]!.rejectionReason).toBe("سببٌ مسجَّل");
+    expect(body.pastRequests[0]!.members.length).toBeGreaterThan(0);
+
+    // والعدّادُ المعروض يقرأ ما يقرأه الحارس: الحيَّ وحده. فالمرفوضةُ
+    // تظهر في «محاولاتٌ سابقة» ولا تشغل خانةً من السقف.
+    expect(body._count.groupRequests).toBe(0);
+  });
+});
+
+describe("DELETE /api/admin/group-requests/:id", () => {
+  /**
+   * الحذفُ غيرُ الرفض.
+   *
+   * الرفضُ قرارٌ يُبلَّغ ويُسجَّل ويبقى أثرُه؛ وهذا مسحٌ للأثر. فلا يُفتح
+   * إلّا على ما انتهى — وإلّا سقط الطلبُ من تحت فريقٍ ينتظر بلا خبر.
+   */
+  it("يحذف الطلب المرفوض ويُذهب أعضاءه معه", async () => {
+    const { request: r } = await withPendingRequest("APJ delete-rejected");
+
+    await as(
+      request(app)
+        .patch(`/api/admin/group-requests/${r.id}/reject`)
+        .send({ reason: "سبب" }),
+    ).expect(200);
+
+    await as(
+      request(app).delete(`/api/admin/group-requests/${r.id}`),
+    ).expect(200);
+
+    expect(
+      await prisma.groupRequest.findUnique({ where: { id: r.id } }),
+    ).toBeNull();
+    expect(
+      await prisma.groupRequestMember.count({ where: { requestId: r.id } }),
+    ).toBe(0);
+  });
+
+  it("ولا يحذف طلباً ما يزال بانتظار القرار", async () => {
+    const { request: r } = await withPendingRequest("APJ delete-pending");
+
+    const res = await as(
+      request(app).delete(`/api/admin/group-requests/${r.id}`),
+    ).expect(400);
+
+    expect(JSON.stringify(res.body)).toContain("بانتظار القرار");
+    expect(
+      await prisma.groupRequest.findUnique({ where: { id: r.id } }),
+    ).not.toBeNull();
+  });
+
+  /** والمقبولُ تحته مشروعٌ قائم — محوُه يترك المشروع بلا أصل. */
+  it("ولا يحذف طلباً قام عليه مشروع", async () => {
+    const { request: r } = await withPendingRequest("APJ delete-accepted");
+
+    await as(
+      request(app).patch(`/api/admin/group-requests/${r.id}/accept`),
+    ).expect(200);
+
+    const res = await as(
+      request(app).delete(`/api/admin/group-requests/${r.id}`),
+    ).expect(400);
+
+    expect(JSON.stringify(res.body)).toContain("افسخ المشروع");
+  });
+
+  it("وطلبٌ غير موجود ⇒ 404", async () => {
+    await as(
+      request(app).delete(
+        "/api/admin/group-requests/00000000-0000-0000-0000-000000000000",
+      ),
+    ).expect(404);
+  });
+});
+
 describe("PATCH /api/admin/group-requests/:id/reject", () => {
-  it("الرفض ⇒ 200، ويعود الموضوع للتداول", async () => {
+  /**
+   * الرفضُ يُعلّم ولا يمحو.
+   *
+   * كان يحذف الصفّ، فيذهب معه السببُ المكتوب وأثرُ المحاولة — وسقفُ الطلبات
+   * معهما، لأنّه يَعدّ الصفوف. والإفراجُ عن الموضوع لا يحتاج حذفاً: إفراغُ
+   * `activeTopicId` يكفي، فالفهرس الفريد لا يقارن NULL.
+   */
+  it("الرفض ⇒ 200، ويُعلَّم الطلب مرفوضاً بسببه، ويعود الموضوع للتداول", async () => {
     const { topic: t, request: r } = await withPendingRequest("APJ reject");
 
     await as(
       request(app)
         .patch(`/api/admin/group-requests/${r.id}/reject`)
-        .send({ rejectionReason: "الفريق غير مكتمل" }),
+        .send({ reason: "الفريق غير مكتمل" }),
     ).expect(200);
 
-    expect(await prisma.groupRequest.findUnique({ where: { id: r.id } })).toBeNull();
+    const after = await prisma.groupRequest.findUnique({ where: { id: r.id } });
+    expect(after).not.toBeNull();
+    expect(after?.status).toBe("rejected");
+    expect(after?.rejectionReason).toBe("الفريق غير مكتمل");
+    expect(after?.activeTopicId).toBeNull(); // الإفراج عن الموضوع
+
+    // وأعضاؤه يبقون: «مَن طلبه» جزءٌ من الأثر لا يقلّ عن «لماذا رُفض».
+    expect(
+      await prisma.groupRequestMember.count({ where: { requestId: r.id } }),
+    ).toBeGreaterThan(0);
 
     const list = await as(
       request(app).get("/api/admin/topics").query({ search: `${TAG} APJ reject` }),

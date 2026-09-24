@@ -28,6 +28,7 @@ import {
   HeaderBadge,
 } from "../../components/ui/hierarchy-header";
 import { Select } from "../../../../components/ui/select";
+import { LoadingArea } from "../../../../components/ui/loading-area";
 
 const LEVEL_LABEL: Record<string, string> = {
   licence: "admin.levelLicence",
@@ -188,9 +189,7 @@ export function FiliereDetailPage() {
 
           {/* Specializations */}
           {isLoading ? (
-            <div className="py-20 text-center text-sm text-clay">
-              {"\u2026"}
-            </div>
+            <LoadingArea className="py-20" />
           ) : list.length === 0 ? (
             <div className="rounded-2xl border border-forest/10 bg-cream-card py-20 text-center text-sm text-clay">
               {t("admin.noSpecializations")}

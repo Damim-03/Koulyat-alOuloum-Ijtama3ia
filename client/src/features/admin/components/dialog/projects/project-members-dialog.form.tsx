@@ -29,6 +29,7 @@ import {
 } from "../../../hooks/admin-hook";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
 import { None } from "../../../../../lib/none";
+import { LoadingArea } from "../../../../../components/ui/loading-area";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -87,9 +88,7 @@ export function ProjectMembersDialog(props: Props) {
   return createPortal(
     <Shell topicTitle={props.topicTitle} onClose={props.onClose}>
       {isLoading ? (
-        <div className="grid place-items-center py-16 text-clay">
-          <Loader2 size={22} className="animate-spin" />
-        </div>
+        <LoadingArea className="py-14" />
       ) : (
         <MembersEditor
           key={groupId ?? "none"}
@@ -122,7 +121,7 @@ function Shell({
     >
       <div
         onClick={onClose}
-        className="absolute inset-0 bg-forest-deep/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm"
       />
       <div className="animate-[fadeIn_0.15s_ease-out] relative flex max-h-[calc(100dvh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-2xl">
         <div className="flex shrink-0 items-center gap-3 bg-linear-to-l from-forest to-forest-deep px-6 py-4 text-cream">

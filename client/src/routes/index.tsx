@@ -6,6 +6,7 @@ import PublicLayout from "../components/layout/public-layout";
 import { ProtectedRoute } from "./guards/protected-route";
 import { RoleRoute } from "./guards/role-route";
 import { PublicOnlyRoute } from "./guards/public-only-route";
+import { VerifyDocumentPage } from "../features/supervision/pages/verify.page";
 import { RoleRedirect } from "./role-redirect";
 
 import { LoginPage } from "../features/auth/pages/LoginPage";
@@ -76,6 +77,16 @@ export function AppRouter() {
           {/* غير مصرح */}
           <Route path="403" element={<UnauthorizedPage />} />
         </Route>
+
+        {/*
+          التحقّق من ورقةٍ مطبوعة: عامٌّ بلا تسجيل دخول وبلا تخطيط.
+          من يمسح الرمز يريد جواباً واحداً: أصحيحةٌ هي أم لا.
+
+          وبابان إليه: مسارٌ يحمل الرمز — يصل من قارئٍ أو من رابط — ومسارٌ
+          فارغٌ يكتب فيه صاحبُ الورقة الأرقام الثلاثة عشر بيده.
+        */}
+        <Route path="verify" element={<VerifyDocumentPage />} />
+        <Route path="verify/:token" element={<VerifyDocumentPage />} />
 
         {/* تسجيل الدخول (بدون layout — تصميم خاص) */}
         <Route

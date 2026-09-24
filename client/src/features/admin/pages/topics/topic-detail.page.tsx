@@ -21,6 +21,8 @@ import {
   Archive,
   Pencil,
   Undo2,
+  History,
+  ChevronDown,
 } from "lucide-react";
 import {
   useAdminTopic,
@@ -38,6 +40,8 @@ import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { noneText } from "../../../../lib/none-text";
 import { None } from "../../../../lib/none";
+import { LoadingArea } from "../../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../../components/ui/error-retry";
 
 const STATUS_STYLES: Record<string, string> = {
   approved: "bg-emerald-100 text-emerald-700",
@@ -71,7 +75,7 @@ export function AdminTopicDetailPage() {
   const topicsPath = `/${lang}/admin/topics`;
 
   // NOTE: create useAdminTopic(id) in admin-hook.ts → GET /admin/topics/:id
-  const { data: topic, isLoading, refetch } = useAdminTopic(id);
+  const { data: topic, isLoading, isError, refetch } = useAdminTopic(id);
   const approve = useApproveTopic();
   const reject = useRejectTopic();
   const archive = useArchiveTopic();
@@ -98,10 +102,13 @@ export function AdminTopicDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="font-body py-20 text-center text-sm text-clay">
-        {"\u2026"}
-      </div>
+      <LoadingArea className="font-body py-20" />
     );
+  }
+
+  // انقطاعُ الاتّصال ليس «غير موجود»: يُقال ما جرى ويُعرض زرُّ إعادة.
+  if (isError) {
+    return <ErrorRetry onRetry={() => refetch()} />;
   }
   if (!topic) {
     return (
@@ -182,6 +189,38 @@ export function AdminTopicDetailPage() {
       }
     ).groupRequests ?? [];
   const claimed = pendingRequests.length > 0;
+
+  /**
+   * المحاولاتُ السابقة — مرفوضةٌ كلُّها، للقراءة لا للقرار.
+   *
+   * ولا تُخلط بـ`pendingRequests`: من تلك يُحسب `claimed` الذي يُطفئ أزرار
+   * النشر والرفض والأرشفة، ومحاولةٌ رُفضت قبل شهرٍ لا تحجز شيئاً.
+   */
+  const pastRequests =
+    (
+      topic as {
+        pastRequests?: {
+          id: string;
+          rejectionReason: string | null;
+          createdAt: string;
+          updatedAt: string;
+          leader?: { id: string; registrationNumber?: string | null } | null;
+          members?: {
+            id: string;
+            student?: {
+              id: string;
+              registrationNumber?: string | null;
+              user?: PersonRef | null;
+            } | null;
+          }[];
+        }[];
+      }
+    ).pastRequests ?? [];
+
+  const requestCap = topic.maxRequests ?? null;
+  const requestsUsed =
+    (topic as { _count?: { groupRequests?: number } })._count?.groupRequests ??
+    0;
 
   function doApprove() {
     approve.mutate(topic!.id, { onSuccess: () => refetch() });
@@ -431,6 +470,84 @@ export function AdminTopicDetailPage() {
             </section>
           )}
 
+          {/*
+            المحاولاتُ السابقة — تحت الحيّ لا بجانبه.
+            الفرقُ بينهما ليس في التاريخ بل في ما يُفعل بهما: ذاك يُقرَّر فيه،
+            وهذه تُقرأ. ولو عُرضا سواءً لَبدا للمسؤول أنّ أمامه اختياراً بين
+            فرقٍ — وهو اختيارٌ لا وجود له.
+          */}
+          {pastRequests.length > 0 && (
+            <details className="group rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
+              <summary className="flex cursor-pointer list-none items-center gap-2 p-5 text-forest marker:hidden">
+                <History size={17} className="text-clay" />
+                <h2 className="font-serif text-base font-bold">
+                  {t("admin.pastAttempts")}
+                </h2>
+                <span className="rounded-full bg-forest/8 px-2 py-0.5 font-mono text-[11px] font-bold text-clay">
+                  {pastRequests.length}
+                </span>
+                <ChevronDown
+                  size={16}
+                  className="ms-auto text-clay transition group-open:rotate-180"
+                />
+              </summary>
+
+              <div className="space-y-3 border-t border-forest/10 p-5">
+                <p className="text-xs leading-relaxed text-clay">
+                  {t("admin.pastAttemptsNote")}
+                </p>
+
+                {pastRequests.map((r) => (
+                  <div
+                    key={r.id}
+                    className="rounded-xl border border-forest/10 bg-cream-2 p-4"
+                  >
+                    <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span className="rounded-full bg-brick/12 px-2.5 py-0.5 text-[11px] font-bold text-brick">
+                        {t("stu.reqStatus.rejected")}
+                      </span>
+                      <span className="text-[11px] text-clay">
+                        {t("admin.sentOn", { date: fmtDate(r.createdAt) })}
+                      </span>
+                      <span className="text-[11px] text-clay">
+                        {t("admin.rejectedOn", { date: fmtDate(r.updatedAt) })}
+                      </span>
+                    </div>
+
+                    <p className="mb-2 flex flex-wrap items-center gap-1.5 text-sm text-forest">
+                      {(r.members ?? []).map((m) => (
+                        <span
+                          key={m.id}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-cream-card px-2 py-1 ring-1 ring-forest/10"
+                        >
+                          <span className="text-[13px]">
+                            {nameOf(m.student?.user)}
+                          </span>
+                          <span dir="ltr" className="font-mono text-[11px] text-clay">
+                            {m.student?.registrationNumber ?? ""}
+                          </span>
+                        </span>
+                      ))}
+                    </p>
+
+                    {r.rejectionReason ? (
+                      <p className="rounded-lg bg-brick/8 px-3 py-2 text-[13px] leading-relaxed text-brick">
+                        <span className="font-bold">
+                          {t("stu.rejectionReason")}:{" "}
+                        </span>
+                        {r.rejectionReason}
+                      </p>
+                    ) : (
+                      <p className="text-[12px] text-clay/80">
+                        {t("admin.noRejectionReason")}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
           {/* Requirements */}
           {requirements.length > 0 ? (
             <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
@@ -574,6 +691,17 @@ export function AdminTopicDetailPage() {
                 label={t("admin.maxCapacity")}
                 value={t("admin.maxStudentsN", { n: topic.maxStudents })}
               />
+              {/*
+                لا يُعرض لموضوعٍ بلا سقف: سطرٌ يقول «بلا حدّ» يشغل مكاناً
+                ولا يضيف خبراً. ويُقرأ قبل الرفض: الرفضُ الأخير يُغلق الموضوع.
+              */}
+              {requestCap !== null && (
+                <InfoRow
+                  label={t("admin.maxRequests")}
+                  value={`${requestsUsed} / ${requestCap}`}
+                  tone={requestsUsed >= requestCap ? "danger" : undefined}
+                />
+              )}
               <InfoRow
                 label={t("admin.createdAt")}
                 value={fmtDate(topic.createdAt)}
@@ -804,17 +932,24 @@ function InfoRow({
   label,
   value,
   last,
+  tone,
 }: {
   label: string;
   value: string;
   last?: boolean;
+  /** `danger` للقيمة التي بلغت حدّها — تُقرأ قبل أن يُتّخذ القرار. */
+  tone?: "danger";
 }) {
   return (
     <div
       className={`flex items-center justify-between py-2 ${last ? "" : "border-b border-forest/5"}`}
     >
       <span className="text-sm text-clay">{label}</span>
-      <span className="font-bold text-forest">{value}</span>
+      <span
+        className={`font-bold ${tone === "danger" ? "text-brick" : "text-forest"}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }

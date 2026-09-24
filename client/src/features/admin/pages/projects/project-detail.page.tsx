@@ -12,7 +12,6 @@ import {
   Gavel,
   Award,
   StickyNote,
-  Loader2,
   Settings2,
 } from "lucide-react";
 
@@ -25,6 +24,7 @@ import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { noneText } from "../../../../lib/none-text";
 import { None } from "../../../../lib/none";
+import { LoadingArea } from "../../../../components/ui/loading-area";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -71,9 +71,7 @@ export function AdminProjectDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="grid place-items-center py-24 text-clay">
-        <Loader2 size={24} className="animate-spin" />
-      </div>
+      <LoadingArea className="py-20" />
     );
   }
 

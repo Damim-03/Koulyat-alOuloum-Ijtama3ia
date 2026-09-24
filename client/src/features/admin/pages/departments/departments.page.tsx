@@ -18,6 +18,8 @@ import type { Department } from "../../../../types/admin";
 import { DepartmentFormDialog } from "../../components/dialog/department/department.form";
 import { CoverBanner } from "../../components/ui/cover-banner";
 import { None } from "../../../../lib/none";
+import { LoadingArea } from "../../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../../components/ui/error-retry";
 
 const PAGE_SIZE = 9;
 
@@ -25,7 +27,12 @@ export function AdminDepartmentsPage() {
   const { t } = useTranslation();
   const navigate = useLangNavigate();
 
-  const { data: departments, isLoading } = useDepartments();
+  const {
+    data: departments,
+    isLoading,
+    isError,
+    refetch,
+  } = useDepartments();
   const deleteDepartment = useDeleteDepartment();
 
   const [search, setSearch] = useState("");
@@ -142,7 +149,9 @@ export function AdminDepartmentsPage() {
 
       {/* Cards */}
       {isLoading ? (
-        <div className="py-20 text-center text-sm text-clay">{"\u2026"}</div>
+        <LoadingArea className="py-20" />
+      ) : isError ? (
+        <ErrorRetry onRetry={() => refetch()} />
       ) : pageItems.length === 0 ? (
         <div className="rounded-2xl border border-forest/10 bg-cream-card py-20 text-center text-sm text-clay">
           {t("admin.noDepartments")}
