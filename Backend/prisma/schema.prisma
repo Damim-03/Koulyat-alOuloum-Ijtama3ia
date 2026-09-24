@@ -173,6 +173,10 @@ model Faculty {
   code     String  @unique
   /// Optional cover image shown behind this entry's card.
   coverUrl String?
+  /// Optional square mark shown in place of the default building glyph.
+  /// Separate from `coverUrl`: the cover is a wide backdrop, this is the
+  /// faculty's own emblem and is read at 40-60px.
+  iconUrl  String?
 
   departments Department[]
 
@@ -399,6 +403,15 @@ model GraduationTopic {
 
   maxStudents Int
 
+  /// سقفُ المحاولات على هذا الموضوع — بما فيها المرفوضة.
+  ///
+  /// و`NULL` تعني بلا سقف، وهو حال كلّ موضوعٍ أُنشئ قبل هذا العمود.
+  ///
+  /// ولا يُقاس بعدد الطلبات الحيّة: الفهرسُ الفريد على `activeTopicId` لا
+  /// يسمح إلّا بطلبٍ حيٍّ واحد على الموضوع أصلاً. وإنّما يُقاس بمجموع ما
+  /// وصله، فيمنع فريقاً يُعيد الطلب كلّما رُفض بلا نهاية.
+  maxRequests Int?
+
   professorId String
   professor   Professor @relation(fields: [professorId], references: [id])
 
@@ -411,6 +424,9 @@ model GraduationTopic {
   applications  TopicApplication[]
   groupRequests GroupRequest[]
   projectGroup  ProjectGroup?
+
+  /// أوراق «طلب الموافقة على الإشراف» الصادرة لهذا الموضوع.
+  supervisionDocuments SupervisionDocument[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -469,6 +485,16 @@ model GroupRequest {
   status          GroupRequestStatus @default(pending)
   rejectionReason String?
 
+  /// هل يشغل هذا الطلبُ خانةً من سقف الموضوع؟
+  ///
+  /// نعم ما دام حيّاً — معلّقاً أو مقبولاً — فهو يشغل الموضوع فعلاً.
+  /// ولا بعد أن ينتهي: يُرفض، أو يُفسَخ مشروعه. والموضوعُ حينها حُرٌّ كما
+  /// كان، فخانةٌ محجوزةٌ لمحاولةٍ انتهت تُضيّق على من يأتي بعدها بلا مقابل.
+  ///
+  /// والصفُّ يبقى في الحالتين: الأثرُ محفوظٌ لمن أراد قراءته — مَن طلب،
+  /// ومتى، ولماذا رُدّ — وإنّما يخرج من الحساب.
+  countsAgainstCap Boolean @default(true)
+
   // All team members (the leader is included here too).
   members GroupRequestMember[]
 
@@ -482,8 +508,19 @@ model GroupRequest {
   /// are allowed, so rejecting a request frees the topic again.
   activeTopicId String? @unique
 
-  // A leader can submit only one request per topic.
-  @@unique([leaderStudentId, topicId])
+  /// المرسِلُ يُعيد الطلب على الموضوع نفسه بعد الرفض.
+  ///
+  /// كان هنا `@@unique([leaderStudentId, topicId])`، وكان مقبولاً يوم كان
+  /// الرفضُ يحذف الصفّ. فلمّا صار يُبقيه صار القيدُ يمنع إعادة الطلب إلى
+  /// الأبد — والرفضُ قد يكون لنقصٍ يُستدرك، أو خطأً من الإدارة نفسها.
+  ///
+  /// ولا يفتح رفعُه باب التكرار: `activeTopicId` وفهرسه الفريد يمنعان أن
+  /// يكون للموضوع أكثرُ من طلبٍ حيٍّ واحد — للمرسِل نفسه ولغيره — و
+  /// `GraduationTopic.maxRequests` يحدّ مجموع المحاولات.
+  ///
+  /// والفهرسُ على `leaderStudentId` يبقى: المفتاحُ الأجنبيّ إلى `Student`
+  /// كان يتّكئ على الفريد المركَّب، فلو رُفع بلا بديلٍ لسقط معه.
+  @@index([leaderStudentId])
 }
 
 model GroupRequestMember {
@@ -738,4 +775,53 @@ model RevokedSession {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+//
+// ════════════════════════════════════════════════════════════
+//  SUPERVISION DOCUMENTS (طلب الموافقة على الإشراف)
+// ════════════════════════════════════════════════════════════
+//
+
+enum SupervisionDocumentStatus {
+  active
+  revoked
+}
+
+/// ورقةٌ رسمية تُثبت أنّ الموضوع صار لهذه المجموعة، يوقّعها المشرف.
+model SupervisionDocument {
+  id String @id @default(uuid())
+
+  /// رقم الوثيقة المقروء: `SUP-2026-000123`. غيرُ رقم تسجيل الطالب.
+  documentNumber String @unique
+
+  /// رمزُ التحقّق الطويل — عشوائيٌّ تعميةً، لا يُخمَّن.
+  verificationToken String @unique
+
+  /// الرمزُ الشريطيّ أسفل الورقة: ثلاثة عشر رقماً بصيغة EAN-13، يُمسح
+  /// بقارئٍ أو يُكتب باليد في صفحة التحقّق.
+  ///
+  /// واختياريٌّ في المخطّط لا في الإصدار: الأوراق الصادرة قبل إضافته لا
+  /// رمزَ لها، فتأخذه عند أوّل قراءة بدل أن تسقط الهجرة على جدولٍ عامر.
+  barcode String? @unique
+
+  topicId String
+  topic   GraduationTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  status SupervisionDocumentStatus @default(active)
+
+  /// لقطةُ ما وقّع عليه الأستاذ: العنوان والمشرف والطلبة وأرقامهم والسنة
+  /// والشهادة، كما كانت يوم الإصدار.
+  ///
+  /// والتحقّق يقرأ منها لا من الصفوف الحيّة: لو خرج طالبٌ من المجموعة بعد
+  /// التوقيع لَقال ماسحُ الـQR إنّ الورقة الموقَّعة تخصّ طلبةً آخرين —
+  /// وهي لا تخصّهم. الوثيقة شهادةٌ على لحظةٍ مضت، لا نافذةٌ على الحاضر.
+  snapshot Json
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  revokedAt DateTime?
+
+  @@index([topicId])
+  @@index([status])
 }

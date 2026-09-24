@@ -18,6 +18,7 @@ import { DefenseFormDialog } from "../../components/dialog/defense/defense-dialo
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { noneText } from "../../../../lib/none-text";
 import { None } from "../../../../lib/none";
+import { LoadingArea } from "../../../../components/ui/loading-area";
 
 
 const PAGE_SIZE = 10;
@@ -149,7 +150,7 @@ export function AdminDefensesPage() {
       {/* Timeline cards */}
       <div className="space-y-3">
         {isLoading && (
-          <div className="py-16 text-center text-sm text-clay">{"\u2026"}</div>
+          <LoadingArea className="py-16" />
         )}
 
         {!isLoading && defenses.length === 0 && (

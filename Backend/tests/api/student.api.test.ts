@@ -14,6 +14,9 @@
 import request from "supertest";
 import app from "../../src/app";
 import { prisma } from "../../src/core/prisma/client";
+// الرفضُ يُستدعى من خدمته لا بمحاكاته: المحاكاةُ تُثبّت افتراضَ كاتب
+// الاختبار، والسقفُ إنّما يُقاس على ما يفعله مسارُ الإدارة الحقيقيّ.
+import { rejectGroupRequestService } from "../../src/modules/admin/admin.service";
 import {
   seed,
   teardown,
@@ -38,12 +41,18 @@ const login = async (reg: string) =>
   ).body.accessToken as string;
 
 /** موضوعٌ بالحالة المطلوبة على تخصّص الطلبة. */
-async function topic(title: string, status: string, maxStudents = 3) {
+async function topic(
+  title: string,
+  status: string,
+  maxStudents = 3,
+  maxRequests: number | null = null,
+) {
   return prisma.graduationTopic.create({
     data: {
       title: `${TAG} ${title}`,
       description: `${TAG} description`,
       maxStudents,
+      maxRequests,
       status: status as never,
       publishedAt: status === "open" ? new Date() : null,
       professorId: f.professor.id,
@@ -239,6 +248,208 @@ describe("POST /api/student/group-requests", () => {
     expect(created?.leaderStudentId).toBe(me.id);
     expect(created?.activeTopicId).toBe(t.id); // الحجز
     expect(res.body).toBeTruthy();
+  });
+
+  /**
+   * الرفضُ يُعيد الخانة.
+   *
+   * الموضوعُ بعد الرفض حُرٌّ كما كان: لا فريقَ عليه ولا حجز. فلا معنى
+   * لخانةٍ تبقى محجوزةً لمحاولةٍ انتهت.
+   *
+   * وأثرُ ذلك أنّ السقف يحدّ **الحيَّ** لا المتراكم — والحيُّ لا يزيد على
+   * واحدٍ بحكم الفهرس الفريد على `activeTopicId`. فهذا الاختبار يُثبّت
+   * القاعدة المطلوبة، لا أنّ السقف يمنع شيئاً اليوم.
+   */
+  it("ورفضُ الطلب يُعيد خانته إلى السقف، ويُبقي أثره", async () => {
+    const t = await topic("STU cap frees", "open", 3, 2);
+    const [a, b, c] = f.nextStudents(3);
+
+    const send = async (reg: string) =>
+      request(app)
+        .post("/api/student/group-requests")
+        .set("Authorization", `Bearer ${await login(reg)}`)
+        .send({
+          topicId: t.id,
+          memberRegistrationNumbers: [],
+          priority: 1,
+        });
+
+    const rejectLive = async () => {
+      const live = await prisma.groupRequest.findFirstOrThrow({
+        where: { topicId: t.id, status: "pending" },
+      });
+      await rejectGroupRequestService(live.id, "اختبار السقف");
+    };
+
+    const counted = () =>
+      prisma.groupRequest.count({
+        where: { topicId: t.id, countsAgainstCap: true },
+      });
+
+    expect((await send(a!.reg)).status).toBe(201);
+    expect(await counted()).toBe(1);
+
+    await rejectLive();
+    expect(await counted()).toBe(0); // الخانة عادت
+
+    expect((await send(b!.reg)).status).toBe(201);
+    await rejectLive();
+    expect(await counted()).toBe(0);
+
+    // ولا يُردّ ثالثٌ بحجّة السقف: المرفوضان لا يشغلان شيئاً.
+    expect((await send(c!.reg)).status).toBe(201);
+
+    // والصفوفُ الثلاثة باقية — الأثرُ لا يذهب، إنّما يخرج من الحساب.
+    expect(
+      await prisma.groupRequest.count({ where: { topicId: t.id } }),
+    ).toBe(3);
+  });
+
+  it("وموضوعٌ بلا سقف لا يُردّ عليه شيء", async () => {
+    const t = await topic("STU no-cap", "open");
+    const [a, b] = f.nextStudents(2);
+
+    const send = async (reg: string) =>
+      request(app)
+        .post("/api/student/group-requests")
+        .set("Authorization", `Bearer ${await login(reg)}`)
+        .send({ topicId: t.id, memberRegistrationNumbers: [], priority: 1 });
+
+    expect((await send(a!.reg)).status).toBe(201);
+    const live = await prisma.groupRequest.findFirstOrThrow({
+      where: { topicId: t.id, status: "pending" },
+    });
+    await rejectGroupRequestService(live.id, "اختبار");
+    expect((await send(b!.reg)).status).toBe(201);
+  });
+
+  /**
+   * الرفضُ ليس باباً مغلقاً.
+   *
+   * قد يكون لنقصٍ يُستدرك — عضوٌ ناقص أو ورقةٌ لم تُرفق — وقد يكون خطأً من
+   * الإدارة نفسها. وكان الفريدُ المركَّب `(leaderStudentId, topicId)` يمنع
+   * المرسِل من المحاولة ثانيةً إلى الأبد يوم صار الرفضُ يُبقي الصفّ. والذي
+   * يحدّ التكرار هو سقفُ المحاولات لا إغلاقُ الباب.
+   */
+  it("وإعادةُ الطلب بعد الرفض مسموحة، وتُحسب محاولةً جديدة", async () => {
+    const t = await topic("STU re-request", "open");
+    const [a] = f.nextStudents(1);
+    const token = await login(a!.reg);
+
+    const send = () =>
+      request(app)
+        .post("/api/student/group-requests")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ topicId: t.id, memberRegistrationNumbers: [], priority: 1 });
+
+    expect((await send()).status).toBe(201);
+
+    const live = await prisma.groupRequest.findFirstOrThrow({
+      where: { topicId: t.id, status: "pending" },
+    });
+    await rejectGroupRequestService(live.id, "الفريق غير مكتمل");
+
+    // نفس المرسِل على نفس الموضوع ⇒ مقبول.
+    expect((await send()).status).toBe(201);
+
+    // والمرفوضُ باقٍ معه: محاولتان لا واحدة.
+    expect(
+      await prisma.groupRequest.count({ where: { topicId: t.id } }),
+    ).toBe(2);
+  });
+
+  /**
+   * طلبٌ واحدٌ لكلّ مجموعة على الموضوع — من أيّ أعضائها جاء.
+   *
+   * وكان الفحصُ على المرسِل وحده، فالعضوُ يُردّ بـ«هذا الموضوع محجوز
+   * بالفعل» — وهو محجوزٌ لفريقه هو. فيبحث عمّن سبقه ولا أحد، أو يظنّ
+   * أنّ فريقاً آخر خطف الموضوع.
+   */
+  it("وعضوُ الفريق يُردّ برسالةٍ تقول إنّ فريقه هو المرسِل", async () => {
+    const t = await topic("STU one-per-group", "open");
+    const [a, b] = f.nextStudents(2);
+
+    const send = async (reg: string, mates: string[]) =>
+      request(app)
+        .post("/api/student/group-requests")
+        .set("Authorization", `Bearer ${await login(reg)}`)
+        .send({
+          topicId: t.id,
+          memberRegistrationNumbers: mates,
+          priority: 1,
+        });
+
+    expect((await send(a!.reg, [b!.reg])).status).toBe(201);
+
+    // العضوُ لا المرسِل.
+    const byMate = await send(b!.reg, [a!.reg]);
+    expect(byMate.status).toBe(400);
+    const msg = JSON.stringify(byMate.body);
+    expect(msg).toContain("أرسل فريقك طلباً");
+    expect(msg).not.toContain("محجوز بالفعل");
+
+    // ولم يُنشأ صفٌّ ثانٍ.
+    expect(
+      await prisma.groupRequest.count({ where: { topicId: t.id } }),
+    ).toBe(1);
+  });
+
+  /**
+   * وطلبي الحيّ يُردّ برسالةٍ تخصّني: «لك طلبٌ…» لا «محجوز بالفعل».
+   *
+   * الموضوع محجوزٌ فعلاً — لكنّه محجوزٌ لي أنا. والرسالةُ العامّة تدفع
+   * صاحبَها إلى البحث عمّن سبقه ولا أحد.
+   */
+  it("وطلبي الحيّ يُردّ برسالةٍ تقول إنّه لي وبانتظار القرار", async () => {
+    const t = await topic("STU pending-msg", "open");
+    const [a] = f.nextStudents(1);
+    const token = await login(a!.reg);
+
+    const send = () =>
+      request(app)
+        .post("/api/student/group-requests")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ topicId: t.id, memberRegistrationNumbers: [], priority: 1 });
+
+    expect((await send()).status).toBe(201);
+
+    const again = await send();
+    expect(again.status).toBe(400);
+    const body = JSON.stringify(again.body);
+    expect(body).toContain("بانتظار قرار الإدارة");
+    expect(body).not.toContain("محجوز بالفعل");
+  });
+
+  /**
+   * الإلغاءُ يُعيد الخانة.
+   *
+   * الطالبُ سحب طلبه قبل أن يُبَتّ فيه — فلا محاولةَ جرت ولا قرارَ صدر.
+   * ولو بقيت خانتُه مشغولةً لأغلق موضوعاً بسقفِ واحدٍ على الناس جميعاً
+   * بطلبٍ تراجع عنه صاحبُه في دقيقته الأولى.
+   */
+  it("وإلغاءُ الطالب لطلبه يُعيد الخانة إلى السقف", async () => {
+    const t = await topic("STU cancel frees", "open", 3, 1);
+    const [a, b] = f.nextStudents(2);
+
+    const send = async (reg: string) =>
+      request(app)
+        .post("/api/student/group-requests")
+        .set("Authorization", `Bearer ${await login(reg)}`)
+        .send({ topicId: t.id, memberRegistrationNumbers: [], priority: 1 });
+
+    const created = await send(a!.reg);
+    expect(created.status).toBe(201);
+
+    const mine = await prisma.groupRequest.findFirstOrThrow({
+      where: { topicId: t.id },
+    });
+    await request(app)
+      .delete(`/api/student/group-requests/${mine.id}`)
+      .set("Authorization", `Bearer ${await login(a!.reg)}`)
+      .expect(200);
+
+    // السقفُ واحد، ولولا تحرّر الخانة لَما مرّ هذا.
+    expect((await send(b!.reg)).status).toBe(201);
   });
 
   it("وموضوع محجوز بالفعل ⇒ 400", async () => {

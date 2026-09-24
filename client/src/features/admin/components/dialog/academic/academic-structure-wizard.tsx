@@ -29,6 +29,7 @@ import type {
   StructureSpecialization,
 } from "../../../../../types/admin";
 import { Select } from "../../../../../components/ui/select";
+import { stampCode } from "../../../utils/generate-code";
 import { Stepper } from "../../../../../components/ui/stepper";
 
 //
@@ -93,27 +94,6 @@ const nextKey = (prefix: string) => `${prefix}-${++counter}`;
 
 const norm = (s: string) => s.trim().toLowerCase();
 
-/** Derives a code suggestion from an Arabic or Latin name. */
-function suggestCode(name: string, prefix: string): string {
-  const latin = name
-    .trim()
-    .replace(/[^a-zA-Z0-9\s]/g, "")
-    .trim();
-  if (latin) {
-    return (
-      prefix +
-      "-" +
-      latin
-        .split(/\s+/)
-        .map((w) => w[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 6)
-    );
-  }
-  return `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
-}
-
 //
 // ─── COMPONENT ───────────────────────────────────────────────
 //
@@ -139,7 +119,9 @@ export function AcademicStructureWizard({
   const [facultyMode, setFacultyMode] = useState<"new" | "existing">("new");
   const [facultyId, setFacultyId] = useState("");
   const [facultyName, setFacultyName] = useState("");
-  const [facultyCode, setFacultyCode] = useState("");
+  // الرمز يُصكّ عند الفتح لا عند أوّل حرفٍ من الاسم: هو ختمُ وقتٍ لا يشتقّ
+  // من الاسم في شيء، والحقل مقفل — فالفراغ فيه يسأل المستعمل عمّا لا يملكه.
+  const [facultyCode] = useState(() => stampCode("FAC"));
 
   // Steps 2–4
   const [departments, setDepartments] = useState<DraftDepartment[]>([]);
@@ -374,20 +356,15 @@ export function AcademicStructureWizard({
               </div>
               <Field label={t("admin.code")} icon={Sparkles}>
                 <div className="flex gap-1.5">
+                  {/* انظر تعليق «الرمز مولَّدٌ ومقفل» في حوار القسم. */}
                   <input
                     value={facultyCode}
-                    onChange={(e) => setFacultyCode(e.target.value)}
+                    readOnly
                     dir="ltr"
-                    className={`${inputClass} font-mono`}
-                    placeholder={t("admin.facultyCodePlaceholder")}
+                    aria-readonly="true"
+                    className={`${inputClass} cursor-not-allowed bg-forest/5 font-mono text-clay`}
+                    placeholder={t("admin.codeAuto")}
                   />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setFacultyCode(suggestCode(facultyName, "FAC"))
-                    }
-                    className="shrink-0 rounded-xl border border-forest/20 bg-cream-2 px-2.5 text-xs font-semibold text-forest transition hover:border-gold hover:bg-gold/10"
-                  >{t("admin.generate")}</button>
                 </div>
               </Field>
             </div>
@@ -467,15 +444,7 @@ export function AcademicStructureWizard({
                   />
                 </Labeled>
                 <Labeled label={t("admin.departmentCode")}>
-                  <CodeInput
-                    value={d.code}
-                    onChange={(v) => patch(setDepartments, d.key, { code: v })}
-                    onGenerate={() =>
-                      patch(setDepartments, d.key, {
-                        code: suggestCode(d.name, "DEP"),
-                      })
-                    }
-                  />
+                  <CodeInput value={d.code} />
                 </Labeled>
               </div>
               <Labeled label="" className="shrink-0">
@@ -498,7 +467,7 @@ export function AcademicStructureWizard({
             onClick={() =>
               setDepartments((p) => [
                 ...p,
-                { key: nextKey("dep"), name: "", code: "" },
+                { key: nextKey("dep"), name: "", code: stampCode("DEP") },
               ])
             }
           />
@@ -546,15 +515,7 @@ export function AcademicStructureWizard({
                     label={t("admin.domainCode")}
                     className="md:col-span-3"
                   >
-                    <CodeInput
-                      value={d.code}
-                      onChange={(v) => patch(setDomains, d.key, { code: v })}
-                      onGenerate={() =>
-                        patch(setDomains, d.key, {
-                          code: suggestCode(d.name, "DOM"),
-                        })
-                      }
-                    />
+                    <CodeInput value={d.code} />
                   </Labeled>
                   <Labeled
                     label={t("admin.department")}
@@ -593,7 +554,7 @@ export function AcademicStructureWizard({
                   {
                     key: nextKey("dom"),
                     name: "",
-                    code: "",
+                    code: stampCode("DOM"),
                     departmentRef: defaultDepartmentRef,
                   },
                 ])
@@ -646,15 +607,7 @@ export function AcademicStructureWizard({
                       label={t("admin.filiereCode")}
                       className="md:col-span-2"
                     >
-                      <CodeInput
-                        value={f.code}
-                        onChange={(v) => patch(setFilieres, f.key, { code: v })}
-                        onGenerate={() =>
-                          patch(setFilieres, f.key, {
-                            code: suggestCode(f.name, "FIL"),
-                          })
-                        }
-                      />
+                      <CodeInput value={f.code} />
                     </Labeled>
                     <Labeled
                       label={t("admin.department")}
@@ -781,7 +734,7 @@ export function AcademicStructureWizard({
                   {
                     key: nextKey("fil"),
                     name: "",
-                    code: "",
+                    code: stampCode("FIL"),
                     departmentRef: defaultDepartmentRef,
                     domainRef: "",
                     specializations: [],
@@ -962,34 +915,18 @@ function NameInput({
   );
 }
 
-function CodeInput({
-  value,
-  onChange,
-  onGenerate,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onGenerate: () => void;
-}) {
+/** انظر تعليق «الرمز مولَّدٌ ومقفل» في حوار القسم. */
+function CodeInput({ value }: { value: string }) {
   const { t } = useTranslation();
   return (
-    <div className="flex gap-1.5">
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        dir="ltr"
-        className={`${inputClass} font-mono`}
-        placeholder={t("admin.codePlaceholder")}
-      />
-      <button
-        type="button"
-        onClick={onGenerate}
-        title={t("admin.generateCodeLong")}
-        className="grid w-9 shrink-0 place-items-center rounded-xl border border-forest/20 bg-cream-2 text-clay transition hover:border-gold hover:bg-gold/10 hover:text-forest"
-      >
-        <Sparkles size={14} />
-      </button>
-    </div>
+    <input
+      value={value}
+      readOnly
+      dir="ltr"
+      aria-readonly="true"
+      className={`${inputClass} cursor-not-allowed bg-forest/5 font-mono text-clay`}
+      placeholder={t("admin.codeAuto")}
+    />
   );
 }
 

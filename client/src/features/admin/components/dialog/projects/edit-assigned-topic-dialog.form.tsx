@@ -1,17 +1,15 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { capPayload, readCap, type CapValue } from "../../../lib/request-cap";
 import {
   X,
   FileText,
   Save,
-  Search,
-  Star,
   UserPlus,
   SendHorizontal,
   Loader2,
   ChevronLeft,
-  Users,
 } from "lucide-react";
 
 import {
@@ -23,7 +21,6 @@ import {
   useFilieres,
   useSpecializations,
   useAcademicYears,
-  useStudents,
 } from "../../../hooks/admin-hook";
 import { ProfessorPicker } from "../../ui/professor-picker";
 import { ListInput } from "../../../../../components/ui/list-input";
@@ -32,11 +29,15 @@ import {
   inputCls,
   SectionHead,
   Field,
-  StepTab,
   ReviewRow,
 } from "../../../../../components/ui/form-bits";
-import { UserAvatar } from "../../../../../components/ui/user-avatar";
+import { Stepper } from "../../../../../components/ui/stepper";
+import {
+  StudentSeat,
+  type SeatStudent,
+} from "../../ui/student-seat";
 import { Select } from "../../../../../components/ui/select";
+import { LoadingArea } from "../../../../../components/ui/loading-area";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -60,13 +61,6 @@ interface Props {
   onUpdated?: () => void;
 }
 
-interface PickedStudent {
-  id: string;
-  name: string;
-  reg: string;
-  user?: any;
-}
-
 function fullName(u: any) {
   return [u?.firstName, u?.lastName].filter(Boolean).join(" ");
 }
@@ -84,9 +78,7 @@ export function EditAssignedTopicDialog({
   return createPortal(
     <Shell onClose={onClose}>
       {isLoading || !topic ? (
-        <div className="grid place-items-center py-20 text-clay">
-          <Loader2 size={22} className="animate-spin" />
-        </div>
+        <LoadingArea className="py-16" />
       ) : (
         <EditForm
           key={topicId}
@@ -112,7 +104,7 @@ function Shell({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-forest-deep/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-forest-deep/50 p-4 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -171,6 +163,9 @@ function EditForm({
   const [maxStudents, setMaxStudents] = useState<number>(
     () => topic.maxStudents ?? 1,
   );
+  const [maxRequests, setMaxRequests] = useState<CapValue>(
+    () => topic.maxRequests ?? "",
+  );
   const [professorId, setProfessorId] = useState<string>(
     () => topic.professor?.id ?? "",
   );
@@ -194,28 +189,35 @@ function EditForm({
   const [departmentId, setDepartmentId] = useState("");
   const [filiereId, setFiliereId] = useState("");
 
-  const [picked, setPicked] = useState<PickedStudent[]>(() =>
-    ((topic.projectGroup?.members ?? []) as any[]).map((m) => ({
-      id: m.student?.id,
-      name: fullName(m.student?.user) || "—",
-      reg: m.student?.registrationNumber ?? "",
-      user: m.student?.user,
-    })),
+  //
+  // مقعدٌ لكل طالبٍ يسمح به الموضوع — والمقاعد تُبذَر بأعضاء المجموعة
+  // القائمة. و`seeded` في المقعد هو ما يمنع ضياعهم: البحث مقصورٌ على من
+  // لا موضوع له، وهؤلاء لهم موضوعٌ هو هذا، فلو سُئل عنهم الخادمُ لأفرغ
+  // مقاعدهم بمجرّد فتح النافذة.
+  const seededMembers = useMemo<SeatStudent[]>(
+    () =>
+      ((topic.projectGroup?.members ?? []) as any[]).map((m) => ({
+        id: m.student?.id,
+        name: fullName(m.student?.user) || "—",
+        reg: m.student?.registrationNumber ?? "",
+        user: m.student?.user,
+      })),
+    [topic.projectGroup],
   );
-  const [leaderId, setLeaderId] = useState<string>(
+
+  const [seatText, setSeatText] = useState<string[]>(() =>
+    seededMembers.map((m) => m.reg),
+  );
+  const [seatHit, setSeatHit] = useState<(SeatStudent | null)[]>(
+    () => seededMembers,
+  );
+  const [leaderPick, setLeaderPick] = useState<string>(
     () =>
       ((topic.projectGroup?.members ?? []) as any[]).find((m) => m.isLeader)
         ?.student?.id ?? "",
   );
 
-  const [studentSearch, setStudentSearch] = useState("");
-  const [debounced, setDebounced] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const id = setTimeout(() => setDebounced(studentSearch.trim()), 300);
-    return () => clearTimeout(id);
-  }, [studentSearch]);
 
   const { data: faculties } = useFaculties();
   const { data: departments } = useDepartments();
@@ -267,21 +269,6 @@ function EditForm({
     [specs, filiereId, departmentId, facultyId, departments],
   );
 
-  const { data: studentsData, isFetching: searching } = useStudents(
-    debounced
-      ? {
-          page: 1,
-          limit: 8,
-          quickSearch: debounced,
-          specializationId: specializationId || undefined,
-          unassigned: "true",
-        }
-      : undefined,
-  );
-  const searchResults = ((studentsData?.items ?? []) as any[]).filter(
-    (s) => !picked.some((p) => p.id === s.id),
-  );
-
   const professorName = useMemo(() => {
     const p = (professors as any[]).find((x) => x.id === professorId);
     return p ? fullName(p.user) || p.universityEmail : "";
@@ -291,29 +278,38 @@ function EditForm({
   const yearName =
     (years ?? []).find((y: any) => y.id === academicYearId)?.title ?? "";
 
-  function addStudent(s: any) {
-    if (picked.length >= maxStudents) {
-      setError(t("admin.assignMaxReached", { count: maxStudents }));
-      return;
-    }
-    setPicked((prev) => [
-      ...prev,
-      {
-        id: s.id,
-        name: fullName(s.user) || "—",
-        reg: s.registrationNumber ?? "",
-        user: s.user,
-      },
-    ]);
-    setLeaderId((cur) => cur || s.id);
-    setStudentSearch("");
-    setError(null);
-  }
-  function removeStudent(id: string) {
-    const next = picked.filter((p) => p.id !== id);
-    setPicked(next);
-    if (leaderId === id) setLeaderId(next[0]?.id ?? "");
-  }
+  const setSeat = useCallback((i: number, text: string) => {
+    setSeatText((prev) => {
+      const next = prev.slice();
+      while (next.length <= i) next.push("");
+      next[i] = text;
+      return next;
+    });
+  }, []);
+
+  const resolveSeat = useCallback((i: number, student: SeatStudent | null) => {
+    setSeatHit((prev) => {
+      if ((prev[i]?.id ?? null) === (student?.id ?? null)) return prev;
+      const next = prev.slice();
+      while (next.length <= i) next.push(null);
+      next[i] = student;
+      return next;
+    });
+  }, []);
+
+  const picked = useMemo(
+    () => seatHit.slice(0, maxStudents).filter(Boolean) as SeatStudent[],
+    [seatHit, maxStudents],
+  );
+
+  /** كما في حوار الإنشاء: المرسِل يُشتقّ، فلا يبقى معرَّفُ من أُخرج. */
+  const leaderId = useMemo(
+    () =>
+      picked.some((x) => x.id === leaderPick)
+        ? leaderPick
+        : (picked[0]?.id ?? ""),
+    [picked, leaderPick],
+  );
 
   const step1Valid = Boolean(
     title.trim() &&
@@ -339,6 +335,7 @@ function EditForm({
           title: title.trim(),
           description: description.trim(),
           maxStudents,
+          maxRequests: capPayload(maxRequests),
           professorId,
           specializationId,
           academicYearId,
@@ -365,28 +362,16 @@ function EditForm({
 
   return (
     <>
-      {/* ── stepper ── */}
-      <div className="grid shrink-0 grid-cols-2 border-b border-forest/10 bg-cream">
-        <StepTab
-          n={1}
-          active={step === 1}
-          done={step > 1 && step1Valid}
-          title={t("admin.stepTopicTitle")}
-          hint={t("admin.stepTopicHint")}
-          onClick={() => setStep(1)}
-        />
-        <StepTab
-          n={2}
-          active={step === 2}
-          done={false}
-          disabled={!step1Valid}
-          title={t("admin.stepStudentsTitle")}
-          hint={
-            step1Valid
-              ? t("admin.stepStudentsHint")
-              : t("admin.completeStepFirst")
-          }
-          onClick={() => step1Valid && setStep(2)}
+      {/* شريط الخطوات المشترك — كما في حوار الإنشاء تماماً. */}
+      <div className="shrink-0 border-b border-forest/10 bg-cream px-6 py-4">
+        <Stepper
+          steps={[
+            { key: "topic", label: t("admin.stepTopicTitle") },
+            { key: "students", label: t("admin.stepStudentsTitle") },
+          ]}
+          current={step - 1}
+          onGo={(i) => setStep((i + 1) as 1 | 2)}
+          ariaLabel={t("admin.editAssignedTopicTitle")}
         />
       </div>
 
@@ -480,12 +465,37 @@ function EditForm({
                         Math.min(10, Number(e.target.value) || 1),
                       );
                       setMaxStudents(v);
-                      if (picked.length > v) setPicked(picked.slice(0, v));
+                      // تقليص السعة يُلغي المقاعد الزائدة نصّاً وإصابةً.
+                      setSeatText((prev) => prev.slice(0, v));
+                      setSeatHit((prev) => prev.slice(0, v));
                     }}
                     className={inputCls}
                     dir="ltr"
                   />
                 </Field>
+
+                {/*
+                  سقفُ المحاولات — لا سقفُ المتزامن: الفهرسُ الفريد لا يسمح
+                  بأكثر من طلبٍ حيٍّ واحد أصلاً، وهذا يمنع إعادة الطلب بلا نهاية.
+                */}
+                <div className="col-span-2">
+                  <Field
+                    label={t("admin.maxRequests")}
+                    note={t("admin.optional")}
+                    hint={t("admin.maxRequestsHint")}
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={maxRequests}
+                      onChange={(e) => setMaxRequests(readCap(e.target.value))}
+                      placeholder={t("admin.maxRequestsNone")}
+                      className={inputCls}
+                      dir="ltr"
+                    />
+                  </Field>
+                </div>
               </div>
 
               <div className="space-y-3 border-t border-forest/10 pt-4">
@@ -547,134 +557,53 @@ function EditForm({
         {/* ══════════ STEP 2 ══════════ */}
         {step === 2 && (
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_1fr]">
+            {/* ── seats ── */}
             <div className="rounded-2xl border border-forest/10 bg-cream p-4">
               <div className="mb-3 flex items-center justify-between">
                 <p className="flex items-center gap-1.5 text-sm font-semibold text-forest">
                   <UserPlus size={16} />
                   {t("admin.assignStudents")}
                 </p>
-                <span className="rounded-full bg-forest/10 px-2 py-0.5 text-[11px] font-bold text-forest tabular-nums">
+                <span
+                  dir="ltr"
+                  className="rounded-full bg-forest/10 px-2 py-0.5 text-[11px] font-bold text-forest tabular-nums"
+                >
                   {picked.length} / {maxStudents}
                 </span>
               </div>
 
-              {picked.length === 0 && (
-                <div className="mb-3 grid place-items-center rounded-xl border border-dashed border-forest/15 py-6 text-center">
-                  <Users size={22} className="mb-1.5 text-clay/60" />
-                  <p className="text-xs text-clay">
-                    {t("admin.noStudentsPicked")}
-                  </p>
-                </div>
-              )}
+              <ul className="space-y-2.5">
+                {Array.from({ length: maxStudents }).map((_, i) => {
+                  const hit = seatHit[i] ?? null;
+                  return (
+                    <StudentSeat
+                      key={i}
+                      seat={i + 1}
+                      index={i}
+                      value={seatText[i] ?? ""}
+                      onChange={setSeat}
+                      onResolve={resolveSeat}
+                      taken={seatText
+                        .slice(0, maxStudents)
+                        .map((x) => (x ?? "").trim())
+                        .filter((x, j) => x !== "" && j !== i)}
+                      specializationId={specializationId}
+                      specializationName={specName}
+                      initial={seededMembers[i] ?? null}
+                      isLeader={!!hit && hit.id === leaderId}
+                      onMakeLeader={() => hit && setLeaderPick(hit.id)}
+                      disabled={updateTopic.isPending}
+                    />
+                  );
+                })}
+              </ul>
 
-              {picked.length > 0 && (
-                <div className="mb-3 space-y-2">
-                  {picked.map((p) => {
-                    const isLeader = leaderId === p.id;
-                    return (
-                      <div
-                        key={p.id}
-                        className={`flex items-center justify-between rounded-xl border px-3 py-2 ${
-                          isLeader
-                            ? "border-gold bg-gold/5"
-                            : "border-forest/10 bg-cream-card"
-                        }`}
-                      >
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <button
-                            type="button"
-                            onClick={() => setLeaderId(p.id)}
-                            title={t("admin.setLeader")}
-                            className={`grid size-7 shrink-0 place-items-center rounded-lg transition ${
-                              isLeader
-                                ? "bg-gold/20 text-gold"
-                                : "text-clay hover:bg-forest/5 hover:text-gold"
-                            }`}
-                          >
-                            {isLeader ? (
-                              <SendHorizontal size={15} />
-                            ) : (
-                              <Star size={15} />
-                            )}
-                          </button>
-                          <UserAvatar user={p.user} size={32} />
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-forest">
-                              {p.name}
-                              {isLeader && (
-                                <span className="ms-2 rounded-full bg-gold/15 px-1.5 py-0.5 text-[9px] font-bold text-gold">
-                                  {t("admin.leader")}
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-[11px] text-clay" dir="ltr">
-                              {p.reg}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeStudent(p.id)}
-                          className="grid size-7 shrink-0 place-items-center rounded-lg text-clay transition hover:bg-red-500/10 hover:text-red-500"
-                        >
-                          <X size={15} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {picked.length < maxStudents && (
-                <div className="relative">
-                  <Search
-                    className="absolute top-1/2 end-3 -translate-y-1/2 text-clay"
-                    size={16}
-                  />
-                  <input
-                    value={studentSearch}
-                    onChange={(e) => setStudentSearch(e.target.value)}
-                    placeholder={t("admin.searchStudentAny")}
-                    className="w-full rounded-xl border border-forest/15 bg-cream-card py-2 pe-9 ps-3 text-sm text-forest outline-none transition focus:border-sage focus:ring-2 focus:ring-sage/20"
-                  />
-                  {debounced && (
-                    <div className="mt-1.5 max-h-52 overflow-y-auto rounded-xl border border-forest/10 bg-cream-card">
-                      {searching && (
-                        <p className="px-3 py-3 text-center text-xs text-clay">
-                          {"…"}
-                        </p>
-                      )}
-                      {!searching && searchResults.length === 0 && (
-                        <p className="px-3 py-3 text-center text-xs text-clay">
-                          {t("admin.noSearchResults")}
-                        </p>
-                      )}
-                      {searchResults.map((s: any) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => addStudent(s)}
-                          className="flex w-full items-center gap-2.5 px-3 py-2 text-start transition hover:bg-forest/5"
-                        >
-                          <UserAvatar user={s.user} size={32} />
-                          <div className="min-w-0">
-                            <p className="truncate text-sm text-forest">
-                              {fullName(s.user) || "—"}
-                            </p>
-                            <p className="text-[11px] text-clay" dir="ltr">
-                              {s.registrationNumber}
-                            </p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <p className="mt-2.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-clay">
+              <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed text-clay">
                 <SendHorizontal size={12} className="mt-0.5 shrink-0 text-gold" />
                 {t("admin.leaderHint")}
+              </p>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-clay/80">
+                {t("admin.seatsHint")} {t("admin.searchScopedToSpec")}
               </p>
             </div>
 
@@ -770,6 +699,7 @@ function EditForm({
               type="button"
               onClick={() => setStep(2)}
               disabled={!step1Valid}
+              title={!step1Valid ? t("admin.completeStepFirst") : undefined}
               className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t("admin.next")}

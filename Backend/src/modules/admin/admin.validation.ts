@@ -418,6 +418,11 @@ export const createFacultySchema = z.object({
     .union([z.string().trim(), z.null()])
     .optional()
     .transform((v) => (v === "" ? null : v)),
+  // شعار الكلّية — علامةٌ مربّعة، غيرُ الغلاف العريض. وتُمسح بالقواعد نفسها.
+  iconUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
 });
 export type CreateFacultyDTO = z.infer<typeof createFacultySchema>;
 
@@ -576,6 +581,10 @@ export const createTopicSchema = z.object({
   requirements: z.array(z.string().trim().min(1)).max(50).optional(),
   objectives: z.array(z.string().trim().min(1)).max(50).optional(),
   maxStudents: z.number().int().min(1).max(10),
+  /**
+   * سقفُ المحاولات على الموضوع — بما فيها المرفوضة. و`null` بلا سقف.
+   */
+  maxRequests: z.number().int().min(1).max(50).nullable().optional(),
   professorId: entityId,
   specializationId: entityId,
   academicYearId: entityId,
@@ -590,6 +599,10 @@ export const createAssignedTopicSchema = z
     requirements: z.array(z.string().trim().min(1)).max(50).optional(),
     objectives: z.array(z.string().trim().min(1)).max(50).optional(),
     maxStudents: z.number().int().min(1).max(10),
+  /**
+   * سقفُ المحاولات على الموضوع — بما فيها المرفوضة. و`null` بلا سقف.
+   */
+  maxRequests: z.number().int().min(1).max(50).nullable().optional(),
     professorId: entityId,
     specializationId: entityId,
     academicYearId: entityId,
@@ -621,6 +634,10 @@ export const updateAssignedTopicSchema = z
     requirements: z.array(z.string().trim().min(1)).max(50).optional(),
     objectives: z.array(z.string().trim().min(1)).max(50).optional(),
     maxStudents: z.number().int().min(1).max(10).optional(),
+  /**
+   * سقفُ المحاولات على الموضوع — بما فيها المرفوضة. و`null` بلا سقف.
+   */
+  maxRequests: z.number().int().min(1).max(50).nullable().optional(),
     professorId: entityId.optional(),
     specializationId: entityId.optional(),
     academicYearId: entityId.optional(),

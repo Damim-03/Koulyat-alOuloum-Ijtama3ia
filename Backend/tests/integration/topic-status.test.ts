@@ -97,6 +97,134 @@ const dissolve = (groupId: string) =>
 
 //
 // ═══════════════════════════════════════════════════════════════
+//  سقف الطلبات: ما يشغل خانةً وما لا يشغلها
+// ═══════════════════════════════════════════════════════════════
+//
+
+describe("سقف الطلبات", () => {
+  const attempts = (topicId: string) =>
+    prisma.groupRequest.count({
+      where: { topicId, countsAgainstCap: true },
+    });
+
+  /**
+   * الفسخُ فعلٌ إداريّ لا قرارٌ على الفريق.
+   *
+   * وهو يُعلّم الطلبَ المقبول `rejected` ليُفرِج عن الموضوع. فلو حُسب محاولةً
+   * لأغلق موضوعاً بسقفِ واحدٍ فسخته الإدارة لِيُتداول من جديد — يدٌ تفتح
+   * وأخرى تُقفل، ولا شيء على الشاشة يقول لماذا.
+   */
+  it("فسخُ المشروع يُعيد الخانة إلى السقف", async () => {
+    const { topic, group } = await acceptedProject("I-cap dissolve");
+    expect(await attempts(topic.id)).toBe(1);
+
+    await dissolve(group.id);
+
+    expect(await attempts(topic.id)).toBe(0);
+    // والصفُّ باقٍ: الأثرُ لا يذهب، إنّما يخرج من الحساب.
+    expect(
+      await prisma.groupRequest.count({ where: { topicId: topic.id } }),
+    ).toBe(1);
+  });
+
+  /**
+   * حذفُ الطلب المرفوض لا يمسّ حالة الموضوع.
+   *
+   * وهو سطرٌ منتهٍ لا يحجز شيئاً: لا مجموعةَ تحته ولا حجز. فمنشورٌ يبقى
+   * منشوراً، ومعتمَدٌ يبقى معتمَداً، و`publishedAt` لا يُمسّ — وهو البتُّ
+   * الذي يُفرّق بين الحالتين ولا يحمله `status` وحده.
+   */
+  it.each([
+    ["منشور", true, "open"],
+    ["معتمَد", false, "approved"],
+  ])("حذفُ المرفوض لا يُغيّر موضوعاً %s", async (_name, published, expected) => {
+    const [leader] = f.nextStudents(1);
+    const topic = await makeTopic(f, `I-del ${expected}`, "open", 3);
+
+    if (!published) {
+      await prisma.graduationTopic.update({
+        where: { id: topic.id },
+        data: { status: "approved", publishedAt: null },
+      });
+    }
+
+    const req = (await student.createGroupRequestService(leader.userId, {
+      topicId: topic.id,
+      memberRegistrationNumbers: [],
+      priority: 1,
+    } as never)) as { id: string };
+    await admin.rejectGroupRequestService(req.id, "سبب");
+
+    const before = await prisma.graduationTopic.findUniqueOrThrow({
+      where: { id: topic.id },
+      select: { status: true, publishedAt: true },
+    });
+    expect(before.status).toBe(expected);
+
+    await admin.deleteGroupRequestService(req.id);
+
+    const after = await prisma.graduationTopic.findUniqueOrThrow({
+      where: { id: topic.id },
+      select: { status: true, publishedAt: true },
+    });
+    expect(after.status).toBe(before.status);
+    expect(after.publishedAt).toEqual(before.publishedAt);
+  });
+
+  /**
+   * ولا يُصحّح الحذفُ انحرافاً ليس من شأنه.
+   *
+   * كان في مسار الحذف `computeTopicStatus` «احتياطاً». والدالّة تُعيد اشتقاق
+   * الحالة من الإسقاط وتكتبها إن خالفت المخزَّن — فموضوعٌ مكتوبٌ `approved`
+   * وقد بقي `publishedAt` مضبوطاً كان يصير `open` بمجرّد حذف سطرٍ مرفوض.
+   * أي أنّ تنظيف السجلّ **يُعيد نشر الموضوع على الطلبة**، ولا شيء على
+   * الشاشة يقول إنّ ذلك جرى.
+   */
+  it("ولا يُصحّح حذفُ المرفوض انحرافاً في حالة الموضوع", async () => {
+    const [leader] = f.nextStudents(1);
+    const topic = await makeTopic(f, "I-del drift", "open", 3);
+
+    const req = (await student.createGroupRequestService(leader.userId, {
+      topicId: topic.id,
+      memberRegistrationNumbers: [],
+      priority: 1,
+    } as never)) as { id: string };
+    await admin.rejectGroupRequestService(req.id, "سبب");
+
+    // انحراف: المخزَّن «معتمَد» و`publishedAt` ما يزال مضبوطاً.
+    await prisma.graduationTopic.update({
+      where: { id: topic.id },
+      data: { status: "approved" },
+    });
+
+    await admin.deleteGroupRequestService(req.id);
+
+    expect(await statusOf(topic.id)).toBe("approved");
+  });
+
+  /** والرفضُ كذلك: الموضوعُ بعده حُرٌّ، فلا تبقى له خانة. */
+  it("ورفضُ الطلب يُعيد الخانة ويُبقي الصفّ", async () => {
+    const [leader] = f.nextStudents(1);
+    const topic = await makeTopic(f, "I-cap reject", "open", 3);
+    const req = (await student.createGroupRequestService(leader.userId, {
+      topicId: topic.id,
+      memberRegistrationNumbers: [],
+      priority: 1,
+    } as never)) as { id: string };
+
+    expect(await attempts(topic.id)).toBe(1); // حيٌّ ⇒ يشغل خانة
+
+    await admin.rejectGroupRequestService(req.id, "سبب");
+
+    expect(await attempts(topic.id)).toBe(0);
+    expect(
+      await prisma.groupRequest.count({ where: { topicId: topic.id } }),
+    ).toBe(1);
+  });
+});
+
+//
+// ═══════════════════════════════════════════════════════════════
 //
 
 describe('I1 — status = "full" ⟺ للموضوع مجموعة', () => {

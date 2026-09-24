@@ -16,15 +16,12 @@ import {
 import { useUsers } from "../../hooks/admin-hook";
 import { UserFormDialog } from "../../components/dialog/user/user-form-dialog.form";
 import { SearchField } from "../../components/ui/search-field";
-import {
-  ErrorDialog,
-  toErrorInfo,
-} from "../../../../components/dialog/error-dialog";
-import { SuccessDialog } from "../../../../components/dialog/success-dialog";
 import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
 import { Select as UiSelect } from "../../../../components/ui/select";
+import { LoadingArea } from "../../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../../components/ui/error-retry";
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "bg-forest/10 text-forest",
@@ -115,16 +112,15 @@ export function AdminUsersPage() {
     ],
   );
 
-  const { data, isLoading, isFetching, error, refetch } = useUsers(params);
-
-  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
-
-  useEffect(() => {
-    if (error) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setErrorDialogOpen(true);
-    }
-  }, [error]);
+  /*
+   * فشلُ الجلب يُعرض في مكانه لا في نافذة.
+   *
+   * كانت نافذةٌ تقفز فوق الشاشة بـ«Request failed with status code 502» —
+   * وهي الثالثةُ تقول الشيء نفسه: شريطُ الشبكة في الأعلى يقول إنّ الاتّصال
+   * انقطع، وصفُّ الجدول يقول إنّ البيانات لم تصل ومعه زرُّ الإعادة. ثلاثةُ
+   * إخطاراتٍ لحدثٍ واحد، وأحدُها بلغة الخادم لا بلغة المستعمل.
+   */
+  const { data, isLoading, isFetching, isError, refetch } = useUsers(params);
 
   const users = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -398,12 +394,20 @@ export function AdminUsersPage() {
                     colSpan={9}
                     className="px-5 py-10 text-center text-sm text-clay"
                   >
-                    {"\u2026"}
+                    <LoadingArea size={96} className="py-10" />
                   </td>
                 </tr>
               )}
 
-              {!isLoading && users.length === 0 && (
+              {!isLoading && isError && (
+                <tr>
+                  <td colSpan={9} className="px-5">
+                    <ErrorRetry compact onRetry={() => refetch()} />
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && !isError && users.length === 0 && (
                 <tr>
                   <td
                     colSpan={9}
@@ -498,24 +502,6 @@ export function AdminUsersPage() {
 
       <UserFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
 
-      <SuccessDialog
-        title={t("toast.userCreated")}
-        message={t("toast.accountCreated")}
-        open={false}
-        onClose={function (): void {
-          throw new Error("Function not implemented.");
-        }}
-      />
-
-      <ErrorDialog
-        open={errorDialogOpen}
-        error={error ? toErrorInfo(error) : null}
-        onClose={() => setErrorDialogOpen(false)}
-        onRetry={() => {
-          setErrorDialogOpen(false);
-          refetch();
-        }}
-      />
     </div>
   );
 }

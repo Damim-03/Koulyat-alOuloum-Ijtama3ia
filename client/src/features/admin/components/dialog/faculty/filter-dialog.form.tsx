@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Network, Type, Hash, Save, Wand2 } from "lucide-react";
+import { Network, Type, Hash, Save } from "lucide-react";
 import type { Filiere } from "../../../../../types/admin";
 import {
   useCreateFiliere,
@@ -9,7 +9,10 @@ import {
 } from "../../../hooks/admin-hook";
 import { FormDialog, Field, inputClass } from "../../form/form-dialog";
 import { CoverImageField } from "../../form/cover-image-field";
-import { generateCode } from "../../../utils/generate-code";
+import {
+  generateCode,
+  isStampedCode,
+} from "../../../utils/generate-code";
 
 interface FiliereFormDialogProps {
   open: boolean;
@@ -40,10 +43,22 @@ export function FiliereFormDialog({
     if (open) {
       /* eslint-disable react-hooks/set-state-in-effect */
       setName(filiere?.name ?? "");
-      setCode(filiere?.code ?? "");
+      // انظر تعليق «الرمز يُصكّ عند الفتح» في حوار القسم.
+      // ورمزُ ما قبل هذا التغيير يُستبدل عند أوّل تعديل: انظر `isStampedCode`.
+      setCode(
+        isStampedCode(filiere?.code)
+          ? filiere!.code!
+          : generateCode("S", filieres ?? [], filiere?.id),
+      );
       setCoverUrl(filiere?.coverUrl ?? "");
       /* eslint-enable react-hooks/set-state-in-effect */
     }
+    /*
+     * القائمة خارج التبعيات عمداً: هي لتجنّب رمزٍ مأخوذ لا غير، وإدخالها
+     * يُعيد تشغيل الأثر كلّما وصلت من الخادم — فيُصكّ رمزٌ جديد والنافذة
+     * مفتوحة، ويتبدّل ما يقرؤه المستعمل.
+     */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, filiere]);
 
   async function handleSubmit(e: FormEvent) {
@@ -120,24 +135,15 @@ export function FiliereFormDialog({
 
         <Field label={t("admin.filiereCode")} icon={Hash}>
           <div className="flex gap-2">
+            {/* انظر تعليق «الرمز مولَّدٌ ومقفل» في حوار القسم. */}
             <input
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              readOnly
               dir="ltr"
-              className={`${inputClass} flex-1 font-mono`}
-              placeholder={t("admin.filiereCodePlaceholder")}
+              aria-readonly="true"
+              className={`${inputClass} flex-1 cursor-not-allowed bg-forest/5 font-mono text-clay`}
+              placeholder={t("admin.codeAuto")}
             />
-            <button
-              type="button"
-              onClick={() =>
-                setCode(generateCode("S", filieres ?? [], filiere?.id))
-              }
-              title={t("admin.generateCode")}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-forest/15 bg-cream-2 px-3 text-sm font-semibold text-forest transition hover:border-gold hover:text-gold"
-            >
-              <Wand2 size={16} />
-              {t("admin.generateCode")}
-            </button>
           </div>
         </Field>
       </form>

@@ -12,7 +12,6 @@ import {
   ListChecks,
   Mail,
   MapPin,
-  Loader2,
   FolderSearch,
   FlaskConical,
 } from "lucide-react";
@@ -22,6 +21,7 @@ import { useTopic } from "../hooks/Student-hook";
 import { GroupRequestDialog } from "../components/group-request-dialog";
 import type { TopicView } from "../../../types/student.types";
 import { UserAvatar } from "../../../components/ui/user-avatar";
+import { LoadingArea } from "../../../components/ui/loading-area";
 
 const SHADOW = "shadow-[0_4px_20px_rgba(38,66,61,0.06)]";
 
@@ -101,9 +101,7 @@ export function StudentTopicDetailPage() {
   /* ── loading ── */
   if (isLoading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="size-7 animate-spin text-sage" />
-      </div>
+      <LoadingArea className="min-h-[50vh] content-center" />
     );
   }
 

@@ -12,6 +12,7 @@ import { useLanguage } from "../../../hooks/use-language";
 import { PATHS } from "../../../routes/paths";
 import type { PublicTopic } from "../../../types/public.types";
 import { Select } from "../../../components/ui/select";
+import { LoadingArea } from "../../../components/ui/loading-area";
 
 const PAGE_SIZE = 9;
 
@@ -159,7 +160,7 @@ export function PublicTopicsPage() {
 
       {/* Grid */}
       {isLoading ? (
-        <div className="py-20 text-center text-sm text-clay">{"\u2026"}</div>
+        <LoadingArea className="py-20" />
       ) : topics.length === 0 ? (
         <div className="rounded-2xl border border-forest/10 bg-cream-card py-20 text-center text-sm text-clay">
           {t("public.noTopics")}

@@ -126,7 +126,10 @@ export function ErrorDialog({
   // which is always triggered by a user action or the dwell timer.
   const [leaving, setLeaving] = useState(false);
   const hovering = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // `window.setTimeout` لا `setTimeout` المجرّدة: الأولى تُرجع رقماً، والثانية
+  // صارت تُرجع `NodeJS.Timeout` بعد أن دخلت `@types/node` في نطاق الواجهة
+  // (تبعيةً لأنواع مولِّد رمز الاستجابة). والمرجع يتبع ما يملؤه.
+  const timer = useRef<number | null>(null);
 
   const dismiss = useCallback(() => {
     setLeaving(true);

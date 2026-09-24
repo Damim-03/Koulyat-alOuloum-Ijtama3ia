@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Landmark, Type, Hash, Save, Wand2 } from "lucide-react";
+import { Landmark, Type, Hash, Save } from "lucide-react";
 import type { Department } from "../../../../../types/admin";
 import {
   useCreateDepartment,
@@ -9,7 +9,10 @@ import {
 } from "../../../hooks/admin-hook";
 import { FormDialog, Field, inputClass } from "../../form/form-dialog";
 import { CoverImageField } from "../../form/cover-image-field";
-import { generateCode } from "../../../utils/generate-code";
+import {
+  generateCode,
+  isStampedCode,
+} from "../../../utils/generate-code";
 
 interface DepartmentFormDialogProps {
   open: boolean;
@@ -40,10 +43,24 @@ export function DepartmentFormDialog({
     if (open) {
       /* eslint-disable react-hooks/set-state-in-effect */
       setName(department?.name ?? "");
-      setCode(department?.code ?? "");
+      // الرمز يُصكّ عند الفتح لا عند أوّل حرفٍ من الاسم: هو ختمُ وقتٍ لا
+      // يشتقّ من الاسم في شيء، فلا معنى لانتظاره — والحقل مقفل، فالفراغ
+      // فيه يسأل المستعمل عمّا لا يملك جوابه.
+      // ورمزُ ما قبل هذا التغيير يُستبدل عند أوّل تعديل: انظر `isStampedCode`.
+      setCode(
+        isStampedCode(department?.code)
+          ? department!.code!
+          : generateCode("D", departments ?? [], department?.id),
+      );
       setCoverUrl(department?.coverUrl ?? "");
       /* eslint-enable react-hooks/set-state-in-effect */
     }
+    /*
+     * القائمة خارج التبعيات عمداً: هي لتجنّب رمزٍ مأخوذ لا غير، وإدخالها
+     * يُعيد تشغيل الأثر كلّما وصلت من الخادم — فيُصكّ رمزٌ جديد والنافذة
+     * مفتوحة، ويتبدّل ما يقرؤه المستعمل.
+     */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, department]);
 
   async function handleSubmit(e: FormEvent) {
@@ -107,6 +124,11 @@ export function DepartmentFormDialog({
       <form id="department-form" onSubmit={handleSubmit} className="space-y-4">
         <CoverImageField value={coverUrl} onChange={setCoverUrl} />
 
+          {/*
+            الرمز يُملأ تلقائياً عند أوّل كتابةٍ للاسم والرمزُ فارغ، فلا
+            يحتاج زرّ «توليد» إلّا لتبديلٍ متعمَّد. ولا يُملأ إلّا مرّة:
+            توليدٌ عند كل حرفٍ يبدّل الرمز تحت عين من يقرؤه.
+          */}
         <Field label={t("admin.departmentName")} icon={Type}>
           <input
             autoFocus
@@ -119,24 +141,21 @@ export function DepartmentFormDialog({
 
         <Field label={t("admin.departmentCode")} icon={Hash}>
           <div className="flex gap-2">
+            {/*
+              الرمز مولَّدٌ ومقفل: يُعرض ولا يُكتب.
+              يُملأ من تلقائه عند أوّل حرفٍ من الاسم، فلا زرَّ توليدٍ بعده
+              ولا كتابةً يدوية. ورمزٌ يكتبه كلٌّ بهواه يُفقد الشكل الموحَّد،
+              ويصطدم بقيد `@unique` في الخادم فيُردّ الحفظ بخطأٍ لا يفهمه
+              من كتبه. والتعديل لا يمسّ رمزاً محفوظاً: غيرُه قد يشير إليه.
+            */}
             <input
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              readOnly
               dir="ltr"
-              className={`${inputClass} flex-1 font-mono`}
-              placeholder={t("admin.departmentCodePlaceholder")}
+              aria-readonly="true"
+              className={`${inputClass} flex-1 cursor-not-allowed bg-forest/5 font-mono text-clay`}
+              placeholder={t("admin.codeAuto")}
             />
-            <button
-              type="button"
-              onClick={() =>
-                setCode(generateCode("D", departments ?? [], department?.id))
-              }
-              title={t("admin.generateCode")}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-forest/15 bg-cream-2 px-3 text-sm font-semibold text-forest transition hover:border-gold hover:text-gold"
-            >
-              <Wand2 size={16} />
-              {t("admin.generateCode")}
-            </button>
           </div>
         </Field>
       </form>

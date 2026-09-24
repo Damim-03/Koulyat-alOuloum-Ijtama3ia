@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, type LucideIcon } from "lucide-react";
 
 export interface SelectOption {
   value: string;
@@ -37,6 +37,7 @@ export function Select({
   placeholder,
   disabled,
   className = "",
+  icon: Icon,
   ref,
   "aria-label": ariaLabel,
 }: {
@@ -47,6 +48,14 @@ export function Select({
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /**
+   * أيقونةٌ في صدر الزرّ.
+   *
+   * كانت الصفحات تضعها بنفسها `absolute` فوق القائمة، وتترك لها حشوةً في
+   * `<select>` الأصليّ. ولمّا حلّ هذا المكوّن محلّه ذهبت الحشوة وبقيت
+   * الأيقونة، فصارت تركب النصّ. فمكانها هنا، في صفّ المحتوى.
+   */
+  icon?: LucideIcon;
   /**
    * مرجعٌ إلى زرّ الفتح.
    *
@@ -251,7 +260,10 @@ export function Select({
             : "border-forest/15 hover:border-gold/50 focus-visible:border-gold focus-visible:ring-2 focus-visible:ring-gold/30"
         } ${selected ? "text-forest" : "text-clay"}`}
       >
-        <span className="truncate">{selected?.label ?? placeholder ?? ""}</span>
+        {Icon && <Icon size={15} className="shrink-0 text-clay" />}
+        <span className="min-w-0 flex-1 truncate text-start">
+          {selected?.label ?? placeholder ?? ""}
+        </span>
         <ChevronDown
           size={16}
           className={`shrink-0 text-clay transition-transform duration-200 ${open ? "rotate-180" : ""}`}

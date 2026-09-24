@@ -2,10 +2,13 @@ import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
-import { Building2, Type, Hash, Save, Wand2 } from "lucide-react";
+import { Building2, Type, Hash, Save } from "lucide-react";
 import { FormDialog, Field, inputClass } from "../../form/form-dialog";
 import { CoverImageField } from "../../form/cover-image-field";
-import { generateCode as suggestCode } from "../../../utils/generate-code";
+import {
+  generateCode,
+  isStampedCode,
+} from "../../../utils/generate-code";
 import type { Faculty } from "../../../../../types/admin";
 import {
   useCreateFaculty,
@@ -42,6 +45,7 @@ export function FacultyFormDialog({ open, onClose, faculty }: Props) {
   } = useForm<FacultyInput>({ resolver: zodResolver(facultySchema) });
 
   const coverUrl = useWatch({ control, name: "coverUrl" });
+  const iconUrl = useWatch({ control, name: "iconUrl" });
 
   useEffect(() => {
     if (open) {
@@ -49,20 +53,30 @@ export function FacultyFormDialog({ open, onClose, faculty }: Props) {
         faculty
           ? {
               name: faculty.name,
-              code: faculty.code,
+              // ورمزُ ما قبل هذا التغيير يُستبدل عند أوّل تعديل:
+              // انظر `isStampedCode`.
+              code: isStampedCode(faculty.code)
+                ? faculty.code
+                : generateCode("F", faculties ?? [], faculty.id),
               coverUrl: faculty.coverUrl ?? "",
+              iconUrl: faculty.iconUrl ?? "",
             }
-          : { name: "", code: "", coverUrl: "" },
+          : {
+              name: "",
+              // انظر تعليق «الرمز يُصكّ عند الفتح» في حوار القسم.
+              code: generateCode("F", faculties ?? []),
+              coverUrl: "",
+              iconUrl: "",
+            },
       );
     }
+    /*
+     * القائمة خارج التبعيات عمداً: هي لتجنّب رمزٍ مأخوذ لا غير، وإدخالها
+     * يُعيد تشغيل الأثر كلّما وصلت من الخادم — فيُصكّ رمزٌ جديد والنافذة
+     * مفتوحة، ويتبدّل ما يقرؤه المستعمل.
+     */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, faculty, reset]);
-
-  function generateCode() {
-    setValue("code", suggestCode("F", faculties ?? [], faculty?.id), {
-      shouldValidate: true,
-      shouldDirty: true,
-    });
-  }
 
   function onSubmit(values: FacultyInput) {
     if (isEdit && faculty) {
@@ -108,18 +122,48 @@ export function FacultyFormDialog({ open, onClose, faculty }: Props) {
         onSubmit={handleSubmit(onSubmit)}
         className="space-y-4"
       >
-        <CoverImageField
-          value={coverUrl}
-          onChange={(url) =>
-            setValue("coverUrl", url, { shouldDirty: true })
-          }
-        />
+        {/*
+          صورتان لا صورة: الغلاف شريطٌ عريض خلف البطاقة، والشعار علامةٌ
+          مربّعة تحلّ محلّ أيقونة المبنى الافتراضية وتُقرأ في أربعين بكسلاً.
+          وكلتاهما اختيارية، وتُرفع وحدها فور اختيارها فيبقى الحفظ نداءً
+          واحداً من JSON.
+
+          ولوحةٌ واحدة تضمّهما: كانتا صندوقين طافيين بلا رابطٍ بينهما، فتُقرأ
+          النافذة خمسَ كتلٍ متساوية الوزن. والآن كتلتان: «صور الكلّية» ثمّ
+          بياناتها.
+        */}
+        <fieldset className="rounded-2xl border border-forest/12 bg-cream-2/40 p-3.5">
+          <legend className="px-1.5 text-[11px] font-bold text-clay">
+            {t("admin.facultyImages")}
+          </legend>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="min-w-0 flex-1">
+              <CoverImageField
+                value={coverUrl}
+                onChange={(url) =>
+                  setValue("coverUrl", url, { shouldDirty: true })
+                }
+              />
+            </div>
+            <CoverImageField
+              variant="icon"
+              label={t("admin.iconImage")}
+              value={iconUrl}
+              onChange={(url) => setValue("iconUrl", url, { shouldDirty: true })}
+            />
+          </div>
+        </fieldset>
 
         <Field
           label={t("admin.facultyName")}
           icon={Type}
           error={errors.name?.message}
         >
+          {/*
+            الرمز يُملأ تلقائياً عند أوّل كتابةٍ للاسم والرمزُ فارغ، فلا
+            يحتاج زرّ «توليد» إلّا لتبديلٍ متعمَّد. ولا يُملأ إلّا مرّة:
+            توليدٌ عند كل حرفٍ يبدّل الرمز تحت عين من يقرؤه.
+          */}
           <input
             {...register("name")}
             className={inputClass}
@@ -128,23 +172,15 @@ export function FacultyFormDialog({ open, onClose, faculty }: Props) {
         </Field>
 
         <Field label={t("admin.code")} icon={Hash} error={errors.code?.message}>
-          <div className="flex gap-2">
-            <input
-              {...register("code")}
-              dir="ltr"
-              className={`${inputClass} flex-1`}
-              placeholder="FST"
-            />
-            <button
-              type="button"
-              onClick={generateCode}
-              title={t("admin.generateCode")}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-forest/15 bg-cream-2 px-3 text-sm font-semibold text-forest transition hover:border-gold hover:text-gold"
-            >
-              <Wand2 size={16} />
-              {t("admin.generateCode")}
-            </button>
-          </div>
+          {/* انظر تعليق «الرمز مولَّدٌ ومقفل» في حوار القسم. */}
+          <input
+            {...register("code")}
+            readOnly
+            dir="ltr"
+            aria-readonly="true"
+            className={`${inputClass} cursor-not-allowed bg-forest/5 font-mono text-clay`}
+            placeholder={t("admin.codeAuto")}
+          />
         </Field>
       </form>
     </FormDialog>

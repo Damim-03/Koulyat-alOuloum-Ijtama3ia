@@ -22,7 +22,6 @@ import path from "node:path";
 import request from "supertest";
 import app from "../../src/app";
 import { prisma } from "../../src/core/prisma/client";
-import { config } from "../../src/core/config/app.config";
 import {
   seed,
   teardown,
@@ -167,11 +166,14 @@ describe("الصور المقبولة", () => {
   });
 
   /**
-   * الرابط يُبنى من الإعداد لا من ترويسة `Host`. ولولا ذلك لَصكَّ هذا المسار
-   * — بطلبٍ يحمل `Host: attacker.example` — رابطاً يشير إلى خادم المهاجم، ثم
-   * حفظته الإدارة في بطاقةٍ تُعرض للجميع.
+   * الرابط مسارٌ نسبيّ: لا مضيفَ فيه البتّة.
+   *
+   * وكان يُبنى من `PUBLIC_API_URL` لئلّا يُوثق بترويسة `Host` — ولولا ذلك
+   * لَصكَّ هذا المسار، بطلبٍ يحمل `Host: attacker.example`، رابطاً يشير إلى
+   * خادم المهاجم ثمّ حفظته الإدارة في بطاقةٍ تُعرض للجميع. والمسار النسبيّ
+   * يمنع ذلك وزيادة: لا شيء فيه يُنتحَل، ويعمل من أيّ أصلٍ فُتح منه التطبيق.
    */
-  it("والرابط يُبنى من الإعداد لا من ترويسة Host", async () => {
+  it("والرابط مسارٌ نسبيّ لا يحمل مضيفاً", async () => {
     const res = await as(request(app).post("/api/admin/uploads/image"))
       .set("Host", "attacker.example")
       .attach("image", PNG, { filename: "c.png", contentType: "image/png" })
@@ -179,7 +181,8 @@ describe("الصور المقبولة", () => {
 
     remember(res.body.url);
     expect(res.body.url).not.toContain("attacker.example");
-    expect(res.body.url.startsWith(config.PUBLIC_API_URL)).toBe(true);
+    expect(res.body.url).not.toMatch(/^https?:\/\//i);
+    expect(res.body.url.startsWith("/uploads/cards/")).toBe(true);
   });
 });
 

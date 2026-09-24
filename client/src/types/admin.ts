@@ -101,6 +101,8 @@ export interface Faculty {
   code: string;
   /** Optional cover image shown behind this entry's card. */
   coverUrl?: string | null;
+  /** شعارُ الكلّية — علامةٌ مربّعة تحلّ محلّ أيقونة المبنى الافتراضية. */
+  iconUrl?: string | null;
   _count?: { departments: number };
 }
 
@@ -257,6 +259,8 @@ export interface AdminTopic {
   rejectionReason?: string | null;
   status: string;
   maxStudents: number;
+  /** سقفُ المحاولات على الموضوع — `null` بلا سقف. */
+  maxRequests?: number | null;
   professor?: Professor;
   specialization?: Specialization;
   academicYear?: AcademicYear;

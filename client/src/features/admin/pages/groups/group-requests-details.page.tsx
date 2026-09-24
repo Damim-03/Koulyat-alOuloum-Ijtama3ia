@@ -30,6 +30,7 @@ import {
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { noneText } from "../../../../lib/none-text";
 import { None } from "../../../../lib/none";
+import { LoadingArea } from "../../../../components/ui/loading-area";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -71,9 +72,7 @@ export function AdminGroupRequestDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="font-body grid place-items-center py-24 text-sm text-clay">
-        {"\u2026"}
-      </div>
+      <LoadingArea className="font-body py-24" />
     );
   }
   if (!req) {

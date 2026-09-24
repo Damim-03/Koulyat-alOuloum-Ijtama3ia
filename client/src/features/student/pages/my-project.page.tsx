@@ -1,9 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Check,
-  Loader2,
   Lock,
   Clock3,
   CalendarClock,
@@ -12,12 +11,16 @@ import {
   LifeBuoy,
   FolderKanban,
   CalendarDays,
+  FileCheck2,
 } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { useMyProject } from "../hooks/Student-hook";
 import { PATHS } from "../../../routes/paths";
 import type { GroupRequestMember } from "../../../types/student.types";
 import { UserAvatar } from "../../../components/ui/user-avatar";
+import { SupervisionDialog } from "../../supervision/components/supervision-dialog";
+import { LoadingArea } from "../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../components/ui/error-retry";
 
 function nameOf(m: GroupRequestMember): string {
   const u = m.student?.user;
@@ -61,7 +64,8 @@ const MILESTONE_STYLE: Record<
 export function StudentMyProjectPage() {
   const { dir } = useLanguage();
   const { t, i18n } = useTranslation();
-  const { data: project, isLoading } = useMyProject();
+  const { data: project, isLoading, isError, refetch } = useMyProject();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const locale = i18n.language?.startsWith("ar")
     ? "ar"
@@ -86,6 +90,7 @@ export function StudentMyProjectPage() {
   );
   const members = project?.members ?? [];
 
+  const topicId = project?.topic?.id ?? null;
   const prof = project?.topic?.professor?.user;
   const profName =
     [prof?.firstName, prof?.lastName].filter(Boolean).join(" ") || "—";
@@ -103,10 +108,13 @@ export function StudentMyProjectPage() {
   /* ── loading ── */
   if (isLoading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="size-7 animate-spin text-sage" />
-      </div>
+      <LoadingArea className="min-h-[50vh] content-center" />
     );
+  }
+
+  // انقطاعُ الاتّصال ليس «غير موجود»: يُقال ما جرى ويُعرض زرُّ إعادة.
+  if (isError) {
+    return <ErrorRetry onRetry={() => refetch()} />;
   }
 
   /* ── empty (no accepted project yet) ── */
@@ -185,6 +193,23 @@ export function StudentMyProjectPage() {
             </div>
           )}
         </div>
+        {/*
+          ورقةُ الموافقة على الإشراف — مدخلُ الطالب إليها من تفاصيل مشروعه.
+          لا تظهر إلّا وللمشروع موضوعٌ مسند، فلا يفتح الطالب نافذةً لا وثيقة
+          فيها.
+        */}
+        {topicId && (
+          <div className="mt-5 flex justify-end border-t border-clay/10 pt-4">
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2 text-sm font-semibold text-forest transition hover:bg-forest hover:text-cream"
+            >
+              <FileCheck2 className="size-4" />
+              {t("supervision.open")}
+            </button>
+          </div>
+        )}
       </header>
 
       {/* ── main grid ── */}
@@ -328,6 +353,13 @@ export function StudentMyProjectPage() {
           </div>
         </div>
       </div>
+
+      {sheetOpen && topicId && (
+        <SupervisionDialog
+          topicId={topicId}
+          onClose={() => setSheetOpen(false)}
+        />
+      )}
     </div>
   );
 }

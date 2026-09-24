@@ -1,5 +1,8 @@
 import { prisma } from "../../core/prisma/client";
-import { AVAILABLE_TO_STUDENTS } from "../../core/topic/topic-status";
+import {
+  AVAILABLE_TO_STUDENTS,
+  CAP_ATTEMPTS,
+} from "../../core/topic/topic-status";
 import {
   NotFoundException,
   UnauthorizedException,
@@ -177,6 +180,44 @@ export const createGroupRequestService = async (
     );
   }
 
+  // 1.a.b طلبُ فريقي على هذا الموضوع، إن كان ما يزال حيّاً.
+  //
+  // ويسبق فحصَ الإتاحة عمداً: الطلبُ الحيّ هو نفسه ما يحجز الموضوع، فلو
+  // تُرك للفحص التالي لقيل لصاحبه «هذا الموضوع محجوز بالفعل» — وهو محجوزٌ
+  // له هو، فيبحث عمّن سبقه ولا أحد.
+  //
+  // ولا يقتصر على المرسِل: العضوُ في الطلب الحيّ يُردّ كذلك، وبرسالةٍ تقول
+  // إنّ **فريقه** هو الذي أرسل — لا أنّ مجهولاً سبقه. فالمجموعة ترسل طلباً
+  // واحداً على الموضوع، من أيّ أعضائها جاء.
+  //
+  // و«حيّ» وحده: الطلبُ المرفوض لا يمنع إعادة المحاولة. الرفضُ قد يكون
+  // لنقصٍ يُستدرك — عضوٌ ناقص، أو ورقةٌ لم تُرفق — وقد يكون خطأً من الإدارة
+  // نفسها. والذي يحدّ التكرار هو سقفُ المحاولات لا منعُ المحاولة الثانية.
+  const mine = await prisma.groupRequest.findFirst({
+    where: {
+      topicId: topic.id,
+      status: { in: ["pending", "accepted"] },
+      OR: [
+        { leaderStudentId: leader.id },
+        { members: { some: { studentId: leader.id } } },
+      ],
+    },
+    select: { status: true, leaderStudentId: true },
+  });
+  if (mine) {
+    const isLeader = mine.leaderStudentId === leader.id;
+    throw new BadRequestException(
+      mine.status === "accepted"
+        ? isLeader
+          ? "طلبك على هذا الموضوع قُبل بالفعل — هو مشروعك."
+          : "فريقك مقبولٌ على هذا الموضوع — هو مشروعكم."
+        : isLeader
+          ? "لك طلبٌ على هذا الموضوع ما يزال بانتظار قرار الإدارة."
+          : "أرسل فريقك طلباً على هذا الموضوع، وهو بانتظار قرار الإدارة.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  }
+
   // 1.b الموضوع يُحجز عند أول طلب: امنع أي طلب جديد إن لم يعد متاحاً.
   const available = await prisma.graduationTopic.findFirst({
     where: { id: topic.id, ...AVAILABLE_TO_STUDENTS },
@@ -187,6 +228,22 @@ export const createGroupRequestService = async (
       "هذا الموضوع محجوز بالفعل",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
+  }
+
+  // 1.c سقفُ المحاولات، إن وضعت الإدارة له سقفاً.
+  //
+  // ويُعدّ **كلُّ** ما وصل الموضوع لا الحيَّ منه: الفهرسُ الفريد على
+  // `activeTopicId` لا يسمح بأكثر من طلبٍ حيٍّ واحد أصلاً، فعدُّ الحيّ
+  // يجعل السقف بلا أثر. والمقصود منعُ فريقٍ يُعيد الطلب كلّما رُفض.
+  if (topic.maxRequests !== null) {
+    const attempts = await prisma.groupRequest.count({
+      where: { topicId: topic.id, ...CAP_ATTEMPTS },
+    });
+    if (attempts >= topic.maxRequests)
+      throw new BadRequestException(
+        `بلغ هذا الموضوع سقف الطلبات المسموح به (${topic.maxRequests}).`,
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
   }
 
   // 2. Resolve teammate registration numbers → Student rows.
@@ -221,22 +278,6 @@ export const createGroupRequestService = async (
   if (memberStudentIds.length > topic.maxStudents) {
     throw new BadRequestException(
       `الحد الأقصى لهذا الموضوع ${topic.maxStudents} طلاب`,
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  }
-
-  // 5. The leader cannot have already requested this topic.
-  const existing = await prisma.groupRequest.findUnique({
-    where: {
-      leaderStudentId_topicId: {
-        leaderStudentId: leader.id,
-        topicId: topic.id,
-      },
-    },
-  });
-  if (existing) {
-    throw new BadRequestException(
-      "لقد أرسلت طلباً لهذا الموضوع بالفعل",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }

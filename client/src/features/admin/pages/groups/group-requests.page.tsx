@@ -17,13 +17,16 @@ import {
   CalendarDays,
   ChevronUp,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 import type { AdminGroupRequest } from "../../../../types/admin";
+import { DangerConfirm } from "../../../../components/dialog/danger-confirm";
 import i18n from "../../../../i18n/i18n";
 import {
   useGroupRequests,
   useAcceptGroupRequest,
   useRejectGroupRequest,
+  useDeleteGroupRequest,
   useProfessors,
   useFaculties,
   useDepartments,
@@ -34,6 +37,8 @@ import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { noneText } from "../../../../lib/none-text";
 import { None } from "../../../../lib/none";
 import { Select } from "../../../../components/ui/select";
+import { LoadingArea } from "../../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../../components/ui/error-retry";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -128,9 +133,12 @@ export function AdminGroupRequestsPage() {
     ],
   );
 
-  const { data, isLoading, isFetching } = useGroupRequests(params);
+  const { data, isLoading, isFetching, isError, refetch } =
+    useGroupRequests(params);
   const accept = useAcceptGroupRequest();
   const reject = useRejectGroupRequest();
+  const remove = useDeleteGroupRequest();
+  const [toDelete, setToDelete] = useState<AdminGroupRequest | null>(null);
 
   /*
    * العدّادات تأتي مع القائمة، محسوبةً **بنفس الفلاتر**.
@@ -488,7 +496,9 @@ export function AdminGroupRequestsPage() {
 
       {/* List */}
       {isLoading ? (
-        <div className="py-20 text-center text-sm text-clay">{"\u2026"}</div>
+        <LoadingArea className="py-20" />
+      ) : isError ? (
+        <ErrorRetry onRetry={() => refetch()} />
       ) : items.length === 0 ? (
         <div className="grid place-items-center gap-2 rounded-2xl border border-forest/10 bg-cream-card py-16 text-center shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
           <div className="grid size-14 place-items-center rounded-full bg-forest/5 text-clay">
@@ -609,6 +619,21 @@ export function AdminGroupRequestsPage() {
                       <X size={12} />
                       {t("admin.reject", { defaultValue: t("pro.reject") })}
                     </button>
+                    {/*
+                      الحذفُ للمرفوض وحده: الطلبُ المعلّق يُبَتّ فيه لا
+                      يُمحى — فحذفُه يُسقطه من تحت فريقٍ ينتظر بلا خبر —
+                      والمقبولُ تحته مشروعٌ قائم. والحارسُ في الخادم على
+                      كلّ حال، وهذا يُخفي زرّاً لا ينجح.
+                    */}
+                    {r.status === "rejected" && (
+                      <button
+                        onClick={() => setToDelete(r)}
+                        title={t("admin.delete")}
+                        className="grid size-7 shrink-0 place-items-center rounded-lg border border-red-400/40 text-red-500 transition hover:bg-red-50 hover:border-red-400"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                     <button
                       onClick={() => goToRequest(r.id)}
                       title={t("admin.details")}
@@ -656,6 +681,49 @@ export function AdminGroupRequestsPage() {
           </button>
         </div>
       )}
+
+      {/*
+        الحذفُ يُسأل عنه: هو محوُ سطرٍ لا رجعةَ فيه، والبطاقةُ تُري
+        صاحبَه وموضوعَه قبل أن يُمحى — فلا يُحذف سطرٌ ظنّه المسؤول غيره.
+      */}
+      <DangerConfirm
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        loading={remove.isPending}
+        title={t("admin.deleteRequestTitle")}
+        name={toDelete?.topic?.title ?? ""}
+        kicker={t("admin.requestLabel")}
+        facts={
+          toDelete
+            ? [
+                {
+                  icon: UserRound,
+                  label: t("admin.leader"),
+                  value: personName(toDelete.leader?.user) || "—",
+                },
+                {
+                  icon: ClipboardList,
+                  label: t("admin.statusLabel"),
+                  value: t(`stu.reqStatus.${toDelete.status}`, {
+                    defaultValue: toDelete.status,
+                  }),
+                },
+              ]
+            : []
+        }
+        impacts={[
+          {
+            icon: Users,
+            label: t("admin.deleteRequestImpact"),
+            value: toDelete?.members?.length ?? 0,
+          },
+        ]}
+        confirmLabel={t("admin.delete")}
+        onConfirm={() => {
+          if (!toDelete) return;
+          remove.mutate(toDelete.id, { onSuccess: () => setToDelete(null) });
+        }}
+      />
     </div>
   );
 }

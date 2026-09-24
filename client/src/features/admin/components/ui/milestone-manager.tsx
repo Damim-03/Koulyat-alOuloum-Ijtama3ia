@@ -24,6 +24,7 @@ import { ConfirmDialog } from "../form/confirm-dialog.form";
 import i18n from "../../../../i18n/i18n";
 import { noneText } from "../../../../lib/none-text";
 import { Select } from "../../../../components/ui/select";
+import { LoadingArea } from "../../../../components/ui/loading-area";
 
 /**
  * The project timeline, editable from the administration side.
@@ -262,9 +263,7 @@ export function MilestoneManager({ groupId }: { groupId: string }) {
 
       {/* list */}
       {isLoading ? (
-        <div className="grid place-items-center py-8 text-clay">
-          <Loader2 size={20} className="animate-spin" />
-        </div>
+        <LoadingArea size={80} className="py-8" />
       ) : shown.length === 0 ? (
         <p className="py-8 text-center text-sm text-clay">
           {all.length === 0

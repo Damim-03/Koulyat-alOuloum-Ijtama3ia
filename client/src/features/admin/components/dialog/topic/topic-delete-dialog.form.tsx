@@ -56,6 +56,14 @@ interface Props {
 const nameOf = (u?: PersonRef) =>
   [u?.firstName, u?.lastName].filter(Boolean).join(" ").trim();
 
+type StepKey = "group" | "supervisor" | "review";
+
+const STEP_LABEL: Record<StepKey, string> = {
+  group: "admin.stepDeleteGroup",
+  supervisor: "admin.stepSupervisor",
+  review: "admin.stepConfirmDelete",
+};
+
 /**
  * حذف موضوعٍ قام عليه مشروع.
  *
@@ -104,13 +112,20 @@ export function TopicDeleteDialog({
   const [error, setError] = useState<string | null>(null);
 
   // خطوةٌ لكل طرف: من يُحذف على حدة، ومن يُبلَّغ على حدة، ثم المراجعة.
-  const steps = [
-    ...(groupId ? [{ key: "group", label: t("admin.stepDeleteGroup") }] : []),
-    ...(supervisorUserId
-      ? [{ key: "supervisor", label: t("admin.stepSupervisor") }]
-      : []),
-    { key: "review", label: t("admin.stepConfirmDelete") },
-  ];
+  //
+  // **وشكلُ المعالج يُقرَّر عند الفتح ولا يتغيّر بعده.** كانت الخطوات تُحسب
+  // في كل رسمةٍ من `groupId`، وأوّلُ خطوةٍ تفسخ المجموعة — و`useDissolveProject`
+  // يُبطِل ذاكرة الموضوع، فتُعيد الصفحةُ جلبه، فيعود `groupId` فارغاً. فتسقط
+  // خطوة المجموعة من المصفوفة وينزلق الفهرس ١ من «المشرف» إلى «المراجعة»:
+  // تُقفَز خطوةُ المشرف، ويُحذف الموضوع دون أن يُبلَّغ أستاذه.
+  //
+  // والعناوين تبقى مشتقّةً في كل رسمة، فتتبع اللغة لو بُدّلت والنافذة مفتوحة.
+  const [stepKeys] = useState<StepKey[]>(() => [
+    ...(groupId ? (["group"] as StepKey[]) : []),
+    ...(supervisorUserId ? (["supervisor"] as StepKey[]) : []),
+    "review",
+  ]);
+  const steps = stepKeys.map((key) => ({ key, label: t(STEP_LABEL[key]) }));
   const index = Math.min(stepIndex, steps.length - 1);
   const step = steps[index]!;
 
@@ -120,8 +135,11 @@ export function TopicDeleteDialog({
   const supervisorName = nameOf(supervisor?.user) || t("admin.supervisor");
 
   // القائد أوّلاً: هو مُرسِل الطلب، وقراءة المجموعة تبدأ منه.
-  const ordered = [...members].sort(
-    (a, b) => Number(!!b.isLeader) - Number(!!a.isLeader),
+  //
+  // وتُثبَّت القائمة عند الفتح للسبب نفسه: الصفحة تُعيد الجلب بعد الفسخ
+  // فتعود بلا أعضاء، والمراجعة سجلٌّ لمن حُذفوا — لا لمن بقي.
+  const [ordered] = useState(() =>
+    [...members].sort((a, b) => Number(!!b.isLeader) - Number(!!a.isLeader)),
   );
 
   const serverMessage = (e: unknown) =>

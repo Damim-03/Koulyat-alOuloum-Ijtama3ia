@@ -22,6 +22,7 @@ import {
   HierarchyHeader,
   HeaderBadge,
 } from "../../components/ui/hierarchy-header";
+import { LoadingArea } from "../../../../components/ui/loading-area";
 
 
 /** يقرأ معرّف الكلية من القسم سواء كان facultyId أو faculty.id */
@@ -110,9 +111,7 @@ export function FacultyDetailPage() {
 
           {/* Departments */}
           {isLoading ? (
-            <div className="py-20 text-center text-sm text-clay">
-              {"\u2026"}
-            </div>
+            <LoadingArea className="py-20" />
           ) : list.length === 0 ? (
             <div className="rounded-2xl border border-forest/10 bg-cream-card py-20 text-center text-sm text-clay">
               {t("admin.noDepartments")}

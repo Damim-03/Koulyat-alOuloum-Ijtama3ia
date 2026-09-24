@@ -231,6 +231,19 @@ export const AVAILABLE_TO_STUDENTS = {
   },
 } satisfies Prisma.GraduationTopicWhereInput;
 
+/**
+ * ما يُحسب على سقف الموضوع — وهو ما يُعرض أيضاً.
+ *
+ * العرضُ والحارسُ يقرآن هذا الشرط نفسه. ولو افترقا لقالت الشاشة «٢ / ٢»
+ * والخادمُ يقبل طلباً ثالثاً، أو العكس — وكلاهما يُفقد الثقة بالعدّاد.
+ *
+ * ويسكن هنا لا في خدمةٍ بعينها، كـ`AVAILABLE_TO_STUDENTS` وللسبب نفسه:
+ * قاعدةٌ يقرأها وجهان من النظام تُكتب مرّة.
+ */
+export const CAP_ATTEMPTS = {
+  countsAgainstCap: true,
+} satisfies Prisma.GroupRequestWhereInput;
+
 //
 // ─── ما الذي يجوز للإدارة، ولماذا لا ─────────────────────────────
 //

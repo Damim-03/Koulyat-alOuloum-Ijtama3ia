@@ -41,6 +41,7 @@ import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { noneText } from "../../../../lib/none-text";
 import { Select } from "../../../../components/ui/select";
+import { LoadingArea } from "../../../../components/ui/loading-area";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -213,7 +214,7 @@ function InboxTab() {
             </div>
 
             {isLoading ? (
-                <div className="py-16 text-center text-sm text-clay">{"\u2026"}</div>
+                <LoadingArea className="py-16" />
             ) : items.length === 0 ? (
                 <EmptyCard icon={Inbox} text={t("messages.noInbox")} />
             ) : (
@@ -336,7 +337,7 @@ function SentTab() {
     return (
         <div>
             {isLoading ? (
-                <div className="py-16 text-center text-sm text-clay">{"\u2026"}</div>
+                <LoadingArea className="py-16" />
             ) : items.length === 0 ? (
                 <EmptyCard icon={Send} text={t("messages.noneSent")} />
             ) : (

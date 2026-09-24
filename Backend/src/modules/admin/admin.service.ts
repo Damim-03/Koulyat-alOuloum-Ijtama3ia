@@ -10,6 +10,7 @@ import {
   OCCUPANCY_INCLUDE,
   type TopicDecision,
   type TopicActionKey,
+  CAP_ATTEMPTS,
 } from "../../core/topic/topic-status";
 import bcrypt from "bcryptjs";
 import { config } from "../../core/config/app.config";
@@ -449,6 +450,7 @@ export const createTopicService = async (data: CreateTopicDTO) => {
     requirements = [],
     objectives = [],
     maxStudents,
+    maxRequests = null,
     professorId,
     specializationId,
     academicYearId,
@@ -484,6 +486,7 @@ export const createTopicService = async (data: CreateTopicDTO) => {
       requirements,
       objectives,
       maxStudents,
+      maxRequests,
       status: publish ? "open" : "approved",
       professorId,
       specializationId,
@@ -512,6 +515,7 @@ export const createAssignedTopicService = async (
     requirements = [],
     objectives = [],
     maxStudents,
+    maxRequests = null,
     professorId,
     specializationId,
     academicYearId,
@@ -571,6 +575,7 @@ export const createAssignedTopicService = async (
         requirements,
         objectives,
         maxStudents,
+        maxRequests,
         // قرار الإدارة: معتمَد. و«محجوز» ليست قراراً بل نتيجة المجموعة التي
         // تُنشأ بعد سطرين، فيقرأ الإسقاط `full` من تلقائه. و`publishedAt`
         // يبقى NULL: الموضوع المُسنَد لم يُعرَض على الطلبة قطّ.
@@ -622,6 +627,7 @@ export const updateAssignedTopicService = async (
     requirements,
     objectives,
     maxStudents,
+    maxRequests,
     professorId,
     specializationId,
     academicYearId,
@@ -763,6 +769,7 @@ export const updateAssignedTopicService = async (
         ...(requirements !== undefined ? { requirements } : {}),
         ...(objectives !== undefined ? { objectives } : {}),
         ...(maxStudents !== undefined ? { maxStudents } : {}),
+        ...(maxRequests !== undefined ? { maxRequests } : {}),
         ...(professorId !== undefined ? { professorId } : {}),
         ...(specializationId !== undefined ? { specializationId } : {}),
         ...(academicYearId !== undefined ? { academicYearId } : {}),
@@ -1436,7 +1443,7 @@ export const getProfessorByIdService = async (id: string) => {
         orderBy: { createdAt: "desc" },
         include: {
           specialization: { select: { id: true, name: true } },
-          _count: { select: { groupRequests: true } },
+          _count: { select: { groupRequests: { where: CAP_ATTEMPTS } } },
         },
       },
     },
@@ -2399,7 +2406,7 @@ export const listTopicsService = async (q: ListTopicsDTO) => {
         professor: { include: { user: { select: userSelect } } },
         specialization: true,
         academicYear: true,
-        _count: { select: { groupRequests: true } },
+        _count: { select: { groupRequests: { where: CAP_ATTEMPTS } } },
         // الإشغال يأتي مع الصفّ في نفس الاستعلام، فلا استعلام لكل موضوع.
         ...OCCUPANCY_INCLUDE,
       },
@@ -2448,10 +2455,16 @@ export const getTopicByIdService = async (id: string) => {
           },
         },
       },
+      // إجماليُّ المحاولات — عليه يُقاس سقفُ الطلبات على الصفحة.
+      _count: { select: { groupRequests: { where: CAP_ATTEMPTS } } },
       // A pending request now blocks publishing, rejecting and archiving, so
       // the page has to show what it is being blocked by. Without this the
       // screen said "no group has formed yet", offered three buttons, and all
       // three failed — with no way to see that a team was waiting.
+      //
+      // ولا يُوسَّع هذا المرشِّح ليشمل المرفوضة: الصفحة تحسب منه «الموضوع
+      // محجوز» وتُطفئ أزرار النشر والرفض والأرشفة. محاولةٌ رُفضت قبل شهر
+      // كانت ستُطفئها جميعاً. والمرفوضةُ تأتي في `pastRequests` منفصلةً.
       groupRequests: {
         where: { status: "pending" },
         orderBy: { createdAt: "desc" },
@@ -2481,8 +2494,41 @@ export const getTopicByIdService = async (id: string) => {
   // نفس حكم القائمة على صفحة التفصيل، من نفس الجدول. الصفحة كانت تعرض زرّ
   // الحذف بلا أي شرط، فيفشل ولا يعرف المستخدم أن البديل هو الأرشفة.
   const occ = await readOccupancy(prisma, id);
+
+  /*
+   * المحاولاتُ السابقة — للقراءة لا للقرار.
+   *
+   * صارت تُحفظ يوم كفّ الرفضُ عن الحذف، وبها وحدها يُفهم عدّادُ السقف:
+   * «٢ / ٣» يقول إنّ الموضوع اقترب من الإغلاق ولا يقول مَن حاول ولا لماذا
+   * رُدّ — والقرارُ الثالث يُتّخذ على غير سياق.
+   */
+  const pastRequests = await prisma.groupRequest.findMany({
+    where: { topicId: id, status: "rejected" },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      rejectionReason: true,
+      createdAt: true,
+      updatedAt: true,
+      leader: { select: { id: true, registrationNumber: true } },
+      members: {
+        select: {
+          id: true,
+          student: {
+            select: {
+              id: true,
+              registrationNumber: true,
+              user: { select: userSelect },
+            },
+          },
+        },
+      },
+    },
+  });
+
   return {
     ...topic,
+    pastRequests,
     occupancy: {
       hasGroup: occ.hasGroup,
       groupMemberCount: occ.groupMemberCount,
@@ -3060,7 +3106,14 @@ const releaseTopicOccupancy = async (
 ) => {
   await tx.groupRequest.updateMany({
     where: { topicId, status: "accepted" },
-    data: { status: "rejected", activeTopicId: null, rejectionReason: reason },
+    data: {
+      status: "rejected",
+      activeTopicId: null,
+      rejectionReason: reason,
+      // فعلٌ إداريّ لا قرارٌ على الفريق: لا يشغل خانةً من سقف الموضوع.
+      // والإدارةُ إنّما فسخت المشروع لِيُتداول الموضوع من جديد.
+      countsAgainstCap: false,
+    },
   });
   return computeTopicStatus(tx, topicId);
 };
@@ -3873,6 +3926,55 @@ export const acceptGroupRequestService = async (id: string) => {
   return result;
 };
 
+/**
+ * يحذف طلباً **منتهياً** من السجلّ.
+ *
+ * والحذفُ غيرُ الرفض: الرفضُ قرارٌ يُبلَّغ صاحبُه ويُسجَّل سببُه ويبقى أثرُه
+ * في «محاولاتٌ سابقة». وهذا مسحٌ للأثر — لسطرٍ أُنشئ خطأً، أو لتنظيف قائمةٍ
+ * امتلأت بمحاولاتٍ قديمة.
+ *
+ * ولذلك لا يُحذف إلّا ما انتهى:
+ *
+ *   - `pending` يُبَتّ فيه ولا يُمحى. وحذفُه يُسقط الطلبَ من تحت فريقٍ
+ *     ينتظر بلا خبرٍ ولا سبب — والرفضُ يُبلّغهم ويُحرّر الموضوع معاً.
+ *   - `accepted` تحته مشروعٌ قائم بأعضائه ومراحله. ومحوُ الطلب يترك
+ *     المشروع بلا أصلٍ يُفسّر من أين جاء. يُفسَخ المشروع أوّلاً.
+ *
+ * والأعضاء يذهبون بالـcascade، ولا تُمسّ حالةُ الموضوع.
+ *
+ * وكان هنا `computeTopicStatus` — «حساباً احتياطياً» — وهو خطأ. الدالّةُ
+ * تُعيد اشتقاق الحالة من الإسقاط وتكتبها إن خالفت المخزَّن، فإن كان بينهما
+ * انحرافٌ سابق صحّحته **في أثناء الحذف**: موضوعٌ مكتوبٌ `approved` وقد بقي
+ * `publishedAt` مضبوطاً يصير `open` — أي أنّ حذف سطرٍ مرفوض يُعيد نشر
+ * الموضوع على الطلبة. قِيس ذلك فعلاً: `approved` ← `open`.
+ *
+ * والطلبُ المنتهي لا يحجز شيئاً أصلاً، فلا شيء يُعاد حسابه. وتصحيحُ
+ * الانحراف — إن وُجد — بابُه الإجراءُ الذي يخصّه، لا عمليةٌ لا علاقة لها به.
+ */
+export const deleteGroupRequestService = async (id: string) => {
+  const request = await prisma.groupRequest.findUnique({
+    where: { id },
+    select: { id: true, status: true, topicId: true },
+  });
+  if (!request)
+    throw new NotFoundException(
+      "Group request not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
+
+  if (request.status !== "rejected")
+    throw new BadRequestException(
+      request.status === "accepted"
+        ? "لا يُحذف طلبٌ قام عليه مشروع. افسخ المشروع أوّلاً من صفحة «المشاريع»."
+        : "لا يُحذف طلبٌ ما يزال بانتظار القرار. ابتّ فيه — قبولاً أو رفضاً — فالفريق ينتظر جواباً.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  await prisma.groupRequest.delete({ where: { id } });
+
+  return { id, topicId: request.topicId };
+};
+
 export const rejectGroupRequestService = async (
   id: string,
   rejectionReason?: string,
@@ -3912,13 +4014,43 @@ export const rejectGroupRequestService = async (
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
-  // نلتقط بيانات الإشعار قبل الحذف.
   const leaderUserId = await getStudentUserId(request.leaderStudentId);
   const topicId = request.topicId;
 
   await prisma.$transaction(async (tx) => {
-    // احذف الطلب — أعضاؤه (GroupRequestMember) يُحذفون تلقائياً بالـ cascade ⇒ الطلاب يعودون إلى 0.
-    await tx.groupRequest.delete({ where: { id } });
+    /*
+     * يُعلَّم الطلب `rejected` ولا يُحذف — كما يفعل `releaseTopicOccupancy`
+     * للطلب المقبول. وكان يُحذف، فيذهب معه ثلاثة أشياء:
+     *
+     *   ١. السببُ المكتوب. الشاشة تسأل الإدارة عنه ثمّ تمحوه، وصفحةُ الطالب
+     *      تعرض «سبب الرفض» على صفٍّ لم يعد موجوداً — عرضٌ لا يُرى أبداً.
+     *   ٢. سقفُ الطلبات. يَعدّ صفوف الطلبات، والحذف يُعيد العدّاد إلى ما
+     *      كان، فلا يبلغ السقفُ شيئاً مهما رُفض الفريق.
+     *   ٣. أثرُ المحاولة. لا تعرف الإدارة أنّ هذا الموضوع رُفض عليه فريقان
+     *      قبل الثالث، ولا لماذا.
+     *
+     * و`activeTopicId: null` هو ما يُفرِج عن الموضوع — الفهرسُ الفريد لا
+     * يقارن NULL — فيعود قابلاً للتداول كما كان بعد الحذف تماماً.
+     *
+     * والأعضاء يبقون في `GroupRequestMember` بدل أن يذهبوا بالـ cascade،
+     * وهم جزءُ الأثر: «مَن طلبه» لا يقلّ عن «لماذا رُفض».
+     */
+    await tx.groupRequest.update({
+      where: { id },
+      data: {
+        status: "rejected",
+        activeTopicId: null,
+        rejectionReason: rejectionReason ?? null,
+        /*
+         * والمرفوضُ لا يشغل خانةً من سقف الموضوع.
+         *
+         * الموضوعُ بعد الرفض حُرٌّ كما كان: لا فريقَ عليه ولا حجز. فخانةٌ
+         * محجوزةٌ لمحاولةٍ انتهت تُضيّق على من يأتي بعدها بلا مقابل —
+         * والأثرُ محفوظٌ في الصفّ نفسه لمن أراد قراءته.
+         */
+        countsAgainstCap: false,
+      },
+    });
 
     // ثم أعِد حساب الحالة من الإشغال الباقي. كان هنا فرعٌ يكتب "open"
     // حرفياً، وبشرط أن يكون الموضوع `full` — فكان الباب الآخر (فسخ
@@ -3938,5 +4070,5 @@ export const rejectGroupRequestService = async (
       link: "/student/requests",
     });
 
-  return { id, topicId, deleted: true };
+  return { id, topicId, status: "rejected" as const };
 };

@@ -58,7 +58,7 @@ export function ConfirmDialog({
       {/* backdrop */}
       <div
         onClick={() => !loading && onClose()}
-        className="absolute inset-0 bg-forest-deep/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm"
       />
 
       {/* card */}

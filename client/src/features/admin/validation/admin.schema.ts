@@ -115,6 +115,8 @@ export const facultySchema = z.object({
   code: z.string().trim().min(1, { error: () => t("validation.codeRequired") }),
   /** Optional: empty means no cover. */
   coverUrl: z.string().trim().optional().or(z.literal("")),
+  /** Optional: empty means the default glyph. */
+  iconUrl: z.string().trim().optional().or(z.literal("")),
 });
 export type FacultyInput = z.infer<typeof facultySchema>;
 

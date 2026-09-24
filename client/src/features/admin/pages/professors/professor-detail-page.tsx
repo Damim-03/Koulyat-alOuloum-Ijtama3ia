@@ -39,6 +39,8 @@ import { HeaderTrail } from "../../components/ui/hierarchy-header";
 import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { isNone, noneText } from "../../../../lib/none-text";
+import { LoadingArea } from "../../../../components/ui/loading-area";
+import { ErrorRetry } from "../../../../components/ui/error-retry";
 
 const TOPIC_STATUS: Record<
   string,
@@ -117,7 +119,8 @@ export function AdminProfessorDetailPage() {
   const navigate = useNavigate();
   const { lang, id } = useParams();
 
-  const { data: professor, isLoading, refetch } = useProfessor(id ?? null);
+  const { data: professor, isLoading, isError, refetch } =
+    useProfessor(id ?? null);
   const deleteProfessor = useDeleteProfessor();
   const setVerification = useSetUserVerification();
 
@@ -158,10 +161,13 @@ export function AdminProfessorDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="font-body grid place-items-center py-24 text-sm text-clay">
-        {"\u2026"}
-      </div>
+      <LoadingArea className="font-body py-24" />
     );
+  }
+
+  // انقطاعُ الاتّصال ليس «غير موجود»: يُقال ما جرى ويُعرض زرُّ إعادة.
+  if (isError) {
+    return <ErrorRetry onRetry={() => refetch()} />;
   }
 
   if (!professor) {
