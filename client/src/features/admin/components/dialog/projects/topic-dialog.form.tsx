@@ -17,6 +17,7 @@ import { ProfessorPicker } from "../../ui/professor-picker";
 import { ListInput } from "../../../../../components/ui/list-input";
 import { inputCls, SectionHead, Field } from "../../../../../components/ui/form-bits";
 import { Select } from "../../../../../components/ui/select";
+import { personName } from "../../../../../lib/person-name";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -132,7 +133,7 @@ export function TopicDialog({ open, onClose, onCreated }: Props) {
   const professorName = useMemo(() => {
     const p = professors.find((x: any) => x.id === professorId);
     if (!p) return "";
-    return [p.user?.firstName, p.user?.lastName].filter(Boolean).join(" ") ||
+    return personName(p.user) ||
       p.universityEmail;
   }, [professors, professorId]);
 

@@ -1,7 +1,12 @@
 import { client } from "../../../lib/api/client";
 import type {
+  TitlesListParams,
+  TopicTitlesList,
   OverviewStats,
   Paginated,
+  StudentImportPreview,
+  StudentImportResult,
+  ProfessorImportResult,
   UserLite,
   Student,
   Professor,
@@ -9,9 +14,14 @@ import type {
   Department,
   Specialization,
   AcademicYear,
+  ArchiveYear,
+  YearRecordResponse,
+  YearReadiness,
   AdminTopic,
   AdminProject,
   AdminDefense,
+  DefenseClashes,
+  DefenseStats,
   AdminGroupRequest,
   AdminDashboard,
   UserDetail,
@@ -21,6 +31,16 @@ import type {
   AcademicStructurePayload,
   AcademicStructureResult,
 } from "../../../types/admin";
+import type {
+  AboutPage,
+  LoginContent,
+  DirectorMessage,
+  HomeSlide,
+  HomeSlideInput,
+  NewsInput,
+  NewsItem,
+  SlidePlacement,
+} from "../../../types/site.types";
 
 const BASE = "/admin";
 
@@ -109,6 +129,53 @@ export const adminApi = {
     client.delete(`${BASE}/students/${id}`).then((r) => r.data),
 
   // ── Professors ──
+
+  // ── استيراد الطلبة من Excel ──
+  studentImportTemplate: () =>
+    client
+      .get<Blob>(`${BASE}/students/import/template`, { responseType: "blob" })
+      .then((r) => r.data),
+  previewStudentImport: async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file); // "file" لمطابقة xlsxFileUpload
+    const r = await client.post<StudentImportPreview>(
+      `${BASE}/students/import/preview`,
+      fd,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return r.data;
+  },
+  importStudents: async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await client.post<StudentImportResult>(`${BASE}/students/import`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+      // دفعةٌ كبيرة تُجزَّأ كلماتُ مرورها وتُكتب في معاملةٍ واحدة — دقيقةٌ لا ثوانٍ.
+      timeout: 5 * 60 * 1000,
+    });
+    return r.data;
+  },
+  professorImportTemplate: () =>
+    client
+      .get<Blob>(`${BASE}/professors/import/template`, { responseType: "blob" })
+      .then((r) => r.data),
+  previewProfessorImport: async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file); // "file" لمطابقة xlsxFileUpload
+    const r = await client.post<StudentImportPreview>(`${BASE}/professors/import/preview`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return r.data;
+  },
+  importProfessors: async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await client.post<ProfessorImportResult>(`${BASE}/professors/import`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 5 * 60 * 1000,
+    });
+    return r.data;
+  },
 
   uploadImage: async (file: File) => {
     const fd = new FormData();
@@ -257,7 +324,35 @@ export const adminApi = {
   deleteAcademicYear: (id: string) =>
     client.delete(`${BASE}/academic-years/${id}`).then((r) => r.data),
 
+  // ── The archive ──
+  listArchiveYears: () =>
+    client
+      .get<{ items: ArchiveYear[] }>(`${BASE}/archive/years`)
+      .then((r) => r.data.items),
+  getYearRecord: (id: string) =>
+    client
+      .get<YearRecordResponse>(`${BASE}/archive/years/${id}`)
+      .then((r) => r.data),
+  getYearReadiness: (id: string) =>
+    client
+      .get<YearReadiness>(`${BASE}/archive/years/${id}/readiness`)
+      .then((r) => r.data),
+  closeYear: (
+    id: string,
+    data: { confirmTitle: string; note?: string; nextYearId?: string; nextYearTitle?: string },
+  ) =>
+    client
+      .post<{ archived: true; activeYearId: string | null }>(`${BASE}/archive/years/${id}/close`, data)
+      .then((r) => r.data),
+  reopenYear: (id: string, data: { activate?: boolean }) =>
+    client
+      .post<{ reopened: true; active: boolean }>(`${BASE}/archive/years/${id}/reopen`, data)
+      .then((r) => r.data),
+
   // ── Topics ──
+  /** The memoir titles of a scope, grouped by specialization — before or after assignment. */
+  topicTitlesList: (params: TitlesListParams) =>
+    client.get<TopicTitlesList>(`${BASE}/topics/titles-list`, { params }).then((r) => r.data),
   listTopics: (params?: ListParams) =>
     client
       .get<Paginated<AdminTopic>>(`${BASE}/topics`, { params })
@@ -356,6 +451,10 @@ export const adminApi = {
     client
       .delete(`${BASE}/projects/${groupId}/members/${studentId}`)
       .then((r) => r.data),
+  setProjectLeader: (groupId: string, studentId: string) =>
+    client
+      .patch(`${BASE}/projects/${groupId}/leader/${studentId}`)
+      .then((r) => r.data),
   // فسخ المشروع كلّه. الخادم يرفض إن كان عليه تسليمات أو مناقشة، ويردّ
   // برسالة تقول ما الذي يمنع — فتُعرض كما هي بدل نصّ عام.
   dissolveProject: (groupId: string, reason?: string) =>
@@ -390,9 +489,23 @@ export const adminApi = {
     client.delete(`${BASE}/university-domains/${id}`).then((r) => r.data),
 
   // ── Defenses ──
+  defenseConflicts: (params: {
+    date: string;
+    durationMinutes?: number;
+    room?: string;
+    professorIds?: string;
+    excludeId?: string;
+  }) =>
+    client
+      .get<DefenseClashes>(`${BASE}/defenses/conflicts`, { params })
+      .then((r) => r.data),
+  getDefense: (id: string) =>
+    // The details payload is far wider than the list row; its page reads it loosely.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    client.get<{ defense: any }>(`${BASE}/defenses/${id}`).then((r) => r.data.defense),
   listDefenses: (params?: ListParams) =>
     client
-      .get<Paginated<AdminDefense>>(`${BASE}/defenses`, { params })
+      .get<Paginated<AdminDefense> & { stats: DefenseStats }>(`${BASE}/defenses`, { params })
       .then((r) => r.data),
   createDefense: (data: unknown) =>
     client
@@ -404,4 +517,68 @@ export const adminApi = {
       .then((r) => r.data.defense),
   deleteDefense: (id: string) =>
     client.delete(`${BASE}/defenses/${id}`).then((r) => r.data),
+
+  // ── Home slides (صور الصفحة الرئيسية) ──
+  listHomeSlides: (placement: SlidePlacement = "home") =>
+    client
+      .get<{ slides: HomeSlide[] }>(`${BASE}/home-slides`, { params: { placement } })
+      .then((r) => r.data.slides),
+  createHomeSlides: (data: {
+    slides: { imageUrl: string; caption?: string | null }[];
+    isActive?: boolean;
+    placement: SlidePlacement;
+  }) =>
+    client
+      .post<{ slides: HomeSlide[] }>(`${BASE}/home-slides/batch`, data)
+      .then((r) => r.data.slides),
+  updateHomeSlide: (id: string, data: Partial<HomeSlideInput>) =>
+    client
+      .patch<{ slide: HomeSlide }>(`${BASE}/home-slides/${id}`, data)
+      .then((r) => r.data.slide),
+  reorderHomeSlides: (ids: string[], placement: SlidePlacement) =>
+    client
+      .patch<{ slides: HomeSlide[] }>(`${BASE}/home-slides/order`, { ids, placement })
+      .then((r) => r.data.slides),
+  deleteHomeSlide: (id: string) =>
+    client.delete(`${BASE}/home-slides/${id}`).then((r) => r.data),
+
+  // ── آخر الأخبار ──
+  listNews: () =>
+    client.get<{ news: NewsItem[] }>(`${BASE}/news`).then((r) => r.data.news),
+  createNews: (data: NewsInput) =>
+    client.post<{ item: NewsItem }>(`${BASE}/news`, data).then((r) => r.data.item),
+  updateNews: (id: string, data: Partial<NewsInput>) =>
+    client.patch<{ item: NewsItem }>(`${BASE}/news/${id}`, data).then((r) => r.data.item),
+  deleteNews: (id: string) =>
+    client.delete(`${BASE}/news/${id}`).then((r) => r.data),
+
+  // ── كلمة رئيس القسم ──
+  getDirectorMessage: () =>
+    client
+      .get<{ director: DirectorMessage | null }>(`${BASE}/director-message`)
+      .then((r) => r.data.director),
+  saveDirectorMessage: (data: DirectorMessage) =>
+    client
+      .put<{ director: DirectorMessage }>(`${BASE}/director-message`, data)
+      .then((r) => r.data.director),
+
+  // ── صفحة «عن المنصة» ──
+  getAboutPage: () =>
+    client
+      .get<{ content: AboutPage | null }>(`${BASE}/about-page`)
+      .then((r) => r.data.content),
+  saveAboutPage: (data: AboutPage) =>
+    client
+      .put<{ content: AboutPage }>(`${BASE}/about-page`, data)
+      .then((r) => r.data.content),
+
+  // ── لوحة الترحيب في صفحة الدخول ──
+  getLoginPage: () =>
+    client
+      .get<{ content: LoginContent | null }>(`${BASE}/login-page`)
+      .then((r) => r.data.content),
+  saveLoginPage: (data: LoginContent) =>
+    client
+      .put<{ content: LoginContent }>(`${BASE}/login-page`, data)
+      .then((r) => r.data.content),
 };

@@ -15,6 +15,7 @@ import {
 import { FormDialog } from "../../form/form-dialog";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
 import { None } from "../../../../../lib/none";
+import { personName } from "../../../../../lib/person-name";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -42,7 +43,7 @@ export function StudentPreviewDialog({
 
   const u = student.user ?? {};
   const name =
-    [u.firstName, u.lastName].filter(Boolean).join(" ") || "—";
+    personName(u) || "—";
   const spec = student.specialization;
   const filiere = spec?.filiere;
   const dept = filiere?.department;

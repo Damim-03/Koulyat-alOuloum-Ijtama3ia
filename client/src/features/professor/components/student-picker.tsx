@@ -4,6 +4,7 @@ import { Search, X, Plus, Loader2 } from "lucide-react";
 import { useSearchStudents } from "../hooks/Professor-hook";
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import type { StudentSearchHit } from "../../../types/professor.types";
+import { personName } from "../../../lib/person-name";
 
 /**
  * Naming the students for a proposed team.
@@ -25,7 +26,7 @@ export interface PickedStudent {
 
 function nameOf(hit: StudentSearchHit) {
   return (
-    [hit.user?.firstName, hit.user?.lastName].filter(Boolean).join(" ") ||
+    personName(hit.user) ||
     hit.registrationNumber
   );
 }

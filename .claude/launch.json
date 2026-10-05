@@ -9,6 +9,14 @@
       ],
       "port": 5173,
       "cwd": "client"
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "autoPort": false,
+      "cwd": "Backend"
     }
   ]
 }

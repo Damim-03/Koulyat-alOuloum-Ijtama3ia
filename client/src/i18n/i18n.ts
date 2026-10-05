@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import { setNameLanguage } from "../lib/person-name";
 
 import ar from "./locales/ar.json";
 import en from "./locales/en.json";
@@ -32,6 +33,10 @@ export function getLangDir(lang: LangCode): "rtl" | "ltr" {
 }
 
 // ── Init ──
+// People's names follow the interface's script (Latin in French and English).
+// Registered before init, which announces the first language too; and before
+// react-i18next's own listener, so names are current when components re-render.
+i18n.on("languageChanged", setNameLanguage);
 i18n.use(initReactI18next).init({
   resources: {
     ar: { translation: ar },

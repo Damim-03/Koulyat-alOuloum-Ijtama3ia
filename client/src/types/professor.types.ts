@@ -146,6 +146,7 @@ export interface Milestone {
 export interface ProjectMember {
   id: string;
   student?: StudentRef;
+  isLeader?: boolean;
 }
 
 // ── Defense (as included on a group) ──
@@ -165,6 +166,37 @@ export interface ProjectGroup {
   members?: ProjectMember[];
   milestones?: Milestone[];
   defense?: DefenseRef | null;
+  _count?: { milestones: number };
+  createdAt: string;
+}
+
+/**
+ * One row of GET /professor/groups — the list, not the detail: milestones
+ * carry their state, deadline and file count, not the files themselves.
+ */
+export interface ProjectGroupListItem {
+  id: string;
+  topicId?: string;
+  topic?: Pick<Topic, "id" | "title" | "status" | "maxStudents"> & {
+    specialization?: { id: string; name: string } | null;
+    academicYear?: { id: string; title: string } | null;
+  };
+  members?: ProjectMember[];
+  milestones?: {
+    id: string;
+    title: string;
+    deadline: string;
+    status: MilestoneStatus | string;
+    order: number;
+    _count?: { submissions: number };
+  }[];
+  defense?: {
+    id: string;
+    date: string;
+    room: string;
+    status?: "scheduled" | "completed" | "cancelled";
+    grade?: number | null;
+  } | null;
   _count?: { milestones: number };
   createdAt: string;
 }
@@ -235,7 +267,44 @@ export interface DashProject {
   nextDeadline: { id: string; title: string; deadline: string } | null;
 }
 
+/** A defense the professor sits on, whoever supervises the project. */
+export interface DashCommitteeSeat {
+  role: "president" | "supervisor" | "examiner";
+  id: string;
+  date: string;
+  room: string;
+  status: "scheduled" | "completed" | "cancelled";
+  grade: number | null;
+  groupId: string;
+  topic: { id: string; title: string };
+  supervisor: {
+    firstName?: string | null;
+    lastName?: string | null;
+    avatarUrl?: string | null;
+    gender?: string | null;
+  } | null;
+  /** True when the project is this professor's own. */
+  ownProject: boolean;
+  membersCount: number;
+}
+
+export interface DashProfile {
+  employeeNumber: string;
+  universityEmail: string;
+  /** Stored as JSON: usually a list of strings, occasionally one string. */
+  grade: unknown;
+  tags: unknown;
+  department: {
+    id: string;
+    name: string;
+    faculty: { id: string; name: string } | null;
+  } | null;
+}
+
 export interface ProfessorDashboard {
+  profile: DashProfile | null;
+  committee: DashCommitteeSeat[];
+  recentSubmissions: DashSubmissionLite[];
   topics: DashTopicLite[];
   stats: {
     myTopics: number;

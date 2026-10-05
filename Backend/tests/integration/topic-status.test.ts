@@ -456,12 +456,16 @@ describe("I4 — الإتاحة تُحسب من الإشغال لا من status 
   it('تبويب "محجوز" العامّ يعرض الموضوع الذي اكتمل بطلب', async () => {
     const { topic } = await acceptedProject("I4 public-reserved");
 
-    const reserved = (await pub.listPublicTopicsService({
-      page: 1,
-      limit: 100,
-      availability: "reserved",
-      search: `${TAG} I4 public-reserved`,
-    } as never)) as { items: { id: string }[] };
+    const reserved = (await pub.listPublicTopicsService(
+      {
+        page: 1,
+        limit: 100,
+        availability: "reserved",
+        search: `${TAG} I4 public-reserved`,
+        sort: "newest",
+      } as never,
+      { userId: f.admin.id, role: "admin" },
+    )) as { items: { id: string }[] };
 
     expect(reserved.items.map((t) => t.id)).toContain(topic.id);
   });

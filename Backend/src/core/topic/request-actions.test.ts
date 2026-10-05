@@ -109,7 +109,7 @@ describe("ومتى يجوز الرفض", () => {
   it("وطلبٌ مقبولٌ تشكّل له مشروع ⇒ يُمنع، والسبب يدلّ على البديل", () => {
     const a = make({ status: "accepted", hasGroup: true });
     expect(a.canReject).toBe(false);
-    expect(a.blockedReasons.reject).toContain("افسخ المشروع");
+    expect(a.blockedReasons.reject).toContain("افسخ المذكرة");
     expect(a.blockedCodes.reject?.code).toBe("hasProject");
   });
 

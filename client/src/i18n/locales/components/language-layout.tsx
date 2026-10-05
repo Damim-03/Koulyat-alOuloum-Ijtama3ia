@@ -25,5 +25,10 @@ export function LanguageLayout() {
   }, [lang, isValid, i18n]);
 
   if (!isValid) return <Navigate to={`/${DEFAULT_LANG}`} replace />;
-  return <Outlet />;
+  // A new language mounts the pages afresh. The React Compiler memoises what a
+  // page derives from its data — a person's name in the right script, a date
+  // in the right locale — and cannot see that those also read the language;
+  // remounting is what makes every such value follow it. Keyed by the language
+  // i18n has actually switched to, not the URL: the URL can change first.
+  return <Outlet key={i18n.language} />;
 }

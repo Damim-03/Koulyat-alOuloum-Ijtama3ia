@@ -52,7 +52,6 @@ async function visit(page: Page, path: string) {
 test.describe("شاشات الطالب", () => {
   const PAGES = [
     ["اللوحة", "/ar/student"],
-    ["تصفّح المواضيع", "/ar/student/topics"],
     ["طلباتي", "/ar/student/requests"],
     ["مشروعي", "/ar/student/project"],
   ] as const;
@@ -72,6 +71,9 @@ test.describe("شاشات الطالب", () => {
    * المواضيع المنشورة تصل من الخادم — والسؤال هنا هل تظهر. وهذا الوصل بين
    * الطبقتين هو ما لا يراه أي اختبارٍ خلفيّ: قد يردّ الخادم ثلاثة مواضيع
    * وتعرض الشاشة «لا توجد مواضيع».
+   *
+   * والطالب يتصفّح المواضيع من الصفحة العامّة: نسختُه الخاصّة أُزيلت لأنّها
+   * كانت تكرّرها، وصار مسارها القديم يحوّل إليها.
    */
   test("وقائمة المواضيع تعرض ما يردّه الخادم", async ({ page }) => {
     await login(page, "student");
@@ -81,13 +83,16 @@ test.describe("شاشات الطالب", () => {
         (r) => r.url().includes("/api/") && r.url().includes("topics") && r.ok(),
         { timeout: 20_000 },
       ),
+      // المسار القديم عمداً: يُثبت التحويل والقائمة معاً.
       page.goto("/ar/student/topics"),
     ]);
+    await expect(page).toHaveURL(/\/ar\/topics$/);
 
     const body = (await response.json()) as unknown;
-    const topics = (Array.isArray(body) ? body : (body as Record<string, unknown>).topics) as
-      | { title: string }[]
-      | undefined;
+    const o = body as Record<string, unknown>;
+    const topics = (
+      Array.isArray(body) ? body : (o.items ?? o.topics)
+    ) as { title: string }[] | undefined;
 
     expect(topics?.length ?? 0).toBeGreaterThan(0);
 

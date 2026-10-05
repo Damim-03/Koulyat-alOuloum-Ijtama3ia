@@ -3,10 +3,17 @@ import { GraduationCap, Compass, BookOpen } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { LocaleLink } from "../../../i18n/locales/components/locale-link";
 import { PATHS } from "../../../routes/paths";
+import { useHomeSlides } from "../hooks/site-hook";
+import { HeroSlides } from "./hero-slides";
 
 export function Hero() {
   const { t } = useTranslation();
   const { dir } = useLanguage();
+  // صور الإدارة خلف العنوان؛ وبلا صور تبقى الواجهة على خلفيتها الأصلية.
+  const { data: slides = [] } = useHomeSlides();
+  const hasSlides = slides.length > 0;
+  // فوق صورةٍ لا يُعرف لونها سلفاً، يحتاج النصّ ظلّاً يفصله عنها.
+  const lift = hasSlides ? "drop-shadow-[0_2px_14px_rgba(0,0,0,0.45)]" : "";
 
   return (
     <section
@@ -14,9 +21,12 @@ export function Hero() {
       dir={dir}
       className="forest-glow relative overflow-hidden border-b border-forest-deep px-5 py-28 font-body lg:px-8"
     >
-      <div className="dot-matrix absolute inset-0 opacity-50" />
-      <div className="pointer-events-none absolute -right-24 -top-24 size-96 rounded-full border border-soft-sage/10 bg-soft-sage/3 backdrop-blur-sm" />
-      <div className="pointer-events-none absolute -left-12 bottom-8 size-64 rounded-full border border-gold/10 bg-gold/4 backdrop-blur-sm" />
+      <HeroSlides slides={slides} />
+      <div className={`dot-matrix absolute inset-0 ${hasSlides ? "opacity-25" : "opacity-50"}`} />
+      {/* الدائرتان زجاجٌ فوق الخلفية الأصلية؛ وفوق صورةٍ يصير الزجاج بقعةً
+          ضبابية في وسطها، فتبقيان إطاراً بلا تغبيش. */}
+      <div className={`pointer-events-none absolute -right-24 -top-24 size-96 rounded-full border border-soft-sage/10 bg-soft-sage/3 ${hasSlides ? "" : "backdrop-blur-sm"}`} />
+      <div className={`pointer-events-none absolute -left-12 bottom-8 size-64 rounded-full border border-gold/10 bg-gold/4 ${hasSlides ? "" : "backdrop-blur-sm"}`} />
 
       <div className="relative mx-auto flex max-w-4xl flex-col items-center text-center">
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-gold/30 bg-forest-deep/40 px-4 py-2 text-[12.5px] font-medium text-gold-soft animate-[riseIn_0.5s_both]">
@@ -24,15 +34,15 @@ export function Hero() {
           {t("hero.badge")}
         </div>
 
-        <h1 className="mb-3 font-serif text-4xl font-bold leading-[1.2] text-cream md:text-6xl animate-[riseIn_0.5s_0.05s_both]">
+        <h1 className={`mb-3 font-serif text-4xl font-bold leading-[1.2] text-cream md:text-6xl animate-[riseIn_0.5s_0.05s_both] ${lift}`}>
           {t("hero.title")}
         </h1>
 
-        <p className="mb-5 font-serif text-lg text-soft-sage md:text-2xl animate-[riseIn_0.5s_0.1s_both]">
+        <p className={`mb-5 font-serif text-lg md:text-2xl animate-[riseIn_0.5s_0.1s_both] ${hasSlides ? "text-cream/90" : "text-soft-sage"} ${lift}`}>
           {t("hero.subtitle")}
         </p>
 
-        <p className="mb-9 max-w-2xl text-[15px] leading-[1.9] text-cream/55 animate-[riseIn_0.5s_0.15s_both]">
+        <p className={`mb-9 max-w-2xl text-[15px] leading-[1.9] animate-[riseIn_0.5s_0.15s_both] ${hasSlides ? "text-cream/80" : "text-cream/55"} ${lift}`}>
           {t("hero.desc")}
         </p>
 

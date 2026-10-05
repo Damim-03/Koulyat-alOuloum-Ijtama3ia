@@ -1,33 +1,32 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useSocket } from "../app/socket-context";
-
-export type NetworkQuality = "online" | "slow" | "offline";
+import { checkConnection, reportOffline, reportServerUp, reportSlow, reportUnreachable } from "../lib/connection/connection";
 
 /** A blip shorter than this never reaches the UI, so reconnects don't flash. */
 const GRACE_MS = 300;
 
 /**
- * Connection quality, from two independent signals.
+ * Feeds the app-wide connection state (`lib/connection`) from the signals the
+ * browser gives — mounted once, beside the pill that shows it.
  *
  * `navigator.onLine` only reports whether a network interface is up — it stays
  * true when the Wi-Fi is connected but the internet is not, when DNS fails,
  * behind a captive portal, or when the server itself is down. On its own it
  * misses the outages that matter most here.
  *
- * The live socket closes the gap: it is an open connection to our own server,
- * so a drop is known within milliseconds of it happening rather than at the
- * next failed request.
+ * The live socket closes part of the gap: it is an open connection to our own
+ * server, so a drop is known within milliseconds rather than at the next
+ * failed request. And every request through the API client reports too, so a
+ * page opened while the server is already down is caught at once — the socket
+ * alone never sees an outage it was never connected through.
  */
-export function useNetworkStatus() {
+export function useConnectionWatch() {
   const socket = useSocket();
-  const [browserOnline, setBrowserOnline] = useState(() => navigator.onLine);
-  const [slow, setSlow] = useState(false);
-  const [serverDown, setServerDown] = useState(false);
 
   // ── interface-level ──
   useEffect(() => {
-    const goOnline = () => setBrowserOnline(true);
-    const goOffline = () => setBrowserOnline(false);
+    const goOnline = () => void checkConnection();
+    const goOffline = () => reportOffline();
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
     return () => {
@@ -49,10 +48,7 @@ export function useNetworkStatus() {
     ).connection;
     if (!conn) return;
 
-    const check = () => {
-      const t = conn.effectiveType;
-      setSlow(t === "slow-2g" || t === "2g");
-    };
+    const check = () => reportSlow(conn.effectiveType === "slow-2g" || conn.effectiveType === "2g");
     check();
     conn.addEventListener?.("change", check);
     return () => conn.removeEventListener?.("change", check);
@@ -69,12 +65,12 @@ export function useNetworkStatus() {
       // it is deliberately disconnected, which is not an outage.
       if (!everConnected.current) return;
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => setServerDown(true), GRACE_MS);
+      timer = setTimeout(reportUnreachable, GRACE_MS);
     };
     const markUp = () => {
       everConnected.current = true;
       if (timer) clearTimeout(timer);
-      setServerDown(false);
+      reportServerUp();
     };
 
     if (socket.connected) markUp();
@@ -89,9 +85,4 @@ export function useNetworkStatus() {
       socket.off("connect_error", markDown);
     };
   }, [socket]);
-
-  const status: NetworkQuality =
-    !browserOnline || serverDown ? "offline" : slow ? "slow" : "online";
-
-  return { status };
 }

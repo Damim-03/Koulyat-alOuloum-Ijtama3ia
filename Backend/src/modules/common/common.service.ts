@@ -87,6 +87,8 @@ export const listSpecializationsService = async (filters?: {
 // Academic years (active first, then newest).
 export const listAcademicYearsService = async () => {
   return prisma.academicYear.findMany({
+    // Closed years hold a record, not new work.
+    where: { archivedAt: null },
     select: { id: true, title: true, isActive: true },
     orderBy: [{ isActive: "desc" }, { title: "desc" }],
   });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { blockReason, filterByAction } from "../../lib/topic-actions";
 import { useTranslation } from "react-i18next";
 import { useLangNavigate } from "../../../../hooks/useLangNavigate";
@@ -21,10 +22,9 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
-  AlertTriangle,
-  RotateCcw,
   FilterX,
   ScanLine,
+  ListOrdered,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -47,6 +47,9 @@ import { Select } from "../../../../components/ui/select";
 import { DangerConfirm } from "../../../../components/dialog/danger-confirm";
 import { SupervisionDialog } from "../../../supervision/components/supervision-dialog";
 import { ScanDialog } from "../../../supervision/components/scan-dialog";
+import { TopicTitlesDialog } from "../../components/dialog/topic/topic-titles-dialog";
+import { personName } from "../../../../lib/person-name";
+import { ErrorRetry } from "../../../../components/ui/error-retry";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -70,7 +73,12 @@ export function AdminTopicsPage() {
 
   // filters
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
+  // A link may arrive with its filter — the dashboard's "pending proposals".
+  const [initial] = useSearchParams();
+  const [status, setStatus] = useState(() => {
+    const s = initial.get("status") ?? "";
+    return (STATUS_FILTERS as readonly string[]).includes(s) ? s : "";
+  });
   const [professorId, setProfessorId] = useState("");
   const [academicYearId, setAcademicYearId] = useState("");
   const [facultyId, setFacultyId] = useState("");
@@ -86,6 +94,7 @@ export function AdminTopicsPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   /** الموضوع الذي تُعرض ورقةُ الموافقة على إشرافه. */
   const [scanOpen, setScanOpen] = useState(false);
+  const [titlesOpen, setTitlesOpen] = useState(false);
   const [supervisionTopicId, setSupervisionTopicId] = useState<string | null>(
     null,
   );
@@ -344,7 +353,7 @@ export function AdminTopicsPage() {
   function profName(tp: any) {
     const u = tp.professor?.user;
     return (
-      [u?.firstName, u?.lastName].filter(Boolean).join(" ") ||
+      personName(u) ||
       tp.professor?.universityEmail ||
       "\u2014"
     );
@@ -366,6 +375,17 @@ export function AdminTopicsPage() {
             مسحُ ورقةٍ في اليد للوصول إلى مشروعها — الطريقُ المعاكس للقائمة:
             من الورق إلى الشاشة لا من الشاشة إلى الورق.
           */}
+          {/* The list the department prints: before assignment or after. */}
+          <button
+            onClick={() => setTitlesOpen(true)}
+            title={t("admin.titlesList.subtitle")}
+            data-testid="open-titles-list"
+            className="inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2.5 text-sm font-semibold text-forest transition hover:border-gold hover:bg-gold/10"
+          >
+            <ListOrdered size={18} />
+            {t("admin.titlesList.button")}
+          </button>
+
           <button
             onClick={() => setScanOpen(true)}
             title={t("supervision.scanSubtitle")}
@@ -454,9 +474,7 @@ export function AdminTopicsPage() {
                 ...professors.map((p: any) => ({
                   value: p.id,
                   label:
-                    [p.user?.firstName, p.user?.lastName]
-                      .filter(Boolean)
-                      .join(" ") || p.universityEmail,
+                    personName(p.user) || p.universityEmail,
                 })),
               ]}
             />
@@ -678,24 +696,8 @@ export function AdminTopicsPage() {
                   outage or a spent rate limit looked like an empty database. */}
               {!isLoading && isError && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center">
-                    <AlertTriangle
-                      size={28}
-                      className="mx-auto mb-3 text-red-500"
-                    />
-                    <p className="text-sm font-semibold text-forest">
-                      {t("admin.loadFailed")}
-                    </p>
-                    <p className="mt-1 text-xs text-clay">
-                      {t("admin.loadFailedHint")}
-                    </p>
-                    <button
-                      onClick={() => refetch()}
-                      className="mt-4 inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2 text-xs font-semibold text-forest transition hover:bg-forest/5"
-                    >
-                      <RotateCcw size={14} />
-                      {t("admin.retry")}
-                    </button>
+                  <td colSpan={7} className="px-4 py-2">
+                    <ErrorRetry compact title={t("admin.loadFailed")} onRetry={() => refetch()} />
                   </td>
                 </tr>
               )}
@@ -996,6 +998,20 @@ export function AdminTopicsPage() {
       </DangerConfirm>
 
       {scanOpen && <ScanDialog onClose={() => setScanOpen(false)} />}
+      {titlesOpen && (
+        <TopicTitlesDialog
+          scope={{
+            academicYearId: academicYearId || undefined,
+            professorId: professorId || undefined,
+            facultyId: facultyId || undefined,
+            departmentId: departmentId || undefined,
+            filiereId: filiereId || undefined,
+            specializationId: specializationId || undefined,
+          }}
+          years={years ?? []}
+          onClose={() => setTitlesOpen(false)}
+        />
+      )}
 
       {supervisionTopicId && (
         <SupervisionDialog

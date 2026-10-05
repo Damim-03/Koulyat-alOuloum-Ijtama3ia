@@ -16,6 +16,7 @@ import {
   UserX,
   ChevronDown,
   ChevronUp,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   useStudents,
@@ -25,12 +26,26 @@ import {
   useFilieres,
 } from "../../hooks/admin-hook";
 import { UserFormDialog } from "../../components/dialog/user/user-form-dialog.form";
+import { StudentImportDialog } from "../../components/dialog/student/student-import-dialog";
 import { SearchField } from "../../components/ui/search-field";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
 import { Select as UiSelect } from "../../../../components/ui/select";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
+import {
+  SPEC_LEVEL_KEY,
+  SPEC_LEVELS,
+  type SpecLevel,
+} from "../../components/dialog/user/user-form-steps";
+import { familyName, givenName } from "../../../../lib/person-name";
+
+/** لونٌ لكلّ مستوى: يُقرأ العمود بنظرة دون قراءة كلماته. */
+const LEVEL_TONE: Record<SpecLevel, string> = {
+  licence: "bg-sage/12 text-sage ring-sage/25",
+  master: "bg-gold/15 text-gold ring-gold/30",
+  doctorate: "bg-forest/10 text-forest ring-forest/20",
+};
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -44,6 +59,7 @@ function chain(s: any) {
   const faculty = dept?.faculty;
   return {
     specName: spec?.name ?? null,
+    level: (spec?.level ?? null) as SpecLevel | null,
     filiereName: filiere?.name ?? null,
     deptName: dept?.name ?? null,
     facultyName: faculty?.name ?? null,
@@ -62,9 +78,11 @@ export function AdminStudentsPage() {
   const [facultyId, setFacultyId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [filiereId, setFiliereId] = useState("");
+  const [level, setLevel] = useState<SpecLevel | "">("");
   const [specializationId, setSpecializationId] = useState("");
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [tab, setTab] = useState<"all" | "unassigned">("all");
 
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -90,6 +108,7 @@ export function AdminStudentsPage() {
     facultyId,
     departmentId,
     filiereId,
+    level,
     specializationId,
     tab,
   ]);
@@ -104,6 +123,7 @@ export function AdminStudentsPage() {
       facultyId: facultyId || undefined,
       departmentId: departmentId || undefined,
       filiereId: filiereId || undefined,
+      level: level || undefined,
       specializationId: specializationId || undefined,
       unassigned: tab === "unassigned" ? "true" : undefined,
     }),
@@ -114,6 +134,7 @@ export function AdminStudentsPage() {
       facultyId,
       departmentId,
       filiereId,
+      level,
       specializationId,
       tab,
     ],
@@ -160,6 +181,8 @@ export function AdminStudentsPage() {
   const specOptions = useMemo(
     () =>
       (specs ?? []).filter((sp: any) => {
+        // المستوى يضيّق قائمة التخصصات كما يضيّقها الهرم.
+        if (level && sp.level !== level) return false;
         if (filiereId && sp.filiereId !== filiereId) return false;
         if (departmentId && !filiereId && sp.departmentId !== departmentId)
           return false;
@@ -171,7 +194,7 @@ export function AdminStudentsPage() {
         }
         return true;
       }),
-    [specs, filiereId, departmentId, facultyId, departments],
+    [specs, level, filiereId, departmentId, facultyId, departments],
   );
 
   // clear children when a parent becomes incompatible
@@ -209,6 +232,7 @@ export function AdminStudentsPage() {
     (facultyId ? 1 : 0) +
     (departmentId ? 1 : 0) +
     (filiereId ? 1 : 0) +
+    (level ? 1 : 0) +
     (specializationId ? 1 : 0);
 
   function clearAll() {
@@ -217,6 +241,7 @@ export function AdminStudentsPage() {
     setFacultyId("");
     setDepartmentId("");
     setFiliereId("");
+    setLevel("");
     setSpecializationId("");
   }
 
@@ -232,6 +257,17 @@ export function AdminStudentsPage() {
             {t("admin.studentsSubtitle")}
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        {/* دفعةٌ كاملة من ملفّ واحد — بجانب الإضافة الفردية لا بدلاً منها. */}
+        <button
+          type="button"
+          onClick={() => setImportOpen(true)}
+          data-testid="open-student-import"
+          className="inline-flex items-center gap-2 rounded-xl border border-gold/50 bg-gold/10 px-4 py-2.5 text-sm font-semibold text-forest transition hover:bg-gold/20"
+        >
+          <FileSpreadsheet size={18} className="text-gold" />
+          {t("admin.import.button")}
+        </button>
         <button
           onClick={() => setDialogOpen(true)}
           className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
@@ -239,6 +275,7 @@ export function AdminStudentsPage() {
           <Plus size={18} />
           {t("admin.addStudent")}
         </button>
+        </div>
       </div>
 
       {/* Stat strip */}
@@ -362,8 +399,8 @@ export function AdminStudentsPage() {
             />
           </div>
 
-          {/* Filters */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Filters — بترتيب الهرم، والمستوى قبل التخصص الذي يضيّقه */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Select
               label={t("admin.facultyLabel")}
               value={facultyId}
@@ -394,6 +431,17 @@ export function AdminStudentsPage() {
               options={filiereOptions.map((f: any) => ({
                 v: f.id,
                 l: f.name,
+              }))}
+            />
+
+            <Select
+              label={t("admin.specializationLevel")}
+              value={level}
+              onChange={(v) => setLevel(v as SpecLevel | "")}
+              placeholder={t("admin.allLevels")}
+              options={SPEC_LEVELS.map((lv) => ({
+                v: lv,
+                l: t(SPEC_LEVEL_KEY[lv]),
               }))}
             />
 
@@ -446,6 +494,13 @@ export function AdminStudentsPage() {
                 <Chip
                   label={t("admin.chipFiliere", { value: filiereName })}
                   onClear={() => setFiliereId("")}
+                />
+              )}
+
+              {level && (
+                <Chip
+                  label={t("admin.chipLevel", { value: t(SPEC_LEVEL_KEY[level]) })}
+                  onClear={() => setLevel("")}
                 />
               )}
 
@@ -502,6 +557,9 @@ export function AdminStudentsPage() {
                 <th className="px-4 py-3 text-start text-xs font-medium">
                   {t("admin.specialization")}
                 </th>
+                <th className="px-4 py-3 text-start text-xs font-medium">
+                  {t("admin.specializationLevel")}
+                </th>
                 <th className="px-4 py-3 text-start text-xs font-medium">{t("admin.filiere")}</th>
                 <th className="px-4 py-3 text-start text-xs font-medium">{t("admin.department")}</th>
                 <th className="px-4 py-3 text-start text-xs font-medium">{t("admin.facultyLabel")}</th>
@@ -515,7 +573,7 @@ export function AdminStudentsPage() {
               {isLoading && (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={11}
                     className="px-5 py-10 text-center text-sm text-clay"
                   >
                     <LoadingArea size={96} className="py-10" />
@@ -525,7 +583,7 @@ export function AdminStudentsPage() {
 
               {!isLoading && isError && (
                 <tr>
-                  <td colSpan={10} className="px-5">
+                  <td colSpan={11} className="px-5">
                     <ErrorRetry compact onRetry={() => refetch()} />
                   </td>
                 </tr>
@@ -533,7 +591,7 @@ export function AdminStudentsPage() {
               {!isLoading && !isError && students.length === 0 && (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={11}
                     className="px-5 py-12 text-center text-sm text-clay"
                   >
                     {t("admin.noStudents")}
@@ -553,16 +611,27 @@ export function AdminStudentsPage() {
                       <UserAvatar user={s.user} size={36} />
                     </td>
                     <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                      {s.user?.firstName ?? <None />}
+                      {givenName(s.user) || <None />}
                     </td>
                     <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                      {s.user?.lastName ?? <None />}
+                      {familyName(s.user) || <None />}
                     </td>
                     <td className="px-4 py-3.5 text-sm text-clay" dir="ltr">
                       {s.registrationNumber}
                     </td>
                     <td className="px-4 py-3.5 text-sm text-clay">
                       {c.specName ?? <None />}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      {c.level ? (
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap ring-1 ${LEVEL_TONE[c.level]}`}
+                        >
+                          {t(SPEC_LEVEL_KEY[c.level])}
+                        </span>
+                      ) : (
+                        <None />
+                      )}
                     </td>
                     <td className="px-4 py-3.5 text-sm text-clay">
                       {c.filiereName ?? <None fem />}
@@ -622,6 +691,7 @@ export function AdminStudentsPage() {
         onClose={() => setDialogOpen(false)}
         lockedRole="student"
       />
+      <StudentImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Check, X } from "lucide-react";
+import { Check, Lock, X } from "lucide-react";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 
 export type GenderValue = "male" | "female";
@@ -11,16 +11,21 @@ export type GenderValue = "male" | "female";
  * Each option previews the avatar it produces, because that is the only
  * visible consequence of the field: an account with no photo is drawn from
  * this answer.
+ *
+ * `readOnly` shows what is on file to someone who cannot change it — the
+ * stored answer still carries its check, the other is dimmed.
  */
 export function GenderSelect({
   value,
   onChange,
   clearable = true,
+  readOnly = false,
 }: {
   value: GenderValue | null | undefined;
   onChange: (next: GenderValue | null) => void;
   /** Editing an existing account allows returning to "not stated". */
   clearable?: boolean;
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -39,11 +44,14 @@ export function GenderSelect({
               key={option.value}
               type="button"
               aria-pressed={active}
+              disabled={readOnly}
               onClick={() => onChange(option.value)}
-              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-start transition ${
+              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-start transition disabled:cursor-default ${
                 active
                   ? "border-gold bg-gold/10"
-                  : "border-forest/15 bg-cream-2 hover:border-gold/40 hover:bg-forest/5"
+                  : readOnly
+                    ? "border-forest/10 bg-cream-2 opacity-45"
+                    : "border-forest/15 bg-cream-2 hover:border-gold/40 hover:bg-forest/5"
               }`}
             >
               <UserAvatar user={{ gender: option.value }} size={26} />
@@ -56,7 +64,9 @@ export function GenderSelect({
         })}
       </div>
 
-      {clearable && value && (
+      {readOnly ? (
+        <Lock size={13} className="shrink-0 text-clay/40" />
+      ) : clearable && value && (
         <button
           type="button"
           onClick={() => onChange(null)}

@@ -33,6 +33,7 @@ const MOUNTS: Record<string, string> = {
   student: "/api/student",
   common: "/api/common",
   public: "/api/public",
+  site: "/api/site",
 };
 
 const MODULES_DIR = path.join(__dirname, "..", "..", "src", "modules");

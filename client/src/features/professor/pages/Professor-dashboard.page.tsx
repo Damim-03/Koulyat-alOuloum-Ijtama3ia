@@ -4,50 +4,60 @@ import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeft,
-  CalendarClock,
+  Award,
+  Building2,
   CalendarCheck,
+  CalendarClock,
   CheckCircle2,
   ClipboardList,
-  EyeOff,
   Clock,
+  Crown,
+  EyeOff,
   FileText,
   FolderKanban,
+  Gavel,
   GraduationCap,
+  IdCard,
   Inbox,
+  Landmark,
+  Mail,
   MapPin,
+  Paperclip,
   Pencil,
   Plus,
+  Sparkles,
   Users,
   type LucideIcon,
 } from "lucide-react";
 import { useProfessorDashboard } from "../hooks/Professor-hook";
 import { useAuth } from "../../../hooks/use-auth";
+import { useDates } from "../../../hooks/use-dates";
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import type {
-  DashAgendaItem,
+  DashCommitteeSeat,
   DashMilestoneLite,
+  DashProfile,
   DashProject,
   DashSubmissionLite,
   DashTopicLite,
+  ProfessorDashboard,
 } from "../../../types/professor.types";
+import { givenName, personName } from "../../../lib/person-name";
 
 /**
  * The professor's first screen.
  *
- * It answers three questions in order: what needs me today, what is coming,
- * and where do my projects stand. The counters are last in importance and so
- * they are small — a dashboard that only counts things is a report, and a
- * report is not what someone opens their working day with.
+ * It opens on who they are — the card a colleague would recognise — and the
+ * figures that matter, then answers in order: what needs me today, what is
+ * coming (their own projects' dates and the defenses they sit on for
+ * others), where their projects stand, who their students are and what they
+ * last handed in, and finally every topic with its state.
  *
  * Everything arrives in one request; see GET /professor/dashboard.
  */
 export function ProfessorDashboardPage() {
-  const { t, i18n } = useTranslation();
-  const { user } = useAuth();
+  const { t } = useTranslation();
   const { data, isLoading } = useProfessorDashboard();
-
-  const name =
-    [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() || "";
 
   const { attentionCount, filledBuckets } = useMemo(() => {
     const a = data?.attention;
@@ -69,464 +79,72 @@ export function ProfessorDashboardPage() {
     };
   }, [data]);
 
-  function fmtDate(iso: string) {
-    try {
-      return new Intl.DateTimeFormat(i18n.language || "ar", {
-        dateStyle: "medium",
-      }).format(new Date(iso));
-    } catch {
-      return iso;
-    }
-  }
+  if (isLoading || !data) return <DashboardSkeleton />;
 
-  /** Days from today — negative means the date has passed. */
-  function daysFrom(iso: string) {
-    const midnight = new Date();
-    midnight.setHours(0, 0, 0, 0);
-    return Math.round(
-      (new Date(iso).setHours(0, 0, 0, 0) - midnight.getTime()) / 86400000,
-    );
-  }
-
-  function relative(iso: string) {
-    const d = daysFrom(iso);
-    if (d === 0) return t("pro.today");
-    if (d === 1) return t("pro.tomorrow");
-    if (d < 0) return t("pro.lateByDays", { count: Math.abs(d) });
-    return t("pro.inDays", { count: d });
-  }
-
-  if (isLoading || !data) {
-    return (
-      <div className="font-body">
-        <div className="mb-8 h-9 w-72 animate-pulse rounded-xl bg-forest/10" />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, k) => (
-            <div
-              key={k}
-              className="h-28 animate-pulse rounded-2xl bg-forest/5"
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const { topics, stats, topicBreakdown, attention, agenda, projects } = data;
+  const { topics, stats, topicBreakdown, projects } = data;
+  const committee = data.committee ?? [];
 
   return (
-    <div className="font-body">
-      {/* ── greeting ── */}
-      <div className="mb-6">
-        <h1 className="font-serif text-2xl font-bold text-forest lg:text-3xl">
-          {name ? t("pro.dashGreetingNamed", { name }) : t("pro.dashGreeting")}
-        </h1>
-        <p className="mt-1.5 text-sm text-clay">{t("pro.dashSubtitle")}</p>
-      </div>
+    <div className="space-y-6 font-body">
+      <ProfileHero data={data} />
 
-      {/* ── counters ── */}
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatTile
-          icon={FileText}
-          value={stats.myTopics}
-          label={t("pro.myTopicsCount")}
-          tint="bg-sage/20 text-sage"
-          to="topics"
-        />
-        <StatTile
-          icon={FolderKanban}
-          value={stats.supervisedProjects}
-          label={t("pro.supervisedProjects")}
-          tint="bg-gold/15 text-gold"
-          to="groups"
-        />
-        <StatTile
-          icon={Users}
-          value={stats.supervisedStudents}
-          label={t("pro.supervisedStudents")}
-          tint="bg-soft-sage/35 text-forest"
-          to="groups"
-        />
-        <StatTile
-          icon={AlertTriangle}
-          value={stats.overdueMilestones}
-          label={t("pro.overdueMilestones")}
-          tint={
-            stats.overdueMilestones > 0
-              ? "bg-brick/15 text-brick"
-              : "bg-forest/8 text-clay"
-          }
-          to="milestones"
-          alarm={stats.overdueMilestones > 0}
-        />
-        <StatTile
-          icon={CalendarCheck}
-          value={stats.upcomingDefenses}
-          label={t("pro.upcomingDefenses")}
-          tint="bg-violet-500/15 text-violet-500"
-          to="groups"
-        />
-      </div>
+      <AttentionSection
+        data={data}
+        count={attentionCount}
+        filledBuckets={filledBuckets}
+      />
 
-      {/* ══════════ needs your attention ══════════
-          Full width and laid out in columns: the buckets multiply with the
-          number of topics, and a tall narrow list is the one shape that does
-          not survive that. */}
-      <section className="mb-5 rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <header className="mb-4 flex items-center gap-2 border-b border-forest/10 pb-3">
-          <span className="grid size-8 place-items-center rounded-xl bg-gold/15 text-gold">
-            <ClipboardList size={17} />
-          </span>
-          <h2 className="font-serif text-base font-bold text-forest">
-            {t("pro.needsAttention")}
-          </h2>
-          {attentionCount > 0 && (
-            <span className="rounded-full bg-brick/10 px-2 py-0.5 text-[11px] font-bold text-brick tabular-nums">
-              {attentionCount}
-            </span>
-          )}
-        </header>
-
-        {attentionCount === 0 ? (
-          <Settled text={t("pro.nothingNeedsYou")} />
-        ) : (
-          <div
-            className={`grid grid-cols-1 items-start gap-x-6 gap-y-5 ${
-              filledBuckets >= 3
-                ? "md:grid-cols-2 2xl:grid-cols-3"
-                : filledBuckets === 2
-                  ? "md:grid-cols-2"
-                  : ""
-            }`}
-          >
-            {/* a rejected topic is the only thing here that is purely the
-                professor's to fix, so it leads */}
-            <Bucket
-              icon={Pencil}
-              tone="brick"
-              title={t("pro.rejectedTopicsNeedEdit")}
-              items={attention.rejectedTopics}
-              render={(tp: DashTopicLite) => (
-                <Row
-                  key={tp.id}
-                  to={`topics/${tp.id}`}
-                  title={tp.title}
-                  meta={tp.rejectionReason ?? t("pro.noReasonGiven")}
-                  badge={t("pro.fixIt")}
-                  badgeTone="brick"
-                />
-              )}
-            />
-
-            <Bucket
-              icon={AlertTriangle}
-              tone="brick"
-              title={t("pro.overdueMilestones")}
-              items={attention.overdueMilestones}
-              render={(m: DashMilestoneLite) => (
-                <Row
-                  key={m.id}
-                  to={`groups/${m.groupId}`}
-                  title={m.title}
-                  meta={m.group.topic.title}
-                  badge={relative(m.deadline)}
-                  badgeTone="brick"
-                />
-              )}
-            />
-
-            <Bucket
-              icon={Clock}
-              tone="gold"
-              title={t("pro.dueThisWeek")}
-              items={attention.dueThisWeek}
-              render={(m: DashMilestoneLite) => (
-                <Row
-                  key={m.id}
-                  to={`groups/${m.groupId}`}
-                  title={m.title}
-                  meta={m.group.topic.title}
-                  badge={relative(m.deadline)}
-                  badgeTone="gold"
-                />
-              )}
-            />
-
-            <Bucket
-              icon={Inbox}
-              tone="sage"
-              title={t("pro.awaitingReview")}
-              items={attention.awaitingReview}
-              render={(s: DashSubmissionLite) => (
-                <Row
-                  key={s.id}
-                  to={`groups/${s.milestone.groupId}`}
-                  title={s.fileName}
-                  meta={`${s.milestone.title} · ${s.milestone.group.topic.title}`}
-                  badge={fmtDate(s.createdAt)}
-                  badgeTone="sage"
-                  avatar={s.uploadedBy}
-                />
-              )}
-            />
-
-            <Bucket
-              icon={Clock}
-              tone="gold"
-              title={t("pro.awaitingAdminApproval")}
-              items={attention.pendingTopics}
-              render={(tp: DashTopicLite) => (
-                <Row
-                  key={tp.id}
-                  to={`topics/${tp.id}`}
-                  title={tp.title}
-                  meta={t("pro.sentOn", { date: fmtDate(tp.createdAt) })}
-                  badge={relative(tp.createdAt)}
-                  badgeTone="gold"
-                />
-              )}
-            />
-
-            {/* Accepted but not on the board yet. The professor cannot
-                publish it himself, but he is the one who notices. */}
-            <Bucket
-              icon={EyeOff}
-              tone="gold"
-              title={t("pro.approvedNotPublished")}
-              items={attention.approvedNotPublished}
-              render={(tp: DashTopicLite) => (
-                <Row
-                  key={tp.id}
-                  to={`topics/${tp.id}`}
-                  title={tp.title}
-                  meta={tp.specialization?.name ?? "—"}
-                  badge={t("pro.notPublishedYet")}
-                  badgeTone="gold"
-                />
-              )}
-            />
-
-            <Bucket
-              icon={FileText}
-              tone="sage"
-              title={t("pro.publishedNoRequests")}
-              items={attention.openWithoutRequests}
-              render={(tp: DashTopicLite) => (
-                <Row
-                  key={tp.id}
-                  to={`topics/${tp.id}`}
-                  title={tp.title}
-                  meta={tp.specialization?.name ?? "—"}
-                  badge={t("pro.noRequestsYet")}
-                  badgeTone="sage"
-                />
-              )}
-            />
-          </div>
-        )}
-      </section>
-
-      {/* ══════════ the work itself, beside what is coming ══════════ */}
-      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[1.6fr_1fr]">
-        {/* ── projects: the professor's actual objects, so they lead ── */}
-        <section>
-          <header className="mb-3 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 font-serif text-base font-bold text-forest">
-              <span className="grid size-8 place-items-center rounded-xl bg-gold/15 text-gold">
-                <FolderKanban size={17} />
-              </span>
-              {t("pro.myProjects")}
-              <span className="rounded-full bg-forest/8 px-2 py-0.5 text-[11px] font-bold text-clay tabular-nums">
-                {projects.length}
-              </span>
-            </h2>
-            <Link
-              to="groups"
-              className="flex items-center gap-1 text-xs text-sage transition hover:text-forest"
-            >
-              {t("pro.viewAll")}
-              <ArrowLeft size={12} className="ltr:rotate-180" />
-            </Link>
-          </header>
-
+      {/* ══════════ the work, what is coming, the people ══════════
+          One grid for both rows, so their gutters line up: the projects
+          take two of the three columns and the agenda the third, and the
+          row beneath is three single columns. Two cards on one row share
+          one height, so the shorter never leaves a hole under it.
+          On a laptop it is two columns: the projects across the top, the
+          other four in two pairs. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 2xl:grid-cols-3">
+        <section className={`${SECTION} lg:col-span-2`}>
+          <SectionHeader
+            icon={FolderKanban}
+            title={t("pro.myProjects")}
+            badge={String(projects.length)}
+            to="groups"
+          />
           {projects.length === 0 ? (
-            <div className="rounded-2xl border border-forest/10 bg-cream-card p-8">
-              <Empty text={t("pro.noSupervisedProjects")} />
-            </div>
+            <Empty icon={FolderKanban} text={t("pro.noSupervisedProjects")} />
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,17rem),1fr))] gap-4">
-              {projects.map((p: DashProject) => (
-                <ProjectCard
-                  key={p.id}
-                  project={p}
-                  fmtDate={fmtDate}
-                  relative={relative}
-                />
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] gap-4">
+              {projects.map((p) => (
+                <ProjectCard key={p.id} project={p} />
               ))}
             </div>
           )}
         </section>
 
-        {/* ══════════ side column ══════════ */}
-        <div className="space-y-5">
-          {/* ── what is coming ── */}
-          <section className="rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-            <header className="mb-4 flex items-center gap-2 border-b border-forest/10 pb-3">
-              <span className="grid size-8 place-items-center rounded-xl bg-forest/8 text-forest">
-                <CalendarClock size={17} />
-              </span>
-              <h2 className="font-serif text-base font-bold text-forest">
-                {t("pro.whatIsComing")}
-              </h2>
-            </header>
-
-            {agenda.length === 0 ? (
-              <Empty text={t("pro.nothingScheduled")} />
-            ) : (
-              <ol className="relative space-y-3 ps-4">
-                {/* the thread the dates hang from */}
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-y-1 start-[3px] w-px bg-forest/12"
-                />
-                {agenda.map((a: DashAgendaItem) => {
-                  const defense = a.kind === "defense";
-                  return (
-                    <li key={`${a.kind}-${a.id}`} className="relative">
-                      <span
-                        aria-hidden="true"
-                        className={`absolute -start-4 top-1.5 size-2 rounded-full ring-2 ring-cream-card ${
-                          defense ? "bg-violet-500" : "bg-gold"
-                        }`}
-                      />
-                      <Link
-                        to={`groups/${a.groupId}`}
-                        className="block rounded-xl px-2 py-1.5 transition hover:bg-forest/4"
-                      >
-                        <div className="flex items-baseline justify-between gap-2">
-                          <p className="truncate text-sm font-medium text-forest">
-                            {defense ? t("pro.defenseOf", { title: a.title }) : a.title}
-                          </p>
-                          <span className="shrink-0 text-[11px] font-semibold text-clay">
-                            {relative(a.date)}
-                          </span>
-                        </div>
-                        <p className="flex items-center gap-1.5 truncate text-[11px] text-clay">
-                          {fmtDate(a.date)}
-                          {a.room && (
-                            <>
-                              <MapPin size={10} />
-                              {a.room}
-                            </>
-                          )}
-                          {!defense && <>· {a.topicTitle}</>}
-                        </p>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-          </section>
-
-          {/* ── topics by status ── */}
-          <section className="rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-            <header className="mb-4 flex items-center justify-between border-b border-forest/10 pb-3">
-              <h2 className="font-serif text-base font-bold text-forest">
-                {t("pro.topicsByStatus")}
-              </h2>
-              <Link
-                to="topics"
-                className="flex items-center gap-1 text-xs text-sage transition hover:text-forest"
-              >
-                {t("pro.viewAll")}
-                <ArrowLeft size={12} className="ltr:rotate-180" />
-              </Link>
-            </header>
-
-            <StatusBreakdown breakdown={topicBreakdown} total={stats.myTopics} />
-
-            <Link
-              to="topics"
-              className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-dashed border-forest/30 px-4 py-2.5 text-sm font-semibold text-forest transition hover:border-gold hover:bg-gold/10"
-            >
-              <Plus size={16} />
-              {t("pro.addTopic")}
-            </Link>
-          </section>
-        </div>
+        <AgendaSection data={data} />
+        <StudentsSection projects={projects} />
+        <SubmissionsSection submissions={data.recentSubmissions ?? []} />
+        <CommitteeSection seats={committee} />
       </div>
 
-      {/* ══════════ my topics ══════════
-          A count per status cannot say *which* topic is where, and that is
-          the question once there are more than a handful. */}
-      <section className="mt-5 rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <header className="mb-4 flex items-center justify-between border-b border-forest/10 pb-3">
-          <h2 className="flex items-center gap-2 font-serif text-base font-bold text-forest">
-            <span className="grid size-8 place-items-center rounded-xl bg-sage/15 text-sage">
-              <FileText size={17} />
-            </span>
-            {t("pro.myTopicsCount")}
-            <span className="rounded-full bg-forest/8 px-2 py-0.5 text-[11px] font-bold text-clay tabular-nums">
-              {topics.length}
-            </span>
-          </h2>
-          <Link
-            to="topics"
-            className="flex items-center gap-1 text-xs text-sage transition hover:text-forest"
-          >
-            {t("pro.viewAll")}
-            <ArrowLeft size={12} className="ltr:rotate-180" />
-          </Link>
-        </header>
-
-        {topics.length === 0 ? (
-          <Empty text={t("pro.noTopicsYet")} />
-        ) : (
-          <ul className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-2">
-            {topics.slice(0, 9).map((tp: DashTopicLite) => (
-              <li key={tp.id}>
-                <Link
-                  to={`topics/${tp.id}`}
-                  className="flex items-center gap-2.5 rounded-xl border border-forest/10 bg-cream-2/60 px-3 py-2.5 transition hover:border-gold/40 hover:bg-gold/5"
-                >
-                  <span
-                    className={`size-2.5 shrink-0 rounded-full ${STATUS_DOT[tp.status] ?? "bg-clay"}`}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-medium text-forest">
-                      {tp.title}
-                    </span>
-                    <span className="block truncate text-[11px] text-clay">
-                      {[tp.specialization?.name, t(`status.${tp.status}`)]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                  </span>
-                  {/* how many teams have asked for it — the number that says
-                      whether a published topic is landing */}
-                  <span
-                    className="inline-flex shrink-0 items-center gap-1 rounded-full bg-forest/8 px-2 py-0.5 text-[10px] font-bold text-clay tabular-nums"
-                    title={t("pro.groupRequestsOnTopic")}
-                  >
-                    <Users size={10} />
-                    {tp._count.groupRequests}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {topics.length > 9 && (
-          <p className="mt-2.5 text-center text-[11px] text-clay/80">
-            {`+${topics.length - 9}`}
-          </p>
-        )}
-      </section>
+      {/* ══════════ every topic, with where they stand in one line ══════════ */}
+      <TopicsSection
+        topics={topics}
+        breakdown={topicBreakdown}
+        total={stats.myTopics}
+      />
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────
+//  shared bits
+// ─────────────────────────────────────────────────────────────
+
+const CARD =
+  "rounded-3xl border border-forest/10 bg-cream-card shadow-[0_4px_24px_rgba(38,66,61,0.06)]";
+
+/** A section card that fills its grid cell, so an empty state can centre in it. */
+const SECTION = `flex flex-col p-6 ${CARD}`;
 
 /** One colour per status, shared by the list and the breakdown. */
 const STATUS_DOT: Record<string, string> = {
@@ -538,38 +156,478 @@ const STATUS_DOT: Record<string, string> = {
   archived: "bg-clay",
 };
 
-// ─────────────────────────────────────────────────────────────
+type Person = {
+  firstName?: string | null;
+  lastName?: string | null;
+} | null | undefined;
 
-function StatTile({
+function fullName(u: Person) {
+  return personName(u);
+}
+
+/** `grade` is JSON: a list of strings, or a lone string on older rows. */
+function asList(v: unknown): string[] {
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && !!x.trim());
+  if (typeof v === "string" && v.trim()) return [v.trim()];
+  return [];
+}
+
+function SectionHeader({
   icon: Icon,
-  value,
-  label,
-  tint,
+  title,
+  badge,
   to,
-  alarm,
+  tint = "bg-gold/15 text-gold",
+  id,
+  action,
 }: {
   icon: LucideIcon;
-  value: number;
+  title: string;
+  badge?: string;
+  to?: string;
+  tint?: string;
+  id?: string;
+  /** Something to do from the header — a button beside "view all". */
+  action?: React.ReactNode;
+}) {
+  const { t } = useTranslation();
+  return (
+    <header
+      id={id}
+      className="mb-5 flex scroll-mt-24 items-center justify-between gap-3 border-b border-forest/10 pb-4"
+    >
+      <h2 className="flex items-center gap-2.5 font-serif text-lg font-bold text-forest">
+        <span className={`grid size-9 place-items-center rounded-xl ${tint}`}>
+          <Icon size={18} />
+        </span>
+        {title}
+        {badge !== undefined && (
+          <span className="rounded-full bg-forest/8 px-2.5 py-0.5 text-[11px] font-bold text-clay tabular-nums">
+            {badge}
+          </span>
+        )}
+      </h2>
+      {(action || to) && (
+        <div className="flex shrink-0 items-center gap-3">
+          {action}
+          {to && (
+            <Link
+              to={to}
+              className="flex items-center gap-1 text-xs text-sage transition hover:text-forest"
+            >
+              {t("pro.viewAll")}
+              <ArrowLeft size={12} className="ltr:rotate-180" />
+            </Link>
+          )}
+        </div>
+      )}
+    </header>
+  );
+}
+
+/** Centred in whatever height the row gives it — no fixed padding to pad out. */
+function Empty({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2.5 py-4 text-center">
+      <span className="grid size-11 place-items-center rounded-full bg-gold/10 text-gold ring-4 ring-gold/5">
+        <Icon size={19} />
+      </span>
+      <p className="max-w-xs text-sm text-clay">{text}</p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  who you are, and the figures
+// ─────────────────────────────────────────────────────────────
+
+function ProfileHero({ data }: { data: ProfessorDashboard }) {
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const { daysFrom } = useDates();
+  const profile: DashProfile | null = data.profile ?? null;
+  const { stats } = data;
+
+  const first = givenName(user);
+  const last = user?.lastName?.trim() ?? "";
+  const grades = asList(profile?.grade);
+  const upcomingSeats = (data.committee ?? []).filter(
+    (c) => c.status === "scheduled" && daysFrom(c.date) >= 0,
+  ).length;
+
+  const tiles: {
+    icon: LucideIcon;
+    value: number;
+    label: string;
+    to: string;
+    tone: string;
+    alarm?: boolean;
+  }[] = [
+    { icon: FileText, value: stats.myTopics, label: t("pro.myTopicsCount"), to: "topics", tone: "text-soft-sage" },
+    { icon: FolderKanban, value: stats.supervisedProjects, label: t("pro.supervisedProjects"), to: "groups", tone: "text-gold-soft" },
+    { icon: Users, value: stats.supervisedStudents, label: t("pro.supervisedStudents"), to: "groups", tone: "text-cream" },
+    {
+      icon: AlertTriangle,
+      value: stats.overdueMilestones,
+      label: t("pro.overdueMilestones"),
+      to: "milestones",
+      tone: stats.overdueMilestones > 0 ? "text-[#f0a48f]" : "text-soft-sage",
+      alarm: stats.overdueMilestones > 0,
+    },
+    { icon: CalendarCheck, value: stats.upcomingDefenses, label: t("pro.upcomingDefenses"), to: "groups", tone: "text-violet-300" },
+    { icon: Gavel, value: upcomingSeats, label: t("pro.hub.committeeSeats"), to: "#committee", tone: "text-gold-soft" },
+  ];
+
+  return (
+    <section className="relative rounded-3xl bg-linear-to-br from-forest to-forest-deep p-6 text-cream shadow-[0_12px_40px_rgba(26,49,45,0.25)] sm:p-8">
+      {/* ornament, clipped by a layer of its own so the card never scrolls */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl"
+      >
+        <div
+          className="absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 1px 1px, #fff 1px, transparent 0)",
+            backgroundSize: "18px 18px",
+          }}
+        />
+        <div className="absolute -end-16 -top-28 size-96 rounded-full bg-gold/25 blur-3xl" />
+        <div className="absolute -start-10 -bottom-32 size-80 rounded-full bg-soft-sage/15 blur-3xl" />
+        <div className="absolute inset-x-10 bottom-0 h-px bg-linear-to-r from-transparent via-gold/70 to-transparent" />
+      </div>
+
+      <div className="relative flex flex-col items-center gap-6 text-center lg:flex-row lg:text-start">
+        {/* photo, in a gold frame */}
+        <div className="relative shrink-0">
+          <div className="rounded-full bg-linear-to-br from-gold-soft via-gold to-gold-soft/30 p-1 shadow-[0_10px_30px_rgba(193,150,90,0.35)]">
+            <UserAvatar
+              user={user}
+              size={112}
+              tone="gold"
+              className="text-[var(--t-brand-deep)]! ring-4 ring-[var(--t-brand-deep)]"
+            />
+          </div>
+          <span
+            title={t("role.professor")}
+            className="absolute end-1 bottom-1 grid size-9 place-items-center rounded-full bg-gold text-[var(--t-brand-deep)] shadow-md ring-4 ring-[var(--t-brand-deep)]"
+          >
+            <GraduationCap size={17} />
+          </span>
+        </div>
+
+        {/* name, grade, department */}
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold tracking-wide text-gold-soft">
+            <Sparkles size={13} />
+            {t("pro.hub.welcome")}
+          </p>
+          <h1 className="font-serif text-3xl leading-tight font-bold text-cream lg:text-4xl">
+            {first || last ? (
+              <>
+                {first} <span className="text-gold-soft">{last}</span>
+              </>
+            ) : (
+              t("role.professor")
+            )}
+          </h1>
+          <p className="mt-2 text-sm text-soft-sage">{t("pro.dashSubtitle")}</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2 lg:justify-start">
+            <HeroChip icon={Award}>
+              {grades.length ? grades.join(" · ") : t("role.professor")}
+            </HeroChip>
+            {profile?.department?.name && (
+              <HeroChip icon={Building2}>{profile.department.name}</HeroChip>
+            )}
+            {profile?.department?.faculty?.name && (
+              <HeroChip icon={Landmark}>
+                {profile.department.faculty.name}
+              </HeroChip>
+            )}
+          </div>
+        </div>
+
+        {/* identity plate */}
+        {profile && (
+          <div className="w-full shrink-0 space-y-3 rounded-2xl border border-gold/30 bg-white/5 p-4 text-start backdrop-blur-sm lg:w-auto lg:min-w-72">
+            <PlateLine
+              icon={Mail}
+              label={t("pro.hub.universityEmail")}
+              value={profile.universityEmail}
+            />
+            <div className="h-px bg-white/10" />
+            <PlateLine
+              icon={IdCard}
+              label={t("pro.hub.employeeNumber")}
+              value={profile.employeeNumber}
+              mono
+            />
+          </div>
+        )}
+      </div>
+
+      {/* the figures — each one opens what it counts */}
+      <div className="relative mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {tiles.map(({ icon: Icon, value, label, to, tone, alarm }) => {
+          const cls = `group flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${
+            alarm
+              ? "border-[#f0a48f]/40 bg-[#f0a48f]/10 hover:bg-[#f0a48f]/15"
+              : "border-white/10 bg-white/5 hover:border-gold/40 hover:bg-white/8"
+          }`;
+          const body = (
+            <>
+              <span
+                className={`grid size-10 shrink-0 place-items-center rounded-xl bg-white/8 ${tone}`}
+              >
+                <Icon size={18} />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-serif text-2xl leading-none font-bold text-cream tabular-nums">
+                  {value}
+                </span>
+                <span className="mt-1 line-clamp-2 block text-[11px] leading-tight text-soft-sage">
+                  {label}
+                </span>
+              </span>
+            </>
+          );
+          return to.startsWith("#") ? (
+            <a key={label} href={to} className={cls}>
+              {body}
+            </a>
+          ) : (
+            <Link key={label} to={to} className={cls}>
+              {body}
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PlateLine({
+  icon: Icon,
+  label,
+  value,
+  mono,
+}: {
+  icon: LucideIcon;
   label: string;
-  tint: string;
-  to: string;
-  alarm?: boolean;
+  value: string;
+  mono?: boolean;
 }) {
   return (
-    <Link
-      to={to}
-      className={`flex flex-col items-center rounded-2xl border bg-cream-card p-4 text-center shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:-translate-y-px hover:shadow-[0_8px_24px_rgba(38,66,61,0.09)] ${
-        alarm ? "border-brick/30" : "border-forest/10"
-      }`}
-    >
-      <div className={`mb-2.5 grid size-11 place-items-center rounded-full ${tint}`}>
-        <Icon size={20} />
-      </div>
-      <p className="font-serif text-2xl font-bold text-forest tabular-nums">
+    <div>
+      <p className="mb-0.5 flex items-center gap-1.5 text-[11px] font-semibold text-soft-sage">
+        <Icon size={13} className="text-gold-soft" />
+        {label}
+      </p>
+      <p
+        dir="ltr"
+        className={`truncate text-cream rtl:text-right ${
+          mono
+            ? "font-mono text-lg font-bold tracking-[0.08em]"
+            : "text-sm font-semibold"
+        }`}
+      >
         {value}
       </p>
-      <p className="mt-0.5 text-[11px] font-medium text-clay">{label}</p>
-    </Link>
+    </div>
+  );
+}
+
+function HeroChip({
+  icon: Icon,
+  children,
+}: {
+  icon: LucideIcon;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/8 px-3 py-1 text-xs text-cream">
+      <Icon size={12} className="text-gold-soft" />
+      {children}
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  needs your attention
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Full width and laid out in columns: the buckets multiply with the number
+ * of topics, and a tall narrow list is the one shape that does not survive
+ * that.
+ */
+function AttentionSection({
+  data,
+  count,
+  filledBuckets,
+}: {
+  data: ProfessorDashboard;
+  count: number;
+  filledBuckets: number;
+}) {
+  const { t } = useTranslation();
+  const { fmtDate, relative } = useDates();
+  const { attention } = data;
+
+  // Nothing waiting is one sentence, not a full card of empty space.
+  if (count === 0)
+    return (
+      <section
+        className={`flex flex-wrap items-center gap-3 px-6 py-4 ${CARD}`}
+      >
+        <span className="grid size-9 place-items-center rounded-xl bg-sage/15 text-sage">
+          <CheckCircle2 size={18} />
+        </span>
+        <h2 className="font-serif text-lg font-bold text-forest">
+          {t("pro.needsAttention")}
+        </h2>
+        <p className="text-sm text-clay">{t("pro.nothingNeedsYou")}</p>
+      </section>
+    );
+
+  return (
+    <section className={SECTION}>
+      <SectionHeader
+        icon={ClipboardList}
+        title={t("pro.needsAttention")}
+        badge={count > 0 ? String(count) : undefined}
+        tint={count > 0 ? "bg-brick/10 text-brick" : "bg-sage/15 text-sage"}
+      />
+
+      <div
+          className={`grid grid-cols-1 items-start gap-x-6 gap-y-5 ${
+            filledBuckets >= 3
+              ? "md:grid-cols-2 2xl:grid-cols-3"
+              : filledBuckets === 2
+                ? "md:grid-cols-2"
+                : ""
+          }`}
+        >
+          {/* a rejected topic is the only thing here that is purely the
+              professor's to fix, so it leads */}
+          <Bucket
+            icon={Pencil}
+            tone="brick"
+            title={t("pro.rejectedTopicsNeedEdit")}
+            items={attention.rejectedTopics}
+            render={(tp: DashTopicLite) => (
+              <Row
+                key={tp.id}
+                to={`topics/${tp.id}`}
+                title={tp.title}
+                meta={tp.rejectionReason ?? t("pro.noReasonGiven")}
+                badge={t("pro.fixIt")}
+                badgeTone="brick"
+              />
+            )}
+          />
+          <Bucket
+            icon={AlertTriangle}
+            tone="brick"
+            title={t("pro.overdueMilestones")}
+            items={attention.overdueMilestones}
+            render={(m: DashMilestoneLite) => (
+              <Row
+                key={m.id}
+                to={`groups/${m.groupId}`}
+                title={m.title}
+                meta={m.group.topic.title}
+                badge={relative(m.deadline)}
+                badgeTone="brick"
+              />
+            )}
+          />
+          <Bucket
+            icon={Clock}
+            tone="gold"
+            title={t("pro.dueThisWeek")}
+            items={attention.dueThisWeek}
+            render={(m: DashMilestoneLite) => (
+              <Row
+                key={m.id}
+                to={`groups/${m.groupId}`}
+                title={m.title}
+                meta={m.group.topic.title}
+                badge={relative(m.deadline)}
+                badgeTone="gold"
+              />
+            )}
+          />
+          <Bucket
+            icon={Inbox}
+            tone="sage"
+            title={t("pro.awaitingReview")}
+            items={attention.awaitingReview}
+            render={(s: DashSubmissionLite) => (
+              <Row
+                key={s.id}
+                to={`groups/${s.milestone.groupId}`}
+                title={s.fileName}
+                meta={`${s.milestone.title} · ${s.milestone.group.topic.title}`}
+                badge={fmtDate(s.createdAt)}
+                badgeTone="sage"
+                avatar={s.uploadedBy}
+              />
+            )}
+          />
+          <Bucket
+            icon={Clock}
+            tone="gold"
+            title={t("pro.awaitingAdminApproval")}
+            items={attention.pendingTopics}
+            render={(tp: DashTopicLite) => (
+              <Row
+                key={tp.id}
+                to={`topics/${tp.id}`}
+                title={tp.title}
+                meta={t("pro.sentOn", { date: fmtDate(tp.createdAt) })}
+                badge={relative(tp.createdAt)}
+                badgeTone="gold"
+              />
+            )}
+          />
+          {/* Accepted but not on the board yet. The professor cannot
+              publish it himself, but he is the one who notices. */}
+          <Bucket
+            icon={EyeOff}
+            tone="gold"
+            title={t("pro.approvedNotPublished")}
+            items={attention.approvedNotPublished}
+            render={(tp: DashTopicLite) => (
+              <Row
+                key={tp.id}
+                to={`topics/${tp.id}`}
+                title={tp.title}
+                meta={tp.specialization?.name ?? "—"}
+                badge={t("pro.notPublishedYet")}
+                badgeTone="gold"
+              />
+            )}
+          />
+          <Bucket
+            icon={FileText}
+            tone="sage"
+            title={t("pro.publishedNoRequests")}
+            items={attention.openWithoutRequests}
+            render={(tp: DashTopicLite) => (
+              <Row
+                key={tp.id}
+                to={`topics/${tp.id}`}
+                title={tp.title}
+                meta={tp.specialization?.name ?? "—"}
+                badge={t("pro.noRequestsYet")}
+                badgeTone="sage"
+              />
+            )}
+          />
+        </div>
+    </section>
   );
 }
 
@@ -589,11 +647,7 @@ function Bucket<T>({
 }) {
   if (items.length === 0) return null;
   const toneCls =
-    tone === "brick"
-      ? "text-brick"
-      : tone === "gold"
-        ? "text-gold"
-        : "text-sage";
+    tone === "brick" ? "text-brick" : tone === "gold" ? "text-gold" : "text-sage";
   return (
     <div>
       <p className={`mb-2 flex items-center gap-1.5 text-xs font-bold ${toneCls}`}>
@@ -605,9 +659,7 @@ function Bucket<T>({
       </p>
       <ul className="space-y-1.5">{items.slice(0, 4).map(render)}</ul>
       {items.length > 4 && (
-        <p className="mt-1.5 ps-2 text-[11px] text-clay/80">
-          {`+${items.length - 4}`}
-        </p>
+        <p className="mt-1.5 ps-2 text-[11px] text-clay/80">{`+${items.length - 4}`}</p>
       )}
     </div>
   );
@@ -647,9 +699,7 @@ function Row({
           </span>
           <span className="block truncate text-[11px] text-clay">{meta}</span>
         </span>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${toneCls}`}
-        >
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${toneCls}`}>
           {badge}
         </span>
       </Link>
@@ -657,36 +707,38 @@ function Row({
   );
 }
 
-function ProjectCard({
-  project,
-  fmtDate,
-  relative,
-}: {
-  project: DashProject;
-  fmtDate: (iso: string) => string;
-  relative: (iso: string) => string;
-}) {
+// ─────────────────────────────────────────────────────────────
+//  projects
+// ─────────────────────────────────────────────────────────────
+
+function ProjectCard({ project }: { project: DashProject }) {
   const { t } = useTranslation();
+  const { fmtDate, relative } = useDates();
   const { milestones: ms } = project;
   const pct = ms.total === 0 ? 0 : Math.round((ms.completed / ms.total) * 100);
 
   return (
     <Link
       to={`groups/${project.id}`}
-      className="flex flex-col rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:-translate-y-px hover:border-gold/40 hover:shadow-[0_8px_24px_rgba(38,66,61,0.09)]"
+      className="group flex flex-col rounded-2xl bg-cream-2/60 p-5 ring-1 ring-forest/8 transition hover:-translate-y-0.5 hover:ring-gold/40 hover:shadow-[0_10px_30px_rgba(38,66,61,0.1)]"
     >
-      <p className="mb-2 line-clamp-2 font-serif text-sm font-bold text-forest">
-        {project.topic.title}
-      </p>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <p className="line-clamp-2 font-serif text-base leading-snug font-bold text-forest">
+          {project.topic.title}
+        </p>
+        <span className="shrink-0 font-serif text-xl font-bold text-gold tabular-nums">
+          {pct}%
+        </span>
+      </div>
 
       {/* members */}
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-4 flex items-center gap-2.5">
         <div className="flex -space-x-2 rtl:space-x-reverse">
           {project.members.slice(0, 4).map((m) => (
             <UserAvatar
               key={m.id}
               user={m.student?.user}
-              size={26}
+              size={30}
               className="border-2 border-cream-card"
             />
           ))}
@@ -698,17 +750,17 @@ function ProjectCard({
       </div>
 
       {/* progress */}
-      <div className="mb-2">
+      <div className="mb-3">
         <div className="mb-1 flex items-center justify-between text-[11px]">
           <span className="text-clay">{t("pro.milestoneProgress")}</span>
           <span className="font-bold text-forest tabular-nums">
             {ms.completed}/{ms.total}
           </span>
         </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-forest/10">
+        <div className="h-2 overflow-hidden rounded-full bg-forest/10">
           <div
-            className={`h-full rounded-full transition-all ${
-              ms.overdue > 0 ? "bg-brick" : "bg-sage"
+            className={`h-full rounded-full bg-linear-to-l transition-all ${
+              ms.overdue > 0 ? "from-brick to-brick/70" : "from-gold to-gold-soft"
             }`}
             style={{ width: `${pct}%` }}
           />
@@ -716,16 +768,16 @@ function ProjectCard({
       </div>
 
       {/* the one date that matters next */}
-      <div className="mt-auto space-y-1 pt-1.5 text-[11px]">
+      <div className="mt-auto space-y-1.5 border-t border-forest/8 pt-3 text-[11px]">
         {ms.overdue > 0 && (
           <p className="flex items-center gap-1.5 font-semibold text-brick">
-            <AlertTriangle size={11} />
+            <AlertTriangle size={12} />
             {t("pro.overdueCount", { count: ms.overdue })}
           </p>
         )}
         {project.nextDeadline && (
           <p className="flex items-center gap-1.5 text-clay">
-            <Clock size={11} className="text-gold" />
+            <Clock size={12} className="text-gold" />
             <span className="truncate">{project.nextDeadline.title}</span>
             <span className="ms-auto shrink-0 font-semibold text-forest">
               {relative(project.nextDeadline.deadline)}
@@ -734,7 +786,7 @@ function ProjectCard({
         )}
         {project.defense && (
           <p className="flex items-center gap-1.5 text-clay">
-            <CalendarCheck size={11} className="text-violet-500" />
+            <CalendarCheck size={12} className="text-violet-500" />
             {t("pro.defenseOn", { date: fmtDate(project.defense.date) })}
             {project.defense.room && (
               <span className="ms-auto shrink-0">{project.defense.room}</span>
@@ -743,13 +795,13 @@ function ProjectCard({
         )}
         {!project.nextDeadline && ms.total > 0 && ms.overdue === 0 && (
           <p className="flex items-center gap-1.5 text-sage">
-            <CheckCircle2 size={11} />
+            <CheckCircle2 size={12} />
             {t("pro.allMilestonesDone")}
           </p>
         )}
         {ms.total === 0 && (
           <p className="flex items-center gap-1.5 text-clay/80">
-            <Plus size={11} />
+            <Plus size={12} />
             {t("pro.noMilestonesYet")}
           </p>
         )}
@@ -758,71 +810,430 @@ function ProjectCard({
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+//  what is coming
+// ─────────────────────────────────────────────────────────────
+
+function AgendaSection({ data }: { data: ProfessorDashboard }) {
+  const { t } = useTranslation();
+  const { fmtDate, relative } = useDates();
+  const { agenda } = data;
+
+  return (
+    <section className={SECTION}>
+      <SectionHeader icon={CalendarClock} title={t("pro.whatIsComing")} />
+      {agenda.length === 0 ? (
+        <Empty icon={CalendarClock} text={t("pro.nothingScheduled")} />
+      ) : (
+        <ol className="relative space-y-3 ps-5">
+          {/* the thread the dates hang from */}
+          <span
+            aria-hidden="true"
+            className="absolute inset-y-2 start-[5px] w-0.5 bg-forest/10"
+          />
+          {agenda.map((a) => {
+            const defense = a.kind === "defense";
+            return (
+              <li key={`${a.kind}-${a.id}`} className="relative">
+                <span
+                  aria-hidden="true"
+                  className={`absolute -start-5 top-3 size-3 rounded-full ring-4 ring-cream-card ${
+                    defense ? "bg-violet-500" : "bg-gold"
+                  }`}
+                />
+                <Link
+                  to={`groups/${a.groupId}`}
+                  className="block rounded-xl bg-cream-2/60 px-3 py-2.5 ring-1 ring-forest/5 transition hover:ring-gold/40"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-forest">
+                      {defense ? t("pro.defenseOf", { title: a.title }) : a.title}
+                    </p>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        defense ? "bg-violet-500/15 text-violet-500" : "bg-gold/15 text-gold"
+                      }`}
+                    >
+                      {relative(a.date)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-clay">
+                    {fmtDate(a.date)}
+                    {a.room && (
+                      <>
+                        <MapPin size={10} />
+                        {a.room}
+                      </>
+                    )}
+                    {!defense && <>· {a.topicTitle}</>}
+                  </p>
+                </Link>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </section>
+  );
+}
+
 /**
- * The share of each status as one bar, then a line per status that actually
- * occurs. A professor with one topic was being shown six rows, five of them
- * zero — a list of nothing is not information.
+ * Defenses the professor sits on — their own projects' and their
+ * colleagues'. The agenda only knows the first kind, and the second is the
+ * one a professor is likeliest to forget.
  */
-function StatusBreakdown({
+function CommitteeSection({ seats }: { seats: DashCommitteeSeat[] }) {
+  const { t } = useTranslation();
+  const { fmtDate, daysFrom, relative } = useDates();
+
+  // Coming ones first, by date; then the rest, newest first.
+  const sorted = [...seats].sort((a, b) => {
+    const au = a.status === "scheduled" && daysFrom(a.date) >= 0;
+    const bu = b.status === "scheduled" && daysFrom(b.date) >= 0;
+    if (au !== bu) return au ? -1 : 1;
+    return au
+      ? +new Date(a.date) - +new Date(b.date)
+      : +new Date(b.date) - +new Date(a.date);
+  });
+
+  return (
+    <section className={SECTION}>
+      <SectionHeader
+        id="committee"
+        icon={Gavel}
+        title={t("pro.hub.committeeTitle")}
+        badge={seats.length ? String(seats.length) : undefined}
+        tint="bg-violet-500/15 text-violet-500"
+      />
+      {seats.length === 0 ? (
+        <Empty icon={Gavel} text={t("pro.hub.noCommittee")} />
+      ) : (
+        <ul className="space-y-2.5">
+          {sorted.slice(0, 6).map((c) => {
+            const upcoming = c.status === "scheduled" && daysFrom(c.date) >= 0;
+            return (
+              <li
+                key={c.id}
+                className={`rounded-2xl p-3.5 ring-1 ${
+                  upcoming
+                    ? "bg-violet-500/5 ring-violet-500/20"
+                    : "bg-cream-2/60 ring-forest/5"
+                }`}
+              >
+                <div className="mb-1.5 flex items-start justify-between gap-2">
+                  <p className="line-clamp-2 text-sm font-semibold text-forest">
+                    {c.topic.title}
+                  </p>
+                  <span className="shrink-0 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-bold text-violet-500">
+                    {t(`committeeRole.${c.role}`)}
+                  </span>
+                </div>
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-clay">
+                  <span className="inline-flex items-center gap-1">
+                    <CalendarCheck size={11} />
+                    {fmtDate(c.date, true)}
+                  </span>
+                  {c.room && (
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin size={11} />
+                      {c.room}
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1">
+                    <Users size={11} />
+                    {t("pro.membersCount", { count: c.membersCount })}
+                  </span>
+                </p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-clay">
+                    {c.ownProject ? (
+                      <span className="rounded-full bg-gold/15 px-2 py-0.5 font-bold text-gold">
+                        {t("pro.hub.ownProject")}
+                      </span>
+                    ) : (
+                      <>
+                        <UserAvatar user={c.supervisor} size={18} />
+                        <span className="truncate">
+                          {t("pro.hub.supervisedBy", {
+                            name: fullName(c.supervisor) || "—",
+                          })}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <span
+                    className={`shrink-0 text-[11px] font-bold ${
+                      upcoming ? "text-violet-500" : "text-clay"
+                    }`}
+                  >
+                    {upcoming
+                      ? relative(c.date)
+                      : c.status === "completed" && c.grade != null
+                        ? `${c.grade}/20`
+                        : t(`stu.dash.defenseStatus.${c.status}`)}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  students and submissions
+// ─────────────────────────────────────────────────────────────
+
+function StudentsSection({ projects }: { projects: DashProject[] }) {
+  const { t } = useTranslation();
+  const rows = projects.flatMap((p) =>
+    p.members.map((m) => ({ m, project: p })),
+  );
+
+  return (
+    <section className={SECTION}>
+      <SectionHeader
+        icon={Users}
+        title={t("pro.hub.myStudents")}
+        badge={String(rows.length)}
+        to="groups"
+        tint="bg-sage/15 text-sage"
+      />
+      {rows.length === 0 ? (
+        <Empty icon={Users} text={t("pro.hub.noStudents")} />
+      ) : (
+        <ul className="space-y-2.5">
+          {rows.map(({ m, project }) => (
+            <li key={m.id}>
+              <Link
+                to={`groups/${project.id}`}
+                className="flex items-center gap-3 rounded-2xl bg-cream-2/60 p-3 ring-1 ring-forest/5 transition hover:ring-gold/40"
+              >
+                <UserAvatar
+                  user={m.student?.user}
+                  size={42}
+                  className={m.isLeader ? "ring-2 ring-gold" : ""}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1 text-sm font-semibold text-forest">
+                    <span className="truncate">
+                      {fullName(m.student?.user) || m.student?.registrationNumber || "—"}
+                    </span>
+                    {m.isLeader && (
+                      <Crown
+                        size={12}
+                        className="shrink-0 text-gold"
+                        aria-label={t("stu.dash.leader")}
+                      />
+                    )}
+                  </span>
+                  {m.student?.registrationNumber && (
+                    <span
+                      dir="ltr"
+                      className="flex items-center gap-1 text-[11px] text-clay tabular-nums rtl:justify-end"
+                    >
+                      <IdCard size={11} />
+                      {m.student.registrationNumber}
+                    </span>
+                  )}
+                  <span className="block truncate text-[11px] text-clay/80">
+                    {project.topic.title}
+                  </span>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function SubmissionsSection({
+  submissions,
+}: {
+  submissions: DashSubmissionLite[];
+}) {
+  const { t } = useTranslation();
+  const { fmtDate } = useDates();
+
+  return (
+    <section className={SECTION}>
+      <SectionHeader
+        icon={Paperclip}
+        title={t("pro.hub.recentSubmissions")}
+        badge={submissions.length ? String(submissions.length) : undefined}
+      />
+      {submissions.length === 0 ? (
+        <Empty icon={Paperclip} text={t("pro.noSubmissions")} />
+      ) : (
+        <ul className="space-y-2">
+          {submissions.map((s) => {
+            const waiting = s.milestone.status !== "completed";
+            return (
+              <li key={s.id}>
+                <Link
+                  to={`groups/${s.milestone.groupId}`}
+                  className="flex items-center gap-3 rounded-2xl bg-cream-2/60 p-3 ring-1 ring-forest/5 transition hover:ring-gold/40"
+                >
+                  <UserAvatar user={s.uploadedBy} size={36} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 text-sm font-semibold text-forest">
+                      <Paperclip size={12} className="shrink-0 text-gold" />
+                      <span className="truncate">{s.fileName}</span>
+                    </span>
+                    <span className="block truncate text-[11px] text-clay">
+                      {fullName(s.uploadedBy) || "—"} · {s.milestone.title} ·{" "}
+                      {s.milestone.group.topic.title}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="text-[11px] text-clay">
+                      {fmtDate(s.createdAt)}
+                    </span>
+                    {waiting && (
+                      <span className="rounded-full bg-sage/15 px-2 py-0.5 text-[10px] font-bold text-sage">
+                        {t("pro.awaitingReview")}
+                      </span>
+                    )}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  topics
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Every topic, with the count per status as one line above the list.
+ *
+ * The counts used to sit in a card of their own beside the list — a tall
+ * card holding a bar and a row or two, and the space around it empty. A
+ * count per status cannot say *which* topic is where anyway; the list can.
+ */
+function TopicsSection({
+  topics,
   breakdown,
   total,
 }: {
+  topics: DashTopicLite[];
   breakdown: Record<string, number>;
   total: number;
 }) {
   const { t } = useTranslation();
-  const present = Object.keys(STATUS_DOT).filter((s) => (breakdown[s] ?? 0) > 0);
-
-  if (total === 0) {
-    return <p className="py-3 text-center text-xs text-clay">{t("pro.noTopicsYet")}</p>;
-  }
+  // Only the statuses that occur: six rows, five of them zero, say nothing.
+  const present = Object.keys(STATUS_DOT).filter((k) => (breakdown[k] ?? 0) > 0);
 
   return (
-    <div>
-      <div className="mb-3 flex h-2 overflow-hidden rounded-full bg-forest/8">
-        {present.map((s) => (
-          <span
-            key={s}
-            className={STATUS_DOT[s]}
-            style={{ width: `${((breakdown[s] ?? 0) / total) * 100}%` }}
-          />
-        ))}
-      </div>
-      <div className="space-y-2.5">
-        {present.map((s) => (
-          <div key={s} className="flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <span className={`size-2.5 rounded-full ${STATUS_DOT[s]}`} />
-              <span className="text-xs text-clay">{t(`status.${s}`)}</span>
-            </span>
-            <span className="font-serif text-sm font-bold text-forest tabular-nums">
-              {breakdown[s]}
-            </span>
+    <section className={SECTION}>
+      <SectionHeader
+        icon={FileText}
+        title={t("pro.myTopicsCount")}
+        badge={String(topics.length)}
+        to="topics"
+        tint="bg-sage/15 text-sage"
+        action={
+          <Link
+            to="topics"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3 py-1.5 text-xs font-bold text-forest-deep transition hover:bg-gold-soft active:scale-95"
+          >
+            <Plus size={14} />
+            {t("pro.addTopic")}
+          </Link>
+        }
+      />
+
+      {total > 0 && (
+        <div className="mb-5 rounded-2xl bg-cream-2/60 p-4 ring-1 ring-forest/5">
+          <div className="mb-3 flex h-2.5 overflow-hidden rounded-full bg-forest/8">
+            {present.map((k) => (
+              <span
+                key={k}
+                className={STATUS_DOT[k]}
+                style={{ width: `${((breakdown[k] ?? 0) / total) * 100}%` }}
+              />
+            ))}
           </div>
-        ))}
+          <div className="flex flex-wrap gap-x-5 gap-y-2">
+            {present.map((k) => (
+              <span key={k} className="flex items-center gap-2 text-xs">
+                <span className={`size-2.5 rounded-full ${STATUS_DOT[k]}`} />
+                <span className="text-clay">{t(`status.${k}`)}</span>
+                <span className="font-serif text-sm font-bold text-forest tabular-nums">
+                  {breakdown[k]}
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {topics.length === 0 ? (
+        <Empty icon={FileText} text={t("pro.noTopicsYet")} />
+      ) : (
+        <>
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-2.5">
+            {topics.slice(0, 9).map((tp) => (
+              <li key={tp.id}>
+                <Link
+                  to={`topics/${tp.id}`}
+                  className="flex items-center gap-3 rounded-2xl bg-cream-2/60 px-4 py-3 ring-1 ring-forest/5 transition hover:ring-gold/40"
+                >
+                  <span
+                    className={`size-2.5 shrink-0 rounded-full ${STATUS_DOT[tp.status] ?? "bg-clay"}`}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-forest">
+                      {tp.title}
+                    </span>
+                    <span className="block truncate text-[11px] text-clay">
+                      {[tp.specialization?.name, t(`status.${tp.status}`)]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </span>
+                  {/* how many teams have asked for it — the number that
+                      says whether a published topic is landing */}
+                  <span
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full bg-forest/8 px-2 py-0.5 text-[10px] font-bold text-clay tabular-nums"
+                    title={t("pro.groupRequestsOnTopic")}
+                  >
+                    <Users size={10} />
+                    {tp._count.groupRequests}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {topics.length > 9 && (
+            <p className="mt-2.5 text-center text-[11px] text-clay/80">
+              {`+${topics.length - 9}`}
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6 font-body">
+      <div className="h-96 animate-pulse rounded-3xl bg-forest/10" />
+      <div className="h-32 animate-pulse rounded-3xl bg-forest/5" />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.8fr_1fr]">
+        <div className="h-80 animate-pulse rounded-3xl bg-forest/5" />
+        <div className="h-80 animate-pulse rounded-3xl bg-forest/5" />
       </div>
-    </div>
-  );
-}
-
-function Empty({ text }: { text: string }) {
-  return (
-    <div className="grid place-items-center gap-2 py-6 text-center">
-      <span className="grid size-10 place-items-center rounded-full bg-forest/5 text-clay">
-        <Inbox size={18} />
-      </span>
-      <p className="text-xs text-clay">{text}</p>
-    </div>
-  );
-}
-
-function Settled({ text }: { text: string }) {
-  return (
-    <div className="grid place-items-center gap-2 py-8 text-center">
-      <span className="grid size-11 place-items-center rounded-full bg-sage/15 text-sage">
-        <CheckCircle2 size={22} />
-      </span>
-      <p className="text-sm font-medium text-forest">{text}</p>
     </div>
   );
 }

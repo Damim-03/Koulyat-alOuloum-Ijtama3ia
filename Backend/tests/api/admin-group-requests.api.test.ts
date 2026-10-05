@@ -128,7 +128,7 @@ describe("جدول القواعد في ردّ القائمة", () => {
     expect(row.actions).toMatchObject({ canAccept: false, canReject: false });
     expect(row.actions!.blockedReasons).toMatchObject({
       accept: expect.stringContaining("مقبولٌ بالفعل"),
-      reject: expect.stringContaining("افسخ المشروع"),
+      reject: expect.stringContaining("افسخ المذكرة"),
     });
   });
 
@@ -264,5 +264,72 @@ describe("عدّادات الشريط", () => {
       rejected: 0,
       all: 0,
     });
+  });
+});
+
+//
+// ═══ صفحة التفصيل: ما يُبنى عليه القرار ═══
+//
+
+describe("صفحة الطلب — ما يُبنى عليه القرار", () => {
+  /**
+   * القرارُ يُتّخذ على طلبة، والشاشة تقول عن كلّ واحدٍ ما يخصّ القرار: أهو
+   * في مشروعٍ قائم؟ أله طلبٌ آخر ينتظر؟ ومن أيّ تخصّص؟ — قبل الضغط، لا من
+   * رسالة رفضٍ بعده.
+   */
+  it("يحمل لكلّ عضوٍ تخصّصه ومشروعه وطلباته الأخرى المعلّقة", async () => {
+    const topic = await topicFor(f.professor.id);
+    const req = await requestOn(topic.id, "pending", 3);
+    const reqMembers = await prisma.groupRequestMember.findMany({
+      where: { requestId: req.id },
+      select: { studentId: true },
+    });
+    const [placed, doubleBooked, free] = reqMembers.map((m) => m.studentId);
+
+    // الأوّل في مشروعٍ قائم على موضوعٍ آخر.
+    const otherTopic = await topicFor(f.professor2.id, "full");
+    const group = await prisma.projectGroup.create({
+      data: { topicId: otherTopic.id },
+    });
+    await prisma.projectMember.create({
+      data: { groupId: group.id, studentId: placed! },
+    });
+
+    // والثاني في طلبٍ آخر ما يزال ينتظر.
+    const thirdTopic = await topicFor(f.professor.id);
+    await prisma.groupRequest.create({
+      data: {
+        topicId: thirdTopic.id,
+        activeTopicId: thirdTopic.id,
+        leaderStudentId: doubleBooked!,
+        priority: 2,
+        status: "pending",
+        members: { create: [{ studentId: doubleBooked! }] },
+      },
+    });
+
+    const body = (
+      await as(request(app).get(`/api/admin/group-requests/${req.id}`)).expect(200)
+    ).body;
+    const detail = (body.groupRequest ?? body) as {
+      topic: { _count: { groupRequests: number } };
+      members: {
+        studentId: string;
+        student: { specialization: { id: string } };
+        project: { topic: { id: string } } | null;
+        otherPending: { topic: { id: string } }[];
+      }[];
+    };
+    const of = (id: string) => detail.members.find((m) => m.studentId === id)!;
+
+    expect(of(placed!).project?.topic.id).toBe(otherTopic.id);
+    expect(of(doubleBooked!).otherPending.map((r) => r.topic.id)).toEqual([
+      thirdTopic.id,
+    ]);
+    // والطلبُ نفسه لا يُعدّ «طلباً آخر» لأعضائه.
+    expect(of(free!).project).toBeNull();
+    expect(of(free!).otherPending).toEqual([]);
+    expect(of(free!).student.specialization.id).toBe(f.specialization.id);
+    expect(detail.topic._count.groupRequests).toBe(1);
   });
 });

@@ -1,34 +1,27 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
-import { useLangNavigate } from "../../../../hooks/useLangNavigate";
-import {
-  Plus,
-  Hash,
-  Search,
-  Pencil,
-  Trash2,
-  ChevronLeft,
-  Network,
-  Layers,
-  GitBranch,
-} from "lucide-react";
+import { BookOpen, GitBranch, GraduationCap, Layers, Network, Pencil, Plus, Trash2, TriangleAlert, UserCog, Users } from "lucide-react";
 import {
   useFaculties,
   useDepartments,
   useDomains,
   useDeleteDomain,
+  useDeleteDepartment,
+  useFilieres,
+  useSpecializations,
 } from "../../hooks/admin-hook";
 import type { Domain } from "../../../../types/admin";
+import { useLangNavigate } from "../../../../hooks/useLangNavigate";
 import { DomainFormDialog } from "../../components/dialog/domain/domain-dialog.form";
-import { CoverBanner } from "../../components/ui/cover-banner";
-import { SearchField } from "../../components/ui/search-field";
-import {
-  HierarchyHeader,
-  HeaderBadge,
-} from "../../components/ui/hierarchy-header";
+import { DepartmentFormDialog } from "../../components/dialog/department/department-dialog.form";
+import { HierarchyHeader, HeaderBadge } from "../../components/ui/hierarchy-header";
+import { DeleteNodeDialog, EmptyLevel, HeaderAction, NodeCard, NodeToolbar } from "../../components/ui/structure-kit";
 import { LoadingArea } from "../../../../components/ui/loading-area";
+import { buildReach, matchesQuery } from "../../lib/structure-stats";
+import i18n from "../../../../i18n/i18n";
 
+/** A department: its figures, its domains, and the filieres no domain holds. */
 export function DepartmentDetailPage() {
   const { t } = useTranslation();
   const navigate = useLangNavigate();
@@ -37,58 +30,58 @@ export function DepartmentDetailPage() {
   const { data: faculties } = useFaculties();
   const { data: departments } = useDepartments();
   const { data: domains, isLoading } = useDomains(departmentId);
+  const { data: filieres } = useFilieres();
+  const { data: specs } = useSpecializations();
   const deleteDomain = useDeleteDomain();
+  const deleteDepartment = useDeleteDepartment();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Domain | null>(null);
+  const [editSelf, setEditSelf] = useState(false);
+  const [removing, setRemoving] = useState<Domain | null>(null);
+  const [removeSelf, setRemoveSelf] = useState(false);
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState("name");
+  const [chip, setChip] = useState("all");
 
-  const faculty = useMemo(
-    () => (faculties ?? []).find((f) => f.id === facultyId),
-    [faculties, facultyId],
-  );
-  const department = useMemo(
-    () => (departments ?? []).find((d) => d.id === departmentId),
-    [departments, departmentId],
-  );
-
+  const faculty = useMemo(() => (faculties ?? []).find((f) => f.id === facultyId), [faculties, facultyId]);
+  const department = useMemo(() => (departments ?? []).find((d) => d.id === departmentId), [departments, departmentId]);
   const list = useMemo(() => domains ?? [], [domains]);
+  const reach = useMemo(() => buildReach(departments ?? [], filieres ?? [], specs ?? []), [departments, filieres, specs]);
+  // Filieres of this department that sit under no domain: no domain page reaches them.
+  const loose = useMemo(() => (filieres ?? []).filter((f) => f.departmentId === departmentId && !f.domainId), [filieres, departmentId]);
 
-  // Client-side filters: the list arrives whole, so no request is needed.
-  const [nameQuery, setNameQuery] = useState("");
-  const [codeQuery, setCodeQuery] = useState("");
-  const visible = useMemo(() => {
-    const n = nameQuery.trim().toLowerCase();
-    const c = codeQuery.trim().toLowerCase();
-    return list.filter(
-      (x) =>
-        (!n || (x.name ?? "").toLowerCase().includes(n)) &&
-        (!c || (x.code ?? "").toLowerCase().includes(c)),
-    );
-  }, [list, nameQuery, codeQuery]);
+  const empty = (dm: Domain) => (dm._count?.filieres ?? 0) === 0;
+  const visible = useMemo(
+    () =>
+      list
+        .filter((dm) => matchesQuery(q, dm.name, dm.code))
+        .filter((dm) => chip !== "gaps" || empty(dm))
+        .sort((a, b) =>
+          sort === "students"
+            ? reach.domain(b.id).students - reach.domain(a.id).students
+            : sort === "specs"
+              ? reach.domain(b.id).specializations - reach.domain(a.id).specializations
+              : a.name.localeCompare(b.name, i18n.language),
+        ),
+    [list, q, chip, sort, reach],
+  );
+
+  const r = reach.department(departmentId);
+  const facultyUrl = `/admin/faculties/${facultyId}`;
+  const domainUrl = (id: string) => `${facultyUrl}/departments/${departmentId}/domains/${id}`;
+  const c = department?._count;
+  const selfBlocked = (c?.domains ?? 0) + (c?.filieres ?? 0) + (c?.professors ?? 0) > 0;
 
   function openCreate() {
     setEditing(null);
     setDialogOpen(true);
   }
-  function openEdit(dm: Domain) {
-    setEditing(dm);
-    setDialogOpen(true);
-  }
-  function handleDelete(dm: Domain) {
-    if (confirm(t("admin.confirmDeleteDomain", { name: dm.name })))
-      deleteDomain.mutate(dm.id);
-  }
-
-  const facultyUrl = `/admin/faculties/${facultyId}`;
-  const domainUrl = (id: string) =>
-    `/admin/faculties/${facultyId}/departments/${departmentId}/domains/${id}`;
 
   return (
     <div className="font-body">
       {!department && departments ? (
-        <div className="rounded-2xl border border-forest/10 bg-cream-card py-20 text-center text-sm text-clay">
-          {t("admin.departmentNotFound")}
-        </div>
+        <EmptyLevel icon={Network} title={t("admin.departmentNotFound")} />
       ) : (
         <>
           <HierarchyHeader
@@ -109,123 +102,141 @@ export function DepartmentDetailPage() {
                 {list.length} {t("admin.domainsShort")}
               </HeaderBadge>
             }
+            stats={[
+              { icon: Layers, label: t("admin.statDomains"), value: list.length },
+              { icon: GitBranch, label: t("admin.statFilieres"), value: c?.filieres ?? 0 },
+              { icon: GraduationCap, label: t("admin.statSpecializations"), value: r.specializations },
+              { icon: Users, label: t("admin.struct.students"), value: r.students },
+              { icon: UserCog, label: t("admin.struct.professors"), value: c?.professors ?? 0 },
+              { icon: BookOpen, label: t("admin.struct.topics"), value: r.topics },
+            ]}
+            menu={
+              <>
+                <HeaderAction icon={Pencil} onClick={() => setEditSelf(true)}>
+                  {t("admin.edit")}
+                </HeaderAction>
+                {!selfBlocked && (
+                  <HeaderAction icon={Trash2} onClick={() => setRemoveSelf(true)}>
+                    {t("admin.delete")}
+                  </HeaderAction>
+                )}
+              </>
+            }
             action={
-              <button
-                onClick={openCreate}
-                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft active:scale-[0.98]"
-              >
-                <Plus size={18} />
+              <HeaderAction icon={Plus} onClick={openCreate} primary>
                 {t("admin.addDomain")}
-              </button>
+              </HeaderAction>
             }
           />
 
-          {/* Filters — one field per identifier, as on the other lists. */}
-          {list.length > 0 && (
-            <div className="mb-5 grid grid-cols-1 gap-3 rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)] md:grid-cols-2">
-              <SearchField
-                icon={Search}
-                label={t("admin.filterByName")}
-                placeholder={t("admin.filterNamePlaceholder")}
-                value={nameQuery}
-                onChange={setNameQuery}
-              />
-              <SearchField
-                icon={Hash}
-                label={t("admin.filterByCode")}
-                placeholder={t("admin.filterCodePlaceholder")}
-                value={codeQuery}
-                onChange={setCodeQuery}
-              />
+          {loose.length > 0 && (
+            <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-4">
+              <TriangleAlert size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+              <div className="min-w-0 text-[12.5px] leading-relaxed text-forest">
+                <p className="font-semibold">{t("admin.struct.looseTitle", { count: loose.length })}</p>
+                <p className="mt-0.5 text-clay">{t("admin.struct.looseHint")}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {loose.map((f) => (
+                    <span key={f.id} className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-cream-card px-2.5 py-1 text-[11.5px] font-semibold text-forest">
+                      <GitBranch size={12} className="text-amber-600 dark:text-amber-300" />
+                      {f.name}
+                      {f.code && (
+                        <span dir="ltr" className="font-mono text-[10px] text-gold">
+                          {f.code}
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
-          {/* Domains */}
+          {list.length > 0 && (
+            <NodeToolbar
+              query={q}
+              onQuery={setQ}
+              placeholder={t("admin.struct.searchLevel.domain")}
+              sort={sort}
+              onSort={setSort}
+              sortOptions={[
+                { value: "name", label: t("admin.sortNameAsc") },
+                { value: "specs", label: t("admin.struct.sortSpecs") },
+                { value: "students", label: t("admin.struct.sortStudents") },
+              ]}
+              chips={[
+                { value: "all", label: t("admin.struct.all"), count: list.length },
+                { value: "gaps", label: t("admin.struct.health.domainEmpty"), count: list.filter(empty).length, tone: "warn" },
+              ]}
+              chip={chip}
+              onChip={setChip}
+              shown={visible.length}
+              total={list.length}
+            />
+          )}
+
           {isLoading ? (
             <LoadingArea className="py-20" />
           ) : list.length === 0 ? (
-            <div className="rounded-2xl border border-forest/10 bg-cream-card py-20 text-center text-sm text-clay">
-              {t("admin.noDomains")}
-            </div>
+            <EmptyLevel icon={Layers} title={t("admin.noDomains")} hint={t("admin.struct.emptyHint.domain")} actionLabel={t("admin.addDomain")} onAction={openCreate} />
           ) : visible.length === 0 ? (
-            <div className="rounded-2xl border border-forest/10 bg-cream-card py-16 text-center text-sm text-clay">
-              {t("admin.noFilterResults")}
-            </div>
+            <EmptyLevel icon={Layers} title={t("admin.noFilterResults")} />
           ) : (
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {visible.map((dm) => (
-                <div
-                  key={dm.id}
-                  className="group flex flex-col overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:border-gold/40"
-                >
-                  <div className="p-5">
-                    <CoverBanner src={dm.coverUrl} />
-                    <div className="mb-4 flex items-start justify-between">
-                      <div className="grid size-14 place-items-center rounded-xl bg-soft-sage/30 text-forest transition group-hover:bg-forest/5">
-                        <Layers size={26} />
-                      </div>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => openEdit(dm)}
-                          title={t("admin.edit")}
-                          className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(dm)}
-                          title={t("admin.delete")}
-                          className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span
-                        className="font-mono text-[11px] font-bold uppercase tracking-widest text-gold"
-                        dir="ltr"
-                      >
-                        {dm.code}
-                      </span>
-                      <h3
-                        onClick={() => navigate(domainUrl(dm.id))}
-                        className="cursor-pointer font-serif text-lg font-bold text-forest transition hover:text-gold"
-                      >
-                        {dm.name}
-                      </h3>
-                    </div>
-                  </div>
-
-                  <div className="mt-auto flex items-center justify-between border-t border-forest/10 bg-cream-2 px-5 py-3.5">
-                    <span className="flex items-center gap-1.5 text-xs text-clay">
-                      <GitBranch size={14} />
-                      {dm._count?.filieres ?? 0} {t("admin.filieresShort")}
-                    </span>
-                    <button
-                      onClick={() => navigate(domainUrl(dm.id))}
-                      className="flex items-center gap-1 text-sm font-bold text-forest transition hover:text-gold"
-                    >
-                      {t("admin.viewDetails")}
-                      <ChevronLeft
-                        size={16}
-                        className="transition rtl:group-hover:-translate-x-1 ltr:group-hover:translate-x-1 ltr:rotate-180"
-                      />
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-5">
+              {visible.map((dm) => {
+                const dr = reach.domain(dm.id);
+                const n = dm._count?.filieres ?? 0;
+                return (
+                  <NodeCard
+                    key={dm.id}
+                    testId="domain-card"
+                    to={domainUrl(dm.id)}
+                    icon={Layers}
+                    coverUrl={dm.coverUrl}
+                    code={dm.code}
+                    title={dm.name}
+                    stats={[
+                      { icon: GitBranch, label: t("admin.statFilieres"), value: n },
+                      { icon: GraduationCap, label: t("admin.statSpecializations"), value: dr.specializations },
+                      { icon: Users, label: t("admin.struct.students"), value: dr.students },
+                    ]}
+                    people={[{ icon: BookOpen, label: t("admin.struct.topics"), value: dr.topics }]}
+                    health={
+                      n === 0
+                        ? { tone: "warn", label: t("admin.struct.health.domainEmpty"), detail: t("admin.struct.health.domainEmptyHint") }
+                        : dr.specializations === 0
+                          ? { tone: "warn", label: t("admin.struct.health.noSpecs"), detail: t("admin.struct.health.noSpecsHint") }
+                          : null
+                    }
+                    onEdit={() => {
+                      setEditing(dm);
+                      setDialogOpen(true);
+                    }}
+                    onDelete={() => setRemoving(dm)}
+                    deleteBlocked={n > 0 ? t("admin.struct.blocked", { what: t("admin.struct.n.filieres", { count: n }) }) : null}
+                  />
+                );
+              })}
             </div>
           )}
         </>
       )}
 
-      <DomainFormDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        domain={editing}
-        departmentId={departmentId}
+      <DomainFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} domain={editing} departmentId={departmentId} />
+      <DepartmentFormDialog open={editSelf} onClose={() => setEditSelf(false)} department={department ?? null} facultyId={facultyId} />
+      <DeleteNodeDialog
+        target={removing}
+        title={t("admin.struct.deleteTitle.domain")}
+        loading={deleteDomain.isPending}
+        onConfirm={() => removing && deleteDomain.mutate(removing.id, { onSuccess: () => setRemoving(null) })}
+        onClose={() => setRemoving(null)}
+      />
+      <DeleteNodeDialog
+        target={removeSelf && department ? department : null}
+        title={t("admin.struct.deleteTitle.department")}
+        loading={deleteDepartment.isPending}
+        onConfirm={() => deleteDepartment.mutate(departmentId, { onSuccess: () => navigate(facultyUrl) })}
+        onClose={() => setRemoveSelf(false)}
       />
     </div>
   );

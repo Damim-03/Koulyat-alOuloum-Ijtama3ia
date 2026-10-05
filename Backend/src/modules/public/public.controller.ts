@@ -8,6 +8,7 @@ import {
   getPublicTopicService,
   listPublicSpecializationsService,
   listPublicDepartmentsService,
+  getPublicTopicFiltersService,
 } from "./public.service";
 
 export const listPublicTopicsController = async (
@@ -25,7 +26,7 @@ export const listPublicTopicsController = async (
     );
   }
   try {
-    const data = await listPublicTopicsService(parsed.data);
+    const data = await listPublicTopicsService(parsed.data, req.user!);
     return res.status(HTTPSTATUS.OK).json(data);
   } catch (e) {
     next(e);
@@ -38,7 +39,10 @@ export const getPublicTopicController = async (
   next: NextFunction,
 ) => {
   try {
-    const topic = await getPublicTopicService(req.params.id as string);
+    const topic = await getPublicTopicService(
+      req.params.id as string,
+      req.user!,
+    );
     return res.status(HTTPSTATUS.OK).json({ topic });
   } catch (e) {
     next(e);
@@ -55,6 +59,19 @@ export const listPublicSpecializationsController = async (
     const specializations =
       await listPublicSpecializationsService(departmentId);
     return res.status(HTTPSTATUS.OK).json({ specializations });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const getPublicTopicFiltersController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const filters = await getPublicTopicFiltersService(req.user!.userId);
+    return res.status(HTTPSTATUS.OK).json(filters);
   } catch (e) {
     next(e);
   }

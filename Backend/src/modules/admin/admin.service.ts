@@ -45,6 +45,7 @@ import {
   CreateAcademicYearDTO,
   UpdateAcademicYearDTO,
   ListTopicsDTO,
+  type TopicTitlesListDTO,
   RejectTopicDTO,
   ChangeSupervisorDTO,
   AssignStudentDTO,
@@ -63,7 +64,11 @@ import {
   UpdateAssignedTopicDTO,
 } from "./admin.validation";
 import { Prisma, Role } from "../../generated/prisma";
-import { createNotification } from "../notification/notification.service";
+import { assertYearOpen } from "../../core/academic/year-open";
+import {
+  createNotification,
+  createNotifications,
+} from "../notification/notification.service";
 
 // Cost factor is configurable and defaults to 12. bcrypt stores the cost in
 // the hash, so raising it does not invalidate existing passwords.
@@ -73,6 +78,8 @@ const userSelect = {
   id: true,
   firstName: true,
   lastName: true,
+  firstNameLatin: true,
+  lastNameLatin: true,
   email: true,
   username: true,
   avatarUrl: true, // ← جديد
@@ -83,6 +90,28 @@ const userSelect = {
   lastLoginAt: true,
   createdAt: true,
 };
+
+/** A handed-in file, with who handed it in — never more of that user. */
+const submissionSelect = {
+  id: true,
+  fileName: true,
+  fileUrl: true,
+  fileSize: true,
+  mimeType: true,
+  version: true,
+  createdAt: true,
+  uploadedBy: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      firstNameLatin: true,
+      lastNameLatin: true,
+      avatarUrl: true,
+      gender: true,
+    },
+  },
+} as const;
 
 // Rich user projection for the student profile (adds avatar + phone).
 const studentUserSelect = {
@@ -229,7 +258,7 @@ export const getDashboardService = async () => {
         maxStudents: true,
         createdAt: true,
         professor: {
-          select: { user: { select: { firstName: true, lastName: true } } },
+          select: { user: { select: { firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true } } },
         },
         specialization: { select: { id: true, name: true } },
       },
@@ -248,7 +277,7 @@ export const getDashboardService = async () => {
         leader: {
           select: {
             registrationNumber: true,
-            user: { select: { firstName: true, lastName: true } },
+            user: { select: { firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true } },
           },
         },
         members: {
@@ -256,7 +285,7 @@ export const getDashboardService = async () => {
             student: {
               select: {
                 registrationNumber: true,
-                user: { select: { firstName: true, lastName: true } },
+                user: { select: { firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true } },
               },
             },
           },
@@ -287,7 +316,7 @@ export const getDashboardService = async () => {
         title: true,
         createdAt: true,
         professor: {
-          select: { user: { select: { firstName: true, lastName: true } } },
+          select: { user: { select: { firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true } } },
         },
       },
     }),
@@ -477,6 +506,7 @@ export const createTopicService = async (data: CreateTopicDTO) => {
       "Academic year not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+  await assertYearOpen(academicYear.id);
 
   // لا مجموعة ولا أعضاء: الموضوع يُنشأ وحده، والطلبة يصلونه عبر طلب مجموعة.
   const topic = await prisma.graduationTopic.create({
@@ -544,6 +574,7 @@ export const createAssignedTopicService = async (
       "Academic year not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+  await assertYearOpen(academicYear.id);
 
   // 2) تأكّد من وجود كل الطلبة.
   const students = await prisma.student.findMany({
@@ -562,7 +593,7 @@ export const createAssignedTopicService = async (
   });
   if (already)
     throw new BadRequestException(
-      "أحد الطلبة المُسنَدين لديه مشروع بالفعل",
+      "أحد الطلبة المُسنَدين لديه مذكرة بالفعل",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -681,6 +712,7 @@ export const updateAssignedTopicService = async (
         "Academic year not found",
         ErrorCodeEnum.RESOURCE_NOT_FOUND,
       );
+    await assertYearOpen(academicYearId);
   }
 
   const effectiveMax = maxStudents ?? topic.maxStudents;
@@ -753,7 +785,7 @@ export const updateAssignedTopicService = async (
       });
       if (clash)
         throw new BadRequestException(
-          "أحد الطلبة الجدد لديه مشروع بالفعل",
+          "أحد الطلبة الجدد لديه مذكرة بالفعل",
           ErrorCodeEnum.VALIDATION_ERROR,
         );
     }
@@ -1104,15 +1136,20 @@ export const listStudentsService = async (q: ListStudentsDTO) => {
 
   // Hierarchical filters resolved through the specialization → filiere chain.
   // (Prisma lets us filter on nested relations.)
+  //
+  // والمستوى في الشرط نفسه على التخصص: كان كلّ فلترٍ هنا يُسنِد
+  // `where.specialization` كاملاً، فلو أُسند المستوى وحده لمحا الشعبة أو
+  // القسم المختار قبله. فيُبنى الشرط قطعةً قطعة ثم يُسنَد مرّة.
+  const spec: Record<string, unknown> = {};
   if (q.filiereId) {
-    where.specialization = { filiereId: q.filiereId };
+    spec.filiereId = q.filiereId;
   } else if (q.departmentId) {
-    where.specialization = { filiere: { departmentId: q.departmentId } };
+    spec.filiere = { departmentId: q.departmentId };
   } else if (q.facultyId) {
-    where.specialization = {
-      filiere: { department: { facultyId: q.facultyId } },
-    };
+    spec.filiere = { department: { facultyId: q.facultyId } };
   }
+  if (q.level) spec.level = q.level;
+  if (Object.keys(spec).length > 0) where.specialization = spec;
 
   // Filters are combined with AND: each one narrows what the others left.
   const and: Record<string, unknown>[] = [];
@@ -1245,6 +1282,8 @@ export const createStudentService = async (data: CreateStudentDTO) => {
 
   const hashed = await bcrypt.hash(data.password, SALT_ROUNDS);
 
+  await assertYearOpen(data.academicYearId);
+
   const student = await prisma.student.create({
     data: {
       registrationNumber: data.registrationNumber,
@@ -1254,6 +1293,8 @@ export const createStudentService = async (data: CreateStudentDTO) => {
         create: {
           firstName: data.firstName,
           lastName: data.lastName,
+          firstNameLatin: data.firstNameLatin,
+          lastNameLatin: data.lastNameLatin,
           email: data.email,
           phone: data.phone,
           avatarUrl: data.avatarUrl,
@@ -1297,12 +1338,18 @@ export const updateStudentService = async (
     updateData.registrationNumber = data.registrationNumber;
   if (data.specializationId !== undefined)
     updateData.specialization = { connect: { id: data.specializationId } };
-  if (data.academicYearId !== undefined)
+  if (data.academicYearId !== undefined) {
+    await assertYearOpen(data.academicYearId);
     updateData.academicYear = { connect: { id: data.academicYearId } };
+  }
 
   const userUpdate: Record<string, unknown> = {};
   if (data.firstName !== undefined) userUpdate.firstName = data.firstName;
   if (data.lastName !== undefined) userUpdate.lastName = data.lastName;
+  if (data.firstNameLatin !== undefined)
+    userUpdate.firstNameLatin = data.firstNameLatin;
+  if (data.lastNameLatin !== undefined)
+    userUpdate.lastNameLatin = data.lastNameLatin;
   if (data.email !== undefined) userUpdate.email = data.email;
   if (data.phone !== undefined) userUpdate.phone = data.phone;
   if (data.avatarUrl !== undefined) userUpdate.avatarUrl = data.avatarUrl;
@@ -1750,7 +1797,7 @@ const ean13CheckDigit = (twelveDigits: string): number => {
   return (10 - (sum % 10)) % 10;
 };
 
-const randomEmployeeNumber = (): string => {
+export const randomEmployeeNumber = (): string => {
   let body = "";
   for (let i = 0; i < 7; i++) {
     body += Math.floor(Math.random() * 10).toString();
@@ -2010,13 +2057,22 @@ export const updateDomainService = async (
 };
 
 export const deleteDomainService = async (id: string) => {
-  const found = await prisma.domain.findUnique({ where: { id } });
+  const found = await prisma.domain.findUnique({
+    where: { id },
+    include: { _count: { select: { filieres: true } } },
+  });
   if (!found)
     throw new NotFoundException(
       "Domain not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
-  // عند ربط الشعبة بالميدان أضِف هنا فحص _count.filieres كما في القسم.
+  // `Filiere.domainId` is optional and set to NULL on delete, so without this
+  // the domain's filieres would silently lose it — refused, like a department.
+  if (found._count.filieres > 0)
+    throw new BadRequestException(
+      `لا يمكن حذف الميدان لارتباطه بـ ${found._count.filieres} شعبة. احذف الشعب أو انقلها أولاً.`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
   await prisma.domain.delete({ where: { id } });
   return { message: "Domain deleted" };
 };
@@ -2342,6 +2398,12 @@ export const activateAcademicYearService = async (id: string) => {
       "Academic year not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+  // A closed year is a record; it becomes current only by being reopened.
+  if (found.archivedAt)
+    throw new BadRequestException(
+      `السنة «${found.title}» مؤرشفة — أعد فتحها من صفحة الأرشيف قبل تفعيلها.`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
   await prisma.$transaction([
     prisma.academicYear.updateMany({ data: { isActive: false } }),
     prisma.academicYear.update({ where: { id }, data: { isActive: true } }),
@@ -2362,6 +2424,11 @@ export const deleteAcademicYearService = async (id: string) => {
   if (found.isActive)
     throw new BadRequestException(
       "لا يمكن حذف السنة الجامعية النشطة. فعِّل سنة أخرى أولاً.",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  if (found.archivedAt)
+    throw new BadRequestException(
+      "هذه السنة محفوظة في الأرشيف — حذفها يمحو سجلّها. أعد فتحها أوّلاً إن كنت متأكّداً.",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   const blockers: string[] = [];
@@ -2436,6 +2503,101 @@ export const listTopicsService = async (q: ListTopicsDTO) => {
   });
 
   return { items, total, page: q.page, limit: q.limit };
+};
+
+/**
+ * The list of memoir titles for a scope, grouped by specialization — what the
+ * department prints and posts: the specialization's chain heads each page.
+ *
+ * "before" is the catalogue of validated proposals (approved, published, or
+ * already taken — a proposal stays on it once chosen); "after" is the memoirs
+ * that have students, with their names, leader first. Rows run by supervisor,
+ * then title, so a professor's memoirs read together.
+ */
+export const topicTitlesListService = async (q: TopicTitlesListDTO) => {
+  const where: Prisma.GraduationTopicWhereInput = {};
+  if (q.academicYearId) where.academicYearId = q.academicYearId;
+  if (q.professorId) where.professorId = q.professorId;
+  if (q.specializationId) where.specializationId = q.specializationId;
+  else if (q.filiereId) where.specialization = { filiereId: q.filiereId };
+  else if (q.departmentId) where.specialization = { filiere: { departmentId: q.departmentId } };
+  else if (q.facultyId) where.specialization = { filiere: { department: { facultyId: q.facultyId } } };
+  if (q.mode === "after") where.projectGroup = { members: { some: {} } };
+  else where.status = { in: ["approved", "open", "full"] };
+
+  const person = { firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true } as const;
+  const [rows, year] = await Promise.all([
+    prisma.graduationTopic.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        maxStudents: true,
+        professor: { select: { id: true, grade: true, universityEmail: true, user: { select: person } } },
+        specialization: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
+            filiere: {
+              select: {
+                id: true,
+                name: true,
+                department: { select: { id: true, name: true, faculty: { select: { id: true, name: true } } } },
+              },
+            },
+          },
+        },
+        projectGroup: {
+          select: {
+            members: {
+              orderBy: [{ isLeader: "desc" }, { createdAt: "asc" }],
+              select: { isLeader: true, student: { select: { registrationNumber: true, user: { select: person } } } },
+            },
+          },
+        },
+      },
+    }),
+    q.academicYearId
+      ? prisma.academicYear.findUnique({ where: { id: q.academicYearId }, select: { id: true, title: true } })
+      : Promise.resolve(null),
+  ]);
+
+  const key = (u?: { lastName: string | null; firstName: string | null } | null) => `${u?.lastName ?? ""} ${u?.firstName ?? ""}`;
+  const groups = new Map<string, { specialization: { id: string; name: string; level: string }; filiere: { id: string; name: string } | null; department: { id: string; name: string } | null; faculty: { id: string; name: string } | null; rows: unknown[] }>();
+  const sorted = [...rows].sort(
+    (a, b) =>
+      a.specialization.name.localeCompare(b.specialization.name, "ar") ||
+      key(a.professor.user).localeCompare(key(b.professor.user), "ar") ||
+      a.title.localeCompare(b.title, "ar"),
+  );
+  for (const t of sorted) {
+    const s = t.specialization;
+    const dept = s.filiere?.department ?? null;
+    if (!groups.has(s.id))
+      groups.set(s.id, {
+        specialization: { id: s.id, name: s.name, level: s.level },
+        filiere: s.filiere ? { id: s.filiere.id, name: s.filiere.name } : null,
+        department: dept ? { id: dept.id, name: dept.name } : null,
+        faculty: dept?.faculty ?? null,
+        rows: [],
+      });
+    groups.get(s.id)!.rows.push({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      maxStudents: t.maxStudents,
+      supervisor: { id: t.professor.id, grade: t.professor.grade, ...t.professor.user, email: t.professor.universityEmail },
+      students: (t.projectGroup?.members ?? []).map((m) => ({
+        registrationNumber: m.student.registrationNumber,
+        isLeader: m.isLeader,
+        ...m.student.user,
+      })),
+    });
+  }
+
+  return { mode: q.mode, year, groups: [...groups.values()] };
 };
 
 export const getTopicByIdService = async (id: string) => {
@@ -2782,6 +2944,16 @@ export const listProjectsService = async (q: ListProjectsDTO) => {
   if (q.defense === "none") and.push({ defense: { is: null } });
   else if (q.defense) and.push({ defense: { status: q.defense } });
 
+  // «متأخرة» بعلامتها أو بتاريخها — كما يعدّها فضاءا الأستاذ والطالب. كانت هذه
+  // الصفحة تعدّ العلامة وحدها، فمرحلةٌ فات موعدها ولم يحدّثها أحد لم تكن
+  // تظهر متأخرةً إلا للإدارة… أي لا تظهر للجهة الوحيدة التي تتابع الجميع.
+  const lateMilestone = {
+    status: { not: "completed" as const },
+    OR: [{ status: "overdue" as const }, { deadline: { lt: new Date() } }],
+  };
+  if (q.health === "late") and.push({ milestones: { some: lateMilestone } });
+  else if (q.health === "noPlan") and.push({ milestones: { none: {} } });
+
   const where = and.length > 0 ? { AND: and } : {};
 
   // "Defence soonest" has to put groups that have one first; Prisma sorts
@@ -2792,7 +2964,9 @@ export const listProjectsService = async (q: ListProjectsDTO) => {
       ? ({ createdAt: "asc" } as const)
       : q.sort === "defenseSoon"
         ? ({ defense: { date: "asc" } } as const)
-        : ({ createdAt: "desc" } as const);
+        : q.sort === "title"
+          ? ({ topic: { title: "asc" } } as const)
+          : ({ createdAt: "desc" } as const);
 
   /** The active filter plus one more condition, for the summary counts. */
   const narrowed = (extra: Record<string, unknown>) => ({
@@ -2802,8 +2976,15 @@ export const listProjectsService = async (q: ListProjectsDTO) => {
   // The summary is computed over the *filtered* set, not the whole table, so
   // the tiles always describe the grid underneath them. They are counts, not
   // a second page of rows, so they cost four cheap aggregates.
-  const [items, total, defenseScheduled, defenseDone, noDefense, withOverdue] =
-    await Promise.all([
+  const [
+    items,
+    total,
+    defenseScheduled,
+    defenseDone,
+    noDefense,
+    withOverdue,
+    noPlan,
+  ] = await Promise.all([
       prisma.projectGroup.findMany({
         where,
         include: {
@@ -2816,11 +2997,13 @@ export const listProjectsService = async (q: ListProjectsDTO) => {
               academicYear: true,
             },
           },
+          // المسؤول أوّلاً: هو من تبدأ به البطاقة صفّ الوجوه.
           members: {
+            orderBy: { isLeader: "desc" },
             include: { student: { include: { user: { select: userSelect } } } },
           },
           _count: { select: { milestones: true } },
-          defense: true,
+          defense: { include: { _count: { select: { committee: true } } } },
         },
         orderBy,
         skip: (q.page - 1) * q.limit,
@@ -2835,46 +3018,79 @@ export const listProjectsService = async (q: ListProjectsDTO) => {
       }),
       prisma.projectGroup.count({ where: narrowed({ defense: { is: null } }) }),
       prisma.projectGroup.count({
-        where: narrowed({ milestones: { some: { status: "overdue" } } }),
+        where: narrowed({ milestones: { some: lateMilestone } }),
+      }),
+      prisma.projectGroup.count({
+        where: narrowed({ milestones: { none: {} } }),
       }),
     ]);
 
   // Progress is the point of this page, and a bare milestone count cannot
-  // express it. One grouped query covers the whole page rather than one
-  // query per project.
+  // express it. One query covers the whole page rather than one per project,
+  // and carries what the card needs beyond the ratio: the next deadline, the
+  // work handed in, and when the team last showed a sign of life.
   const ids = items.map((p) => p.id);
-  const grouped = ids.length
-    ? await prisma.milestone.groupBy({
-        by: ["groupId", "status"],
+  const now = new Date();
+  const plan = ids.length
+    ? await prisma.milestone.findMany({
         where: { groupId: { in: ids } },
-        _count: { _all: true },
+        select: {
+          groupId: true,
+          title: true,
+          status: true,
+          deadline: true,
+          _count: { select: { submissions: true } },
+          submissions: {
+            select: { createdAt: true },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+        orderBy: { deadline: "asc" },
       })
     : [];
 
-  const progressByGroup = new Map<
-    string,
-    { total: number; completed: number; overdue: number }
-  >();
-  for (const id of ids)
-    progressByGroup.set(id, { total: 0, completed: 0, overdue: 0 });
+  type Progress = {
+    total: number;
+    completed: number;
+    inProgress: number;
+    overdue: number;
+    submissions: number;
+    nextDeadline: { title: string; deadline: Date } | null;
+    lastActivityAt: Date | null;
+  };
+  const progressByGroup = new Map<string, Progress>();
+  const blank = (): Progress => ({
+    total: 0,
+    completed: 0,
+    inProgress: 0,
+    overdue: 0,
+    submissions: 0,
+    nextDeadline: null,
+    lastActivityAt: null,
+  });
+  for (const id of ids) progressByGroup.set(id, blank());
 
-  for (const row of grouped) {
-    const acc = progressByGroup.get(row.groupId);
+  for (const m of plan) {
+    const acc = progressByGroup.get(m.groupId);
     if (!acc) continue;
-    const n = row._count._all;
-    acc.total += n;
-    if (row.status === "completed") acc.completed += n;
-    if (row.status === "overdue") acc.overdue += n;
+    acc.total += 1;
+    if (m.status === "completed") acc.completed += 1;
+    else if (m.status === "overdue" || m.deadline < now) acc.overdue += 1;
+    else if (m.status === "in_progress") acc.inProgress += 1;
+    // Ordered by deadline, so the first open one ahead of today is the next.
+    if (m.status !== "completed" && m.deadline >= now && !acc.nextDeadline)
+      acc.nextDeadline = { title: m.title, deadline: m.deadline };
+    acc.submissions += m._count.submissions;
+    const last = m.submissions[0]?.createdAt;
+    if (last && (!acc.lastActivityAt || last > acc.lastActivityAt))
+      acc.lastActivityAt = last;
   }
 
   return {
     items: items.map((p) => ({
       ...p,
-      progress: progressByGroup.get(p.id) ?? {
-        total: 0,
-        completed: 0,
-        overdue: 0,
-      },
+      progress: progressByGroup.get(p.id) ?? blank(),
     })),
     total,
     stats: {
@@ -2883,6 +3099,7 @@ export const listProjectsService = async (q: ListProjectsDTO) => {
       defenseDone,
       noDefense,
       withOverdue,
+      noPlan,
     },
     page: q.page,
     limit: q.limit,
@@ -2895,8 +3112,19 @@ export const getProjectByIdService = async (id: string) => {
     include: {
       topic: {
         include: {
-          professor: { include: { user: { select: userSelect } } },
-          specialization: { include: { filiere: { include: { department: true } } } },
+          professor: {
+            include: {
+              user: { select: userSelect },
+              department: { select: { id: true, name: true } },
+            },
+          },
+          specialization: {
+            include: {
+              filiere: {
+                include: { department: { include: { faculty: true } } },
+              },
+            },
+          },
           // Missing before, so the detail view could not say which year the
           // project belongs to.
           academicYear: true,
@@ -2925,9 +3153,17 @@ export const getProjectByIdService = async (id: string) => {
       },
       milestones: {
         orderBy: { order: "asc" },
-        // The count is enough to show "3 submissions" without shipping every
-        // file record to a page that only summarises them.
-        include: { _count: { select: { submissions: true } } },
+        // The latest files of each milestone travel with it, so the page can
+        // show — and open — what the team handed in without a second trip.
+        // The count stays the true total when a milestone has more.
+        include: {
+          _count: { select: { submissions: true } },
+          submissions: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            select: submissionSelect,
+          },
+        },
       },
       defense: {
         // The jury: previously the defence came back without it, so the page
@@ -2947,7 +3183,44 @@ export const getProjectByIdService = async (id: string) => {
       "Project not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
-  return group;
+
+  const submissions = group.milestones.reduce(
+    (n, m) => n + m._count.submissions,
+    0,
+  );
+  const lastSubmissionAt =
+    group.milestones
+      .flatMap((m) => m.submissions.map((x) => x.createdAt))
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+
+  // How the group came to be: a team request the administration accepted, or
+  // an assignment made directly. The page says which, and since when.
+  const origin = await prisma.groupRequest.findFirst({
+    where: { topicId: group.topicId, status: "accepted" },
+    select: { id: true, createdAt: true, updatedAt: true },
+  });
+
+  // The same guard the dissolve endpoint applies, said up front — so the
+  // button can explain itself instead of failing on click.
+  const dissolveBlockers = {
+    submissions,
+    defense: !!group.defense,
+  };
+
+  return {
+    ...group,
+    insights: {
+      submissions,
+      lastSubmissionAt,
+      origin: origin
+        ? { kind: "request" as const, requestId: origin.id, since: origin.updatedAt }
+        : { kind: "assignment" as const, requestId: null, since: group.createdAt },
+    },
+    actions: {
+      canDissolve: submissions === 0 && !group.defense,
+      dissolveBlockers,
+    },
+  };
 };
 
 export const changeSupervisorService = async (
@@ -2972,11 +3245,49 @@ export const changeSupervisorService = async (
       "Professor not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+  if (group.topic.professorId === data.professorId)
+    throw new BadRequestException(
+      "هذا الأستاذ هو المشرف الحالي على المذكرة",
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  const previous = await prisma.professor.findUnique({
+    where: { id: group.topic.professorId },
+    select: { userId: true },
+  });
 
   await prisma.graduationTopic.update({
     where: { id: group.topicId },
     data: { professorId: data.professorId },
   });
+
+  // Both ends of the handover learn of it: one gains a team, the other loses
+  // one from their space without having done anything.
+  try {
+    await createNotifications([
+      {
+        userId: prof.userId,
+        type: "general",
+        title: "أُسند إليك الإشراف على مذكرة",
+        message: `أسندت إليك الإدارة الإشراف على «${group.topic.title}».`,
+        link: `/professor/groups/${id}`,
+      },
+      ...(previous && previous.userId !== prof.userId
+        ? [
+            {
+              userId: previous.userId,
+              type: "general" as const,
+              title: "نُقل الإشراف على مذكرة",
+              message: `نقلت الإدارة الإشراف على «${group.topic.title}» إلى أستاذٍ آخر.`,
+              link: "/professor/groups",
+            },
+          ]
+        : []),
+    ]);
+  } catch {
+    // A notification must never fail the write it is reporting.
+  }
+
   return getProjectByIdService(id);
 };
 
@@ -3015,7 +3326,7 @@ export const assignStudentService = async (
   });
   if (elsewhere)
     throw new BadRequestException(
-      "هذا الطالب عضو في مشروع آخر بالفعل",
+      "هذا الطالب عضو في مذكرة أخرى بالفعل",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3029,7 +3340,7 @@ export const assignStudentService = async (
   ]);
   if (topic && count >= topic.maxStudents)
     throw new BadRequestException(
-      `المشروع مكتمل: الحدّ الأقصى لهذا الموضوع ${topic.maxStudents} طلبة.`,
+      `المذكرة مكتملة: الحدّ الأقصى لهذا الموضوع ${topic.maxStudents} طلبة.`,
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3041,6 +3352,26 @@ export const assignStudentService = async (
       isLeader: count === 0,
     },
   });
+
+  // الطالب يجد مشروعاً في فضائه لم يطلبه — فليعرف من أين جاء.
+  try {
+    const topicTitle = (
+      await prisma.graduationTopic.findUnique({
+        where: { id: group.topicId },
+        select: { title: true },
+      })
+    )?.title;
+    await createNotification({
+      userId: student.userId,
+      type: "general",
+      title: "أُضفت إلى مذكرة",
+      message: `أضافتك الإدارة إلى فريق «${topicTitle ?? ""}».`,
+      link: "/student/project",
+    });
+  } catch {
+    // A notification must never fail the write it is reporting.
+  }
+
   return getProjectByIdService(id);
 };
 
@@ -3067,7 +3398,7 @@ export const setProjectLeaderService = async (
     );
   if (!group.members.some((m) => m.studentId === studentId))
     throw new BadRequestException(
-      "القائد يجب أن يكون أحد أعضاء المشروع",
+      "القائد يجب أن يكون أحد أعضاء المذكرة",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3139,7 +3470,7 @@ export const removeProjectMemberService = async (
   const target = group.members.find((m) => m.studentId === studentId);
   if (!target)
     throw new BadRequestException(
-      "الطالب ليس عضواً في هذا المشروع",
+      "الطالب ليس عضواً في هذه المذكرة",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3154,7 +3485,7 @@ export const removeProjectMemberService = async (
    */
   if (remaining === 0)
     throw new BadRequestException(
-      "هذا آخر عضو في المشروع، وإزالته تعني فسخ المشروع كلّه. استعمل «فسخ المشروع» — فهو يسجّل السبب ويُعلم الطلبة ويُعيد الموضوع للتداول.",
+      "هذا آخر عضو في المذكرة، وإزالته تعني فسخ المذكرة كلّها. استعمل «فسخ المذكرة» — فهو يسجّل السبب ويُعلم الطلبة ويُعيد الموضوع للتداول.",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3174,6 +3505,30 @@ export const removeProjectMemberService = async (
         });
     }
   });
+
+  // مشروعه اختفى من صفحته؛ فلا يصحّ أن يختفي بلا خبر.
+  try {
+    const [who, topic] = await Promise.all([
+      prisma.student.findUnique({
+        where: { id: studentId },
+        select: { userId: true },
+      }),
+      prisma.graduationTopic.findUnique({
+        where: { id: group.topicId },
+        select: { title: true },
+      }),
+    ]);
+    if (who)
+      await createNotification({
+        userId: who.userId,
+        type: "general",
+        title: "أُخرجت من مذكرة",
+        message: `أخرجتك الإدارة من فريق «${topic?.title ?? ""}».`,
+        link: "/student/requests",
+      });
+  } catch {
+    // A notification must never fail the write it is reporting.
+  }
 
   return {
     remaining,
@@ -3222,13 +3577,13 @@ export const dissolveProjectService = async (
   if (group.defense) blockers.push("مناقشة مبرمجة");
   if (blockers.length)
     throw new BadRequestException(
-      `لا يمكن فسخ هذا المشروع: عليه ${blockers.join(" و")}. احذف ذلك أوّلاً من شاشته إن كنت متأكّداً — لا يُفسَخ مشروع يحمل عملاً قائماً في خطوة واحدة.`,
+      `لا يمكن فسخ هذه المذكرة: عليها ${blockers.join(" و")}. احذف ذلك أوّلاً من شاشته إن كنت متأكّداً — لا تُفسَخ مذكرة تحمل عملاً قائماً في خطوة واحدة.`,
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
   const reason = data.reason?.trim()
     ? data.reason.trim()
-    : "فسخت الإدارة المشروع.";
+    : "فسخت الإدارة المذكرة.";
 
   await prisma.$transaction(async (tx) => {
     await tx.milestone.deleteMany({ where: { groupId } });
@@ -3303,7 +3658,14 @@ export const listGroupMilestonesService = async (
   return prisma.milestone.findMany({
     where,
     orderBy: { order: "asc" },
-    include: { _count: { select: { submissions: true } } },
+    include: {
+      _count: { select: { submissions: true } },
+      submissions: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: submissionSelect,
+      },
+    },
   });
 };
 
@@ -3370,7 +3732,7 @@ export const updateGroupMilestoneService = async (
 
   await notifySupervisorOfMilestone(
     existing.groupId,
-    "عدّلت الإدارة مرحلة في مشروعكم",
+    "عدّلت الإدارة مرحلة في مذكرتكم",
   );
 
   return milestone;
@@ -3398,7 +3760,7 @@ export const deleteGroupMilestoneService = async (id: string) => {
   await prisma.milestone.delete({ where: { id } });
   await notifySupervisorOfMilestone(
     existing.groupId,
-    "حذفت الإدارة مرحلة من مشروعكم",
+    "حذفت الإدارة مرحلة من مذكرتكم",
   );
 
   return { message: "Milestone deleted" };
@@ -3422,8 +3784,9 @@ const notifySupervisorOfMilestone = async (groupId: string, title: string) => {
       userId,
       type: "general",
       title,
-      message: `المشروع: «${group?.topic?.title ?? ""}».`,
-      link: "/professor/projects",
+      message: `المذكرة: «${group?.topic?.title ?? ""}».`,
+      // كان «/professor/projects» — مسارٌ لا وجود له، فيفتح الإشعار صفحةً فارغة.
+      link: `/professor/groups/${groupId}`,
     });
   } catch {
     // A notification must never fail the write it is reporting.
@@ -3433,31 +3796,73 @@ const notifySupervisorOfMilestone = async (groupId: string, title: string) => {
 //
 // ════════ DEFENSES ════════
 //
-export const listDefensesService = async (q: ListQueryDTO) => {
-  const [items, total] = await Promise.all([
-    prisma.defense.findMany({
-      include: {
+/**
+ * من تعنيه المناقشة: طلبة الفريق، ومشرفهم، وأعضاء اللجنة — كلٌّ برابط فضائه.
+ * تُجمع قبل الكتابة عند الحذف، إذ لا يبقى بعده ما يُسأل عنه.
+ */
+const defenseAudience = async (defenseId: string) => {
+  try {
+    const d = await prisma.defense.findUnique({
+      where: { id: defenseId },
+      select: {
+        date: true,
+        room: true,
         group: {
-          include: {
-            topic: true,
-            members: {
-              include: {
-                student: { include: { user: { select: userSelect } } },
-              },
+          select: {
+            id: true,
+            topic: {
+              select: { title: true, professor: { select: { userId: true } } },
             },
+            members: { select: { student: { select: { userId: true } } } },
           },
         },
-        committee: {
-          include: { professor: { include: { user: { select: userSelect } } } },
-        },
+        committee: { select: { professor: { select: { userId: true } } } },
       },
-      orderBy: { date: "asc" },
-      skip: (q.page - 1) * q.limit,
-      take: q.limit,
-    }),
-    prisma.defense.count(),
-  ]);
-  return { items, total, page: q.page, limit: q.limit };
+    });
+    if (!d) return null;
+
+    const recipients = new Map<string, string>();
+    for (const m of d.group.members)
+      recipients.set(m.student.userId, "/student/project");
+    const sup = d.group.topic.professor?.userId;
+    if (sup) recipients.set(sup, `/professor/groups/${d.group.id}`);
+    for (const c of d.committee)
+      if (!recipients.has(c.professor.userId))
+        recipients.set(c.professor.userId, "/professor");
+
+    const when = d.date.toLocaleString("ar-DZ", {
+      dateStyle: "full",
+      timeStyle: "short",
+      timeZone: "Africa/Algiers",
+    });
+    return {
+      recipients,
+      message: `«${d.group.topic.title}» — ${when}، القاعة ${d.room}.`,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const notifyDefense = async (
+  audience: Awaited<ReturnType<typeof defenseAudience>>,
+  title: string,
+  type: "defense_scheduled" | "defense_graded" | "general" = "defense_scheduled",
+) => {
+  if (!audience) return;
+  try {
+    await createNotifications(
+      [...audience.recipients].map(([userId, link]) => ({
+        userId,
+        link,
+        type,
+        title,
+        message: audience.message,
+      })),
+    );
+  } catch {
+    // A notification must never fail the write it is reporting.
+  }
 };
 
 export const createDefenseService = async (data: CreateDefenseDTO) => {
@@ -3479,10 +3884,11 @@ export const createDefenseService = async (data: CreateDefenseDTO) => {
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
-  return prisma.defense.create({
+  const defense = await prisma.defense.create({
     data: {
       groupId: data.groupId,
       date: new Date(data.date),
+      durationMinutes: data.durationMinutes,
       room: data.room,
       grade: data.grade,
       status: data.status,
@@ -3503,6 +3909,11 @@ export const createDefenseService = async (data: CreateDefenseDTO) => {
       },
     },
   });
+
+  // The team, their supervisor and the jury learn the date from the
+  // platform, not from a corridor.
+  await notifyDefense(await defenseAudience(defense.id), "بُرمجت مناقشة مذكرة");
+  return defense;
 };
 
 export const updateDefenseService = async (
@@ -3516,36 +3927,65 @@ export const updateDefenseService = async (
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
-  // If a committee list is provided, replace the existing one wholesale.
-  if (data.committee) {
-    await prisma.defenseCommitteeMember.deleteMany({
-      where: { defenseId: id },
-    });
-  }
+  // If a committee list is provided, replace the existing one wholesale —
+  // in one transaction, or a refused new list would leave no jury at all.
+  const defense = await prisma.$transaction(async (tx) => {
+    if (data.committee) {
+      await tx.defenseCommitteeMember.deleteMany({
+        where: { defenseId: id },
+      });
+    }
 
-  return prisma.defense.update({
-    where: { id },
-    data: {
-      date: data.date ? new Date(data.date) : undefined,
-      room: data.room,
-      grade: data.grade,
-      status: data.status,
-      notes: data.notes,
-      committee: data.committee?.length
-        ? {
-            create: data.committee.map((m) => ({
-              professorId: m.professorId,
-              role: m.role as never,
-            })),
-          }
-        : undefined,
-    },
-    include: {
-      committee: {
-        include: { professor: { include: { user: { select: userSelect } } } },
+    return tx.defense.update({
+      where: { id },
+      data: {
+        date: data.date ? new Date(data.date) : undefined,
+        durationMinutes: data.durationMinutes,
+        room: data.room,
+        grade: data.grade,
+        status: data.status,
+        notes: data.notes,
+        committee: data.committee?.length
+          ? {
+              create: data.committee.map((m) => ({
+                professorId: m.professorId,
+                role: m.role as never,
+              })),
+            }
+          : undefined,
       },
-    },
+      include: {
+        committee: {
+          include: {
+            professor: { include: { user: { select: userSelect } } },
+          },
+        },
+      },
+    });
   });
+
+  // Only what changes someone's day is announced; a corrected note is not.
+  const moved =
+    (data.date !== undefined &&
+      new Date(data.date).getTime() !== found.date.getTime()) ||
+    (data.room !== undefined && data.room !== found.room);
+  const statusChanged =
+    data.status !== undefined && data.status !== found.status;
+
+  if (statusChanged && data.status === "cancelled")
+    await notifyDefense(await defenseAudience(id), "أُلغيت المناقشة", "general");
+  else if (statusChanged && data.status === "completed")
+    await notifyDefense(
+      await defenseAudience(id),
+      "اختُتمت المناقشة",
+      "defense_graded",
+    );
+  else if (moved || (statusChanged && data.status === "scheduled"))
+    await notifyDefense(await defenseAudience(id), "تغيّر موعد المناقشة");
+  else if (data.committee)
+    await notifyDefense(await defenseAudience(id), "تحدّثت لجنة المناقشة");
+
+  return defense;
 };
 
 export const deleteDefenseService = async (id: string) => {
@@ -3555,7 +3995,11 @@ export const deleteDefenseService = async (id: string) => {
       "Defense not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+  // Gathered first: once the row is gone there is no one left to ask.
+  const audience =
+    found.status === "scheduled" ? await defenseAudience(id) : null;
   await prisma.defense.delete({ where: { id } });
+  await notifyDefense(audience, "أُلغي موعد المناقشة", "general");
   return { message: "Defense deleted" };
 };
 
@@ -3772,6 +4216,15 @@ export const listGroupRequestsService = async (q: ListQueryDTO) => {
   return { items: withActions, total, counts, page: q.page, limit: q.limit };
 };
 
+/**
+ * One request, with what the decision rests on.
+ *
+ * Beyond the request itself, each member comes with what else they are part
+ * of — a project already, or another request still waiting — and with their
+ * specialization, so a team from another specialization is seen before it is
+ * accepted rather than after. The topic brings how many requests it has
+ * used against its cap.
+ */
 export const getGroupRequestService = async (id: string) => {
   const request = await prisma.groupRequest.findUnique({
     where: { id },
@@ -3782,11 +4235,22 @@ export const getGroupRequestService = async (id: string) => {
           specialization: true,
           academicYear: true,
           projectGroup: { select: { id: true } },
+          _count: {
+            select: { groupRequests: { where: { countsAgainstCap: true } } },
+          },
         },
       },
       leader: { include: { user: { select: userSelect } } },
       members: {
-        include: { student: { include: { user: { select: userSelect } } } },
+        include: {
+          student: {
+            include: {
+              user: { select: userSelect },
+              specialization: { select: { id: true, name: true } },
+              academicYear: { select: { id: true, title: true } },
+            },
+          },
+        },
       },
     },
   });
@@ -3796,9 +4260,51 @@ export const getGroupRequestService = async (id: string) => {
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
+  // What else each member is part of — read before deciding, not learned
+  // from a refusal after it.
+  const studentIds = request.members.map((m) => m.studentId);
+  const [placements, otherRequests] = await Promise.all([
+    prisma.projectMember.findMany({
+      where: { studentId: { in: studentIds } },
+      select: {
+        studentId: true,
+        group: {
+          select: { id: true, topic: { select: { id: true, title: true } } },
+        },
+      },
+    }),
+    prisma.groupRequestMember.findMany({
+      where: {
+        studentId: { in: studentIds },
+        requestId: { not: id },
+        request: { status: "pending" },
+      },
+      select: {
+        studentId: true,
+        request: {
+          select: {
+            id: true,
+            createdAt: true,
+            topic: { select: { id: true, title: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const members = request.members.map((m) => ({
+    ...m,
+    project:
+      placements.find((p) => p.studentId === m.studentId)?.group ?? null,
+    otherPending: otherRequests
+      .filter((o) => o.studentId === m.studentId)
+      .map((o) => o.request),
+  }));
+
   // نفس الجدول الذي تقرأه القائمة، فلا تختلف صفحة التفصيل عنها في ما تعرضه.
   return {
     ...request,
+    members,
     actions: requestActions({
       status: request.status,
       memberCount: request.members.length,
@@ -3965,7 +4471,7 @@ export const deleteGroupRequestService = async (id: string) => {
   if (request.status !== "rejected")
     throw new BadRequestException(
       request.status === "accepted"
-        ? "لا يُحذف طلبٌ قام عليه مشروع. افسخ المشروع أوّلاً من صفحة «المشاريع»."
+        ? "لا يُحذف طلبٌ قامت عليه مذكرة. افسخ المذكرة أوّلاً من صفحة «المذكرات»."
         : "لا يُحذف طلبٌ ما يزال بانتظار القرار. ابتّ فيه — قبولاً أو رفضاً — فالفريق ينتظر جواباً.",
       ErrorCodeEnum.VALIDATION_ERROR,
     );

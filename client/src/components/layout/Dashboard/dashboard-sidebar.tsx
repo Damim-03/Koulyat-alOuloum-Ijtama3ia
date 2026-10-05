@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import facultyLogo from "../../../assets/Faculty.png";
@@ -10,6 +10,8 @@ export interface NavItem {
   labelKey: string; // i18n key
   icon: LucideIcon;
   end?: boolean; // exact match (for index route)
+  /** A count to show beside the link — unread messages, for one. */
+  badge?: number;
 }
 
 interface Props {
@@ -29,9 +31,12 @@ export function DashboardSidebar({ items, panelKey, collapsed, onToggle }: Props
         collapsed ? "w-16" : "w-64"
       }`}
     >
-      {/* brand */}
-      <div
-        className={`flex h-16 items-center gap-3 border-b border-white/10 ${
+      {/* brand — ويعود إلى الصفحة الرئيسية للموقع، كما يُنتظر من شعارٍ في رأس الصفحة */}
+      <Link
+        to={localePath("/")}
+        title={t("auth.backHome")}
+        aria-label={`${t("brand.short")} — ${t("auth.backHome")}`}
+        className={`group flex h-16 items-center gap-3 border-b border-white/10 transition hover:bg-white/5 focus-visible:bg-white/5 focus-visible:outline-none ${
           collapsed ? "justify-center px-2" : "px-3"
         }`}
       >
@@ -41,19 +46,19 @@ export function DashboardSidebar({ items, panelKey, collapsed, onToggle }: Props
         <img
           src={facultyLogo}
           alt={t("brand.facultyName")}
-          className={`shrink-0 object-contain ${
+          className={`shrink-0 object-contain transition-transform duration-300 group-hover:scale-105 ${
             collapsed ? "h-auto w-11" : "h-11 w-auto"
           }`}
         />
         {!collapsed && (
           <div className="min-w-0 leading-tight">
-            <p className="truncate font-serif text-sm font-bold text-cream">
+            <p className="truncate font-serif text-sm font-bold text-cream transition group-hover:text-gold-soft">
               {t("brand.short")}
             </p>
             <p className="truncate text-[10.5px] text-soft-sage">{t(panelKey)}</p>
           </div>
         )}
-      </div>
+      </Link>
 
       {/* nav */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-2">
@@ -75,8 +80,21 @@ export function DashboardSidebar({ items, panelKey, collapsed, onToggle }: Props
                 }`
               }
             >
-              <Icon size={18} className="shrink-0" />
+              <span className="relative shrink-0">
+                <Icon size={18} />
+                {collapsed && !!item.badge && (
+                  <span className="absolute -top-1.5 -end-1.5 size-2.5 rounded-full border-2 border-forest bg-red-500" />
+                )}
+              </span>
               {!collapsed && <span className="truncate">{t(item.labelKey)}</span>}
+              {!collapsed && !!item.badge && (
+                <span
+                  className="ms-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[10.5px] font-bold text-white tabular-nums"
+                  data-testid="nav-badge"
+                >
+                  {item.badge > 99 ? "99+" : item.badge}
+                </span>
+              )}
             </NavLink>
           );
         })}

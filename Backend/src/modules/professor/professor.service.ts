@@ -6,6 +6,7 @@ import {
   BadRequestException,
 } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
+import { assertYearOpen } from "../../core/academic/year-open";
 import {
   CreateTopicDTO,
   CreateTopicWithGroupDTO,
@@ -48,6 +49,7 @@ export const createTopicService = async (
   data: CreateTopicDTO,
 ) => {
   const professor = await getProfessor(userId);
+  await assertYearOpen(data.academicYearId);
 
   const topic = await prisma.graduationTopic.create({
     data: {
@@ -114,6 +116,7 @@ export const createTopicWithGroupService = async (
       "Academic year not found",
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
+  await assertYearOpen(academicYear.id);
 
   // ── resolve the registration numbers ──
   const numbers = Array.from(
@@ -158,7 +161,7 @@ export const createTopicWithGroupService = async (
   });
   if (placed)
     throw new BadRequestException(
-      `الطالب ${placed.student.registrationNumber} لديه مشروع بالفعل`,
+      `الطالب ${placed.student.registrationNumber} لديه مذكرة بالفعل`,
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -266,6 +269,8 @@ export const searchStudentsService = async (
         select: {
           firstName: true,
           lastName: true,
+          firstNameLatin: true,
+          lastNameLatin: true,
           avatarUrl: true,
           gender: true,
         },
@@ -445,6 +450,7 @@ export const updateTopicService = async (
         "Academic year not found",
         ErrorCodeEnum.RESOURCE_NOT_FOUND,
       );
+    await assertYearOpen(data.academicYearId);
   }
 
   // Editing a rejected topic *is* resubmitting it: it goes back into the
@@ -648,6 +654,14 @@ export const deleteMilestoneService = async (
 
 // ─── LIST MY GROUPS ───────────────────────────────────────────
 
+/**
+ * The professor's projects, with what the list page needs to say how each
+ * one is doing: its milestones (state and deadline, not their files), its
+ * defense, and the topic's specialization and year.
+ *
+ * The page used to read `defense` from this response, which never carried
+ * it — every project showed "no defense", scheduled or not.
+ */
 export const getMyGroupsService = async (userId: string) => {
   const professor = await getProfessor(userId);
 
@@ -655,10 +669,32 @@ export const getMyGroupsService = async (userId: string) => {
     where: { topic: { professorId: professor.id } },
     include: {
       topic: {
-        select: { id: true, title: true, status: true, maxStudents: true },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          maxStudents: true,
+          specialization: { select: { id: true, name: true } },
+          academicYear: { select: { id: true, title: true } },
+        },
       },
       members: {
+        orderBy: { isLeader: "desc" },
         include: { student: { include: { user: publicUser } } },
+      },
+      milestones: {
+        orderBy: { order: "asc" },
+        select: {
+          id: true,
+          title: true,
+          deadline: true,
+          status: true,
+          order: true,
+          _count: { select: { submissions: true } },
+        },
+      },
+      defense: {
+        select: { id: true, date: true, room: true, status: true, grade: true },
       },
       _count: { select: { milestones: true } },
     },
@@ -687,7 +723,7 @@ export const getGroupByIdService = async (userId: string, groupId: string) => {
           submissions: {
             include: {
               uploadedBy: {
-                select: { id: true, firstName: true, lastName: true },
+                select: { id: true, firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true },
               },
             },
           },
@@ -721,7 +757,19 @@ export const getDashboardService = async (userId: string) => {
 
   const mine = { topic: { professorId: professor.id } };
 
-  const [topics, groups, milestones, defenses, submissions] = await Promise.all([
+  const lite = {
+    select: { firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true, avatarUrl: true, gender: true },
+  } as const;
+
+  const [
+    topics,
+    groups,
+    milestones,
+    defenses,
+    submissions,
+    profile,
+    committeeSeats,
+  ] = await Promise.all([
     prisma.graduationTopic.findMany({
       where: { professorId: professor.id },
       select: {
@@ -802,10 +850,61 @@ export const getDashboardService = async (userId: string) => {
             group: { select: { topic: { select: { id: true, title: true } } } },
           },
         },
-        uploadedBy: { select: { id: true, firstName: true, lastName: true, avatarUrl: true, gender: true } },
+        uploadedBy: { select: { id: true, firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true, avatarUrl: true, gender: true } },
       },
       orderBy: { createdAt: "desc" },
       take: 30,
+    }),
+
+    // Who the professor is, as the card at the top of the screen shows it.
+    prisma.professor.findUnique({
+      where: { id: professor.id },
+      select: {
+        employeeNumber: true,
+        universityEmail: true,
+        grade: true,
+        tags: true,
+        department: {
+          select: {
+            id: true,
+            name: true,
+            faculty: { select: { id: true, name: true } },
+          },
+        },
+      },
+    }),
+
+    // Defenses the professor sits on as a committee member — including
+    // other professors' projects, which nothing else on this screen covers.
+    prisma.defenseCommitteeMember.findMany({
+      where: { professorId: professor.id },
+      select: {
+        role: true,
+        defense: {
+          select: {
+            id: true,
+            date: true,
+            room: true,
+            status: true,
+            grade: true,
+            groupId: true,
+            group: {
+              select: {
+                topic: {
+                  select: {
+                    id: true,
+                    title: true,
+                    professorId: true,
+                    professor: { select: { user: lite } },
+                  },
+                },
+                _count: { select: { members: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { defense: { date: "asc" } },
     }),
   ]);
 
@@ -892,7 +991,29 @@ export const getDashboardService = async (userId: string) => {
     };
   });
 
+  // ── committee duties ──
+  const committee = committeeSeats.map(({ role, defense: d }) => ({
+    role,
+    id: d.id,
+    date: d.date,
+    room: d.room,
+    status: d.status,
+    grade: d.grade,
+    groupId: d.groupId,
+    topic: { id: d.group.topic.id, title: d.group.topic.title },
+    supervisor: d.group.topic.professor.user,
+    // Sitting on one's own project's committee is the usual case for the
+    // supervisor; the screen marks it so the two kinds read apart.
+    ownProject: d.group.topic.professorId === professor.id,
+    membersCount: d.group._count.members,
+  }));
+
   return {
+    profile,
+    committee,
+    // Newest first, whatever their milestone's state: "awaiting review"
+    // above is the ones still to act on, this is simply what came in.
+    recentSubmissions: submissions.slice(0, 8),
     // The whole list, not a slice: a professor carries tens of topics at
     // most, and the screen needs to show which topic is where — a count per
     // status cannot answer that.

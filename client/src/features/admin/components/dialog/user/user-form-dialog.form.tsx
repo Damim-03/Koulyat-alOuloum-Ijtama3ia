@@ -66,12 +66,16 @@ import { useBodyScrollLock } from "../../../../../hooks/use-body-scroll-lock";
 import { Stepper } from "../../../../../components/ui/stepper";
 import {
   academicFields,
+  countByLevel,
   FIELD_LABEL_KEY,
   isStaffRole,
+  SPEC_LEVEL_KEY,
   stepsFor,
   type FormValues,
   type Role,
 } from "./user-form-steps";
+import { LevelPicker } from "../../ui/level-picker";
+import { toLatinFirst, toLatinLast } from "../../../../../lib/latin-name";
 import { None } from "../../../../../lib/none";
 import { Select } from "../../../../../components/ui/select";
 
@@ -109,6 +113,8 @@ const EMPTY: FormValues = {
   role: "student",
   firstName: "",
   lastName: "",
+  firstNameLatin: "",
+  lastNameLatin: "",
   gender: "",
   email: "",
   username: "",
@@ -123,6 +129,7 @@ const EMPTY: FormValues = {
   facultyId: "",
   departmentId: "",
   filiereId: "",
+  level: "",
   grade: [],
   tags: [],
   // كما في القاعدة: الحساب غير موثّقٍ ما لم تُوثّقه الإدارة صراحةً.
@@ -259,12 +266,24 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
       ),
     [filieres, departmentId],
   );
-  const specOptions = useMemo(
+  /**
+   * المستوى يضيّق التخصصات كما تضيّقها الشعبة، ولا يُحفظ: هو صفةٌ للتخصص.
+   *
+   * وعددُ كلّ مستوى يُحسب بعد الشعبة وقبل المستوى نفسه، فيُطفأ زرُّ مستوى
+   * لا تخصصَ له هنا — خيارٌ يُفرغ القائمة فخٌّ لا فلتر.
+   */
+  const level = watch("level") ?? "";
+  const specsInFiliere = useMemo(
     () =>
       (specializations ?? []).filter(
         (s: { filiereId?: string }) => !filiereId || s.filiereId === filiereId,
       ),
     [specializations, filiereId],
+  );
+  const levelCounts = useMemo(() => countByLevel(specsInFiliere), [specsInFiliere]);
+  const specOptions = useMemo(
+    () => specsInFiliere.filter((s) => !level || s.level === level),
+    [specsInFiliere, level],
   );
 
   /**
@@ -297,7 +316,13 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
   const reviewRows = useMemo<ReviewRow[]>(() => {
     // الدور والاسم والتوثيق ليست هنا: هي في رأس البطاقة أعلاه، حيث
     // تُقرأ قبل التفاصيل لا بينها.
+    const latin = [values.firstNameLatin, values.lastNameLatin]
+      .filter(Boolean)
+      .join(" ");
     const person: ReviewRow[] = [
+      ...(role === "student"
+        ? [{ label: t("admin.nameLatin"), value: latin }]
+        : []),
       {
         label: t("admin.gender"),
         value: values.gender
@@ -333,6 +358,16 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
         {
           label: t("admin.specialization"),
           value: name(specOptions, values.specializationId),
+        },
+        {
+          // من التخصص المختار لا من الفلتر: هو ما يُحفظ فعلاً.
+          label: t("admin.specializationLevel"),
+          value: (() => {
+            const lv = specOptions.find(
+              (s) => s.id === values.specializationId,
+            )?.level;
+            return lv ? t(SPEC_LEVEL_KEY[lv]) : undefined;
+          })(),
         },
         {
           label: t("admin.academicPath"),
@@ -476,6 +511,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
     // role rather than always.
     drop("facultyId");
     drop("filiereId");
+    drop("level");
 
     const done = () => {
       onClose();
@@ -718,6 +754,52 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                 </FieldBox>
               </div>
 
+              {/* الاسم باللاتينية، تحت العربيّ مباشرة وبنفس ترتيبه — كما
+                  يُكتب في الوجه الفرنسيّ للوثائق. اختياريّ، ويُوحَّد عند
+                  مغادرة الحقل ليُرى ما سيُحفظ. */}
+              {role === "student" && (
+                <div className="grid grid-cols-2 gap-2.5">
+                  <FieldBox
+                    label={t("admin.firstNameLatin")}
+                    icon={User}
+                    error={e.firstNameLatin?.message}
+                  >
+                    <input
+                      {...register("firstNameLatin", {
+                        onBlur: (ev) =>
+                          setValue("firstNameLatin", toLatinFirst(ev.target.value), {
+                            shouldValidate: !!ev.target.value.trim(),
+                          }),
+                      })}
+                      dir="ltr"
+                      autoComplete="off"
+                      className={inputCls}
+                      placeholder="Youcef"
+                      data-testid="first-name-latin"
+                    />
+                  </FieldBox>
+                  <FieldBox
+                    label={t("admin.lastNameLatin")}
+                    icon={User}
+                    error={e.lastNameLatin?.message}
+                  >
+                    <input
+                      {...register("lastNameLatin", {
+                        onBlur: (ev) =>
+                          setValue("lastNameLatin", toLatinLast(ev.target.value), {
+                            shouldValidate: !!ev.target.value.trim(),
+                          }),
+                      })}
+                      dir="ltr"
+                      autoComplete="off"
+                      className={inputCls}
+                      placeholder="HAMADI"
+                      data-testid="last-name-latin"
+                    />
+                  </FieldBox>
+                </div>
+              )}
+
               {/*
                 اختياران من خيارين في صفٍّ واحد.
 
@@ -726,7 +808,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                 عند الإداريّ — فلو سكن فيها لسقط عن دورٍ من ثلاثة.
               */}
               <div className="grid grid-cols-2 gap-3">
-                <FieldBox label={t("admin.gender")} icon={Users}>
+                <FieldBox label={t("admin.gender")} icon={Users} group>
                   <GenderSelect
                     value={gender || null}
                     onChange={(next) =>
@@ -938,6 +1020,24 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                     />
                   </FieldBox>
 
+                  {/* المستوى: ثلاثة أزرار لا قائمة — كما في نافذة التخصص.
+                      يضيّق التخصصات ولا يُحفظ، والنقر على المختار يُلغيه. */}
+                  <FieldBox label={t("admin.specializationLevel")} icon={GraduationCap}>
+                    <LevelPicker
+                      value={level}
+                      counts={levelCounts}
+                      onChange={(next) => {
+                        setValue("level", next);
+                        // تخصصٌ من مستوى آخر لا يبقى مختاراً تحت فلترٍ يُخفيه.
+                        const picked = specsInFiliere.find(
+                          (s) => s.id === specializationId,
+                        );
+                        if (next && picked && picked.level !== next)
+                          setValue("specializationId", "");
+                      }}
+                    />
+                  </FieldBox>
+
                   <FieldBox
                     label={t("admin.specialization")}
                     icon={Layers}
@@ -953,10 +1053,19 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                           value={(field.value as string) ?? ""}
                           onChange={(v) => {
                             field.onChange(v);
+                            // والعكس: اختيار التخصص يُظهر مستواه في الأزرار.
+                            const picked = specOptions.find((s) => s.id === v);
+                            if (picked) setValue("level", picked.level);
                           }}
                           options={[
                             { value: "", label: t("admin.selectSpecialization") },
-                            ...specOptions.map((s) => ({ value: s.id, label: s.name })),
+                            // بلا مستوى مختار قد يتكرّر الاسم بين مستويين، فيُذكر.
+                            ...specOptions.map((s) => ({
+                              value: s.id,
+                              label: level
+                                ? s.name
+                                : `${s.name} — ${t(SPEC_LEVEL_KEY[s.level])}`,
+                            })),
                           ]}
                         />
                       )}
@@ -969,6 +1078,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                       faculties?.find((f) => f.id === facultyId)?.name,
                       deptOptions.find((d) => d.id === departmentId)?.name,
                       filiereOptions.find((f) => f.id === filiereId)?.name,
+                      level ? t(SPEC_LEVEL_KEY[level]) : undefined,
                       specOptions.find((s) => s.id === specializationId)
                         ?.name,
                     ]}

@@ -94,7 +94,7 @@ async function acceptedProject(title: string) {
 
 beforeAll(async () => {
   await teardown();
-  f = await seed(60);
+  f = await seed(80);
 
   tok.admin = (
     await request(app)
@@ -271,7 +271,7 @@ describe("DELETE /api/admin/group-requests/:id", () => {
       request(app).delete(`/api/admin/group-requests/${r.id}`),
     ).expect(400);
 
-    expect(JSON.stringify(res.body)).toContain("افسخ المشروع");
+    expect(JSON.stringify(res.body)).toContain("افسخ المذكرة");
   });
 
   it("وطلبٌ غير موجود ⇒ 404", async () => {
@@ -420,6 +420,79 @@ describe("GET /api/admin/projects", () => {
   });
 });
 
+/**
+ * ما تبني عليه صفحة المشاريع أرقامها وتنبيهاتها.
+ *
+ * «متأخرة» كانت تُعدّ بالعلامة وحدها، فمرحلةٌ فات موعدها ولم يحدّثها أحد لم
+ * تكن تظهر للإدارة. وتفاصيل المشروع تحمل الآن حكم الخادم على الفسخ، فيشرح
+ * الزرّ نفسه قبل النقر.
+ */
+describe("GET /api/admin/projects — الصحّة والتقدّم", () => {
+  it("مرحلةٌ فات موعدها بلا تحديث تُعدّ متأخرة، وتُصفّى بـ health=late", async () => {
+    const { group, topic: t } = await acceptedProject("APJ late-by-date");
+    await prisma.milestone.create({
+      data: {
+        groupId: group.id,
+        title: `${TAG} past`,
+        order: 1,
+        status: "pending",
+        deadline: new Date(Date.now() - 3 * 86_400_000),
+      },
+    });
+    await prisma.milestone.create({
+      data: {
+        groupId: group.id,
+        title: `${TAG} ahead`,
+        order: 2,
+        status: "in_progress",
+        deadline: new Date(Date.now() + 5 * 86_400_000),
+      },
+    });
+
+    const res = await as(
+      request(app).get("/api/admin/projects").query({ health: "late", search: t.title }),
+    ).expect(200);
+    const item = res.body.items.find((p: { id: string }) => p.id === group.id);
+    expect(item).toBeTruthy();
+    expect(item.progress).toMatchObject({ total: 2, overdue: 1, inProgress: 1, completed: 0 });
+    expect(item.progress.nextDeadline.title).toBe(`${TAG} ahead`);
+    expect(res.body.stats.withOverdue).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ومشروعٌ بلا مراحل يُعدّ في noPlan ويُصفّى به", async () => {
+    const { group, topic: t } = await acceptedProject("APJ no-plan");
+    const res = await as(
+      request(app).get("/api/admin/projects").query({ health: "noPlan", search: t.title }),
+    ).expect(200);
+    expect(res.body.items.map((p: { id: string }) => p.id)).toContain(group.id);
+    expect(res.body.stats.noPlan).toBeGreaterThanOrEqual(1);
+  });
+
+  it("والترتيب بالعنوان مقبول، وقيمةٌ مجهولة ⇒ 400", async () => {
+    await as(request(app).get("/api/admin/projects").query({ sort: "title" })).expect(200);
+    await as(request(app).get("/api/admin/projects").query({ health: "x" })).expect(400);
+  });
+
+  it("والتفاصيل تحمل الأصل والتسليمات وحكم الفسخ", async () => {
+    const { group } = await acceptedProject("APJ insights");
+    const clean = await as(request(app).get(`/api/admin/projects/${group.id}`)).expect(200);
+    expect(clean.body.project.insights.origin.kind).toBe("request");
+    expect(clean.body.project.actions).toEqual({
+      canDissolve: true,
+      dissolveBlockers: { submissions: 0, defense: false },
+    });
+    // سلسلةٌ أكاديمية كاملة حتى الكلية.
+    expect(clean.body.project.topic.specialization.filiere.department.faculty).toBeTruthy();
+
+    await prisma.defense.create({
+      data: { groupId: group.id, date: new Date(), room: `${TAG}-R` },
+    });
+    const blocked = await as(request(app).get(`/api/admin/projects/${group.id}`)).expect(200);
+    expect(blocked.body.project.actions.canDissolve).toBe(false);
+    expect(blocked.body.project.actions.dissolveBlockers.defense).toBe(true);
+  });
+});
+
 describe("تصحيح طاقم المشروع", () => {
   it("تغيير المشرف ⇒ 200، وينتقل الموضوع إلى الأستاذ الجديد", async () => {
     const { topic: t, group } = await acceptedProject("APJ supervisor");
@@ -434,6 +507,32 @@ describe("تصحيح طاقم المشروع", () => {
       (await prisma.graduationTopic.findUnique({ where: { id: t.id } }))!
         .professorId,
     ).toBe(f.professor2.id);
+  });
+
+  it("والمشرف الحالي نفسه ⇒ 400، والجديد والقديم يصلهما الخبر", async () => {
+    const { group } = await acceptedProject("APJ supervisor-same");
+    const same = await as(
+      request(app)
+        .patch(`/api/admin/projects/${group.id}/supervisor`)
+        .send({ professorId: f.professor.id }),
+    ).expect(400);
+    expect(same.body.message).toContain("المشرف الحالي");
+
+    await as(
+      request(app)
+        .patch(`/api/admin/projects/${group.id}/supervisor`)
+        .send({ professorId: f.professor2.id }),
+    ).expect(200);
+    const [gained, lost] = await Promise.all(
+      [f.professor2.userId, f.professor.userId].map((userId) =>
+        prisma.notification.findFirst({
+          where: { userId, title: { contains: "الإشراف" } },
+          orderBy: { createdAt: "desc" },
+        }),
+      ),
+    );
+    expect(gained?.link).toBe(`/professor/groups/${group.id}`);
+    expect(lost).toBeTruthy();
   });
 
   it("وأستاذٌ غير موجود ⇒ 404", async () => {

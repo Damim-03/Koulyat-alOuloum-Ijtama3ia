@@ -22,8 +22,9 @@ import {
 } from "../hooks/Professor-hook";
 import { StatusBadge } from "../components/status-badge";
 import { MilestoneFormDialog } from "../components/milestone-form-dialog";
-import type { Milestone, ProjectGroup } from "../../../types/professor.types";
+import type { Milestone, ProjectGroupListItem } from "../../../types/professor.types";
 import { LoadingArea } from "../../../components/ui/loading-area";
+import { personName } from "../../../lib/person-name";
 
 
 const MS_NODE: Record<string, string> = {
@@ -84,7 +85,7 @@ function ProjectPicker({ onPick }: { onPick: (id: string) => void }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {list.map((g: ProjectGroup) => {
+          {list.map((g: ProjectGroupListItem) => {
             const members = g.members ?? [];
             const milestoneCount =
               g._count?.milestones ?? g.milestones?.length ?? 0;
@@ -332,12 +333,7 @@ function MilestonesManager({
                                 </span>
                                 <span className="shrink-0 text-[10px] text-clay">
                                   {t("pro.byStudent", {
-                                    name: [
-                                      s.uploadedBy?.firstName,
-                                      s.uploadedBy?.lastName,
-                                    ]
-                                      .filter(Boolean)
-                                      .join(" "),
+                                    name: personName(s.uploadedBy),
                                   })}
                                 </span>
                               </div>

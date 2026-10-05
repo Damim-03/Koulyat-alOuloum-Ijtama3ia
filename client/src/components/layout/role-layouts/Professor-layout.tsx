@@ -5,12 +5,14 @@ import {
   ListChecks,
   Milestone,
   FolderKanban,
+  Mail,
 } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { PATHS } from "../../../routes/paths";
 import { DashboardSidebar, type NavItem } from "../Dashboard/dashboard-sidebar";
 import { DashboardHeader } from "../Dashboard/dashboard-header";
 import { SessionGuard } from "../../session/session-guard";
+import { useMessagesSummary } from "../../../features/messages/hooks/messages-hook";
 
 const R = PATHS.professor.root;
 
@@ -19,22 +21,31 @@ const NAV: NavItem[] = [
   { to: `${R}/topics`, labelKey: "dash.topics", icon: ListChecks },
   { to: `${R}/groups`, labelKey: "dash.myProjects", icon: FolderKanban },
   { to: `${R}/milestones`, labelKey: "dash.milestones", icon: Milestone },
+  { to: `${R}/messages`, labelKey: "messages.title", icon: Mail },
 ];
 
 export function ProfessorLayout() {
   const { dir } = useLanguage();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  // The unread count rides on the messages link, kept live by the socket.
+  const { data: summary } = useMessagesSummary();
+  const items = NAV.map((i) => (i.to.endsWith("/messages") ? { ...i, badge: summary?.unread } : i));
 
   useEffect(() => {
     if (window.innerWidth < 768) setCollapsed(true);
+    // A new page starts at its top. The window keeps its scroll across
+    // client-side navigation, so a page opened from a scrolled list used to
+    // open part-way down, its heading tucked under the sticky header. Only
+    // the path counts: changing a filter in the query string stays put.
+    window.scrollTo({ top: 0 });
   }, [location.pathname]);
 
   return (
     <SessionGuard>
       <div dir={dir} className="flex min-h-svh bg-cream font-body">
         <DashboardSidebar
-          items={NAV}
+          items={items}
           panelKey="dash.professorPanel"
           collapsed={collapsed}
           onToggle={() => setCollapsed((c) => !c)}

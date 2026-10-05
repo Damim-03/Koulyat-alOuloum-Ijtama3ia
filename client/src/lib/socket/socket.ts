@@ -20,15 +20,42 @@ export interface ChangePayload {
   at: string;
 }
 
+/** A message that has just landed — enough to show it without a refetch. */
+export interface NewMessagePayload {
+  id: string;
+  threadId: string | null;
+  subject: string | null;
+  preview: string;
+  broadcast: string | null;
+  createdAt: string;
+  sender: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    firstNameLatin?: string | null;
+    lastNameLatin?: string | null;
+    avatarUrl: string | null;
+    gender: string | null;
+    role: string;
+  };
+}
+
 // Events the server sends to the client.
 export interface ServerToClientEvents {
   "data:changed": (payload: ChangePayload) => void;
   notification: (payload: NotificationPayload) => void;
+  "message:new": (payload: NewMessagePayload) => void;
+  /** Someone is (or stopped) writing to me. */
+  typing: (payload: { from: string; active: boolean }) => void;
 }
 
 // The client no longer asks to join rooms: the server derives them from the
 // authenticated handshake, so there is nothing left to send.
-export type ClientToServerEvents = Record<string, never>;
+// The one thing a client says: whom it is typing to. Who it is comes from the
+// authenticated handshake.
+export interface ClientToServerEvents {
+  typing: (payload: { to: string; active: boolean }) => void;
+}
 
 export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 

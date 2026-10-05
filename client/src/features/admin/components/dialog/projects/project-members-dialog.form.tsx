@@ -30,6 +30,7 @@ import {
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
 import { None } from "../../../../../lib/none";
 import { LoadingArea } from "../../../../../components/ui/loading-area";
+import { personName } from "../../../../../lib/person-name";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -61,6 +62,11 @@ interface Props {
   onChanged?: () => void;
   /** Called after the topic itself is deleted (parent should navigate away). */
   onDeleted?: () => void;
+  /**
+   * The project page has its own dissolve flow, with a recorded reason and
+   * the server's blockers shown up front; there the button here is hidden.
+   */
+  allowDissolve?: boolean;
 }
 
 interface Row {
@@ -72,7 +78,7 @@ interface Row {
 }
 
 function fullName(u: any) {
-  return [u?.firstName, u?.lastName].filter(Boolean).join(" ") || "—";
+  return personName(u) || "—";
 }
 
 export function ProjectMembersDialog(props: Props) {
@@ -161,6 +167,7 @@ function MembersEditor({
   onDeleted,
   serverMembers,
   refetchProject,
+  allowDissolve = true,
 }: Props & { serverMembers: any[]; refetchProject: () => void }) {
   const { t } = useTranslation();
   const remove = useRemoveProjectMember();
@@ -574,6 +581,7 @@ function MembersEditor({
             </>
           ) : (
             <>
+              {allowDissolve && (
               <button
                 onClick={() => setConfirmDissolve(true)}
                 disabled={busy || confirmDissolve}
@@ -582,6 +590,7 @@ function MembersEditor({
                 <Trash2 size={15} />
                 {t("admin.dissolveGroup")}
               </button>
+              )}
               <button
                 onClick={save}
                 disabled={busy || !dirty || rows.length === 0}

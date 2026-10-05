@@ -26,6 +26,8 @@ export function HierarchyHeader({
   code,
   badges,
   action,
+  menu,
+  stats,
   coverUrl,
 }: {
   crumbs: Crumb[];
@@ -39,11 +41,17 @@ export function HierarchyHeader({
   badges?: ReactNode;
   /** The page's primary action, e.g. "إضافة قسم". */
   action?: ReactNode;
+  /** Secondary actions on the entry itself — edit, delete. */
+  menu?: ReactNode;
+  /** What the entry holds, as a row of figures under its name. */
+  stats?: { icon: LucideIcon; label: string; value: number | string; warn?: boolean }[];
   /** The entry's cover image, shown behind the panel when there is one. */
   coverUrl?: string | null;
 }) {
   return (
-    <div className="relative mb-6 overflow-hidden rounded-2xl bg-linear-to-l from-forest-deep to-forest text-cream shadow-[0_10px_30px_rgba(38,66,61,0.18)]">
+    <div className="forest-glow relative mb-6 overflow-hidden rounded-3xl text-cream shadow-[0_18px_50px_-20px_rgba(22,36,31,0.6)]">
+      <div className="dot-matrix pointer-events-none absolute inset-0 opacity-60" aria-hidden="true" />
+      <div className="pointer-events-none absolute -top-24 -end-16 size-80 rounded-full bg-gold/10 blur-3xl" aria-hidden="true" />
       {/* The chosen cover, behind everything.
           A cover can be any picture the admin uploads, so it is treated as
           atmosphere rather than content: slightly blurred and desaturated
@@ -71,14 +79,14 @@ export function HierarchyHeader({
       />
 
       {/* Identity + action */}
-      <div className="relative flex flex-wrap items-center justify-between gap-4 px-5 py-5">
+      <div className="relative flex flex-wrap items-center justify-between gap-4 px-5 py-6 lg:px-6">
         <div className="flex min-w-0 items-center gap-4">
-          <div className="grid size-14 shrink-0 place-items-center rounded-2xl bg-cream/10 text-gold backdrop-blur-sm">
-            <Icon size={26} />
+          <div className="grid size-16 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft backdrop-blur-sm">
+            <Icon size={28} />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="font-serif text-2xl font-bold text-cream">
+              <h1 className="font-serif text-2xl font-bold text-cream lg:text-[28px]">
                 {title}
               </h1>
               {code && (
@@ -95,8 +103,28 @@ export function HierarchyHeader({
           </div>
         </div>
 
-        {action}
+        <div className="flex flex-wrap items-center gap-2">
+          {menu}
+          {action}
+        </div>
       </div>
+
+      {stats && stats.length > 0 && (
+        <div className="relative grid grid-cols-2 gap-2.5 px-5 pb-5 sm:grid-cols-3 lg:grid-cols-6 lg:px-6">
+          {stats.map((s) => (
+            <div
+              key={s.label}
+              className={`rounded-2xl border p-3 backdrop-blur-sm ${s.warn ? "border-amber-300/40 bg-amber-400/10" : "border-white/10 bg-cream/5"}`}
+            >
+              <span className="mb-1.5 flex items-center gap-1.5 text-[11px] text-cream/70">
+                <s.icon size={13} className={s.warn ? "text-amber-200" : "text-gold-soft"} />
+                <span className="truncate">{s.label}</span>
+              </span>
+              <b className={`block font-serif text-[22px] leading-none tabular-nums ${s.warn ? "text-amber-200" : "text-cream"}`}>{s.value}</b>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { env } from "../../config/env";
 import { useAuthStore } from "../../store/auth.store";
+import { reportServerUp, reportUnreachable, useConnection } from "../connection/connection";
 
 // Listened for by a SessionGuard (shows a "session expired" modal).
 export const SESSION_EXPIRED_EVENT = "session:expired";
@@ -60,10 +61,19 @@ async function requestRefresh(): Promise<string> {
   return accessToken;
 }
 
+/** No answer at all, or the proxy saying the server is not there. */
+const UNREACHABLE = new Set([502, 503, 504]);
+
 // ── Response interceptor ─────────────────────────────────────
 client.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // An answer is the best proof the server is up — after an outage, it ends it.
+    if (useConnection.getState().link !== "ok") reportServerUp();
+    return res;
+  },
   async (error: AxiosError) => {
+    if (!axios.isCancel(error) && (!error.response || UNREACHABLE.has(error.response.status))) reportUnreachable();
+
     const originalRequest = error.config as
       | (InternalAxiosRequestConfig & { _retry?: boolean })
       | undefined;

@@ -29,6 +29,7 @@ import {
   createAcademicYearSchema,
   updateAcademicYearSchema,
   listTopicsSchema,
+  topicTitlesListSchema,
   rejectTopicSchema,
   changeSupervisorSchema,
   assignStudentSchema,
@@ -50,8 +51,18 @@ import {
   createAssignedTopicSchema,
   updateAssignedTopicSchema,
   dissolveProjectSchema,
+  listDefensesSchema,
+  defenseConflictsSchema,
+  closeAcademicYearSchema,
+  reopenAcademicYearSchema,
+  type CloseAcademicYearDTO,
+  type ReopenAcademicYearDTO,
+  type ListDefensesDTO,
+  type DefenseConflictsDTO,
 } from "./admin.validation";
 import * as svc from "./admin.service";
+import * as defenses from "./defenses.service";
+import * as archive from "./archive.service";
 import {
   listNotificationsService,
   unreadCountService,
@@ -922,6 +933,85 @@ export const deleteAcademicYearController = async (
 };
 
 //
+// ─── THE ARCHIVE (years, closed and open) ─────────────────────
+//
+
+/** Every year, with its standing and the figures it holds. */
+export const listArchiveYearsController = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    return res.status(HTTPSTATUS.OK).json(await archive.listArchiveYearsService());
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** One year's full record — frozen if closed, live if open. */
+export const yearRecordController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    return res
+      .status(HTTPSTATUS.OK)
+      .json(await archive.yearRecordService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** What is still unsettled in a year, before it is closed. */
+export const yearReadinessController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    return res
+      .status(HTTPSTATUS.OK)
+      .json(await archive.yearReadinessService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const closeYearController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody<CloseAcademicYearDTO>(closeAcademicYearSchema, req.body);
+    const result = await archive.closeYearService(
+      getAuthUserId(req),
+      req.params.id as string,
+      data,
+    );
+    return res.status(HTTPSTATUS.OK).json({ message: "Academic year archived", ...result });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const reopenYearController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody<ReopenAcademicYearDTO>(reopenAcademicYearSchema, req.body ?? {});
+    const result = await archive.reopenYearService(req.params.id as string, data);
+    return res.status(HTTPSTATUS.OK).json({ message: "Academic year reopened", ...result });
+  } catch (e) {
+    next(e);
+  }
+};
+
+//
 // ─── TOPICS ───────────────────────────────────────────────────
 //
 
@@ -933,6 +1023,20 @@ export const listTopicsController = async (
   try {
     const q = parseBody(listTopicsSchema, req.query);
     const data = await svc.listTopicsService(q as never);
+    return res.status(HTTPSTATUS.OK).json(data);
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const topicTitlesListController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const q = parseBody(topicTitlesListSchema, req.query);
+    const data = await svc.topicTitlesListService(q as never);
     return res.status(HTTPSTATUS.OK).json(data);
   } catch (e) {
     next(e);
@@ -1209,9 +1313,57 @@ export const listDefensesController = async (
   next: NextFunction,
 ) => {
   try {
-    const q = parseBody(listQuerySchema, req.query);
-    const data = await svc.listDefensesService(q as never);
-    return res.status(HTTPSTATUS.OK).json(data);
+    const q = parseBody<ListDefensesDTO>(listDefensesSchema, req.query);
+    return res.status(HTTPSTATUS.OK).json(await defenses.listDefensesService(q));
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** Would this slot clash with a scheduled defence — by room or by juror? */
+export const defenseConflictsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const q = parseBody<DefenseConflictsDTO>(defenseConflictsSchema, req.query);
+    return res.status(HTTPSTATUS.OK).json(await defenses.defenseConflictsService(q));
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** One defence with everything the details page shows. */
+export const getDefenseController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    return res
+      .status(HTTPSTATUS.OK)
+      .json(await defenses.defenseDetailService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** The (filtered) schedule as an .xlsx. */
+export const exportDefensesController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const q = parseBody<ListDefensesDTO>(listDefensesSchema, req.query);
+    const buf = await defenses.exportDefensesService(q);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", 'attachment; filename="defenses.xlsx"');
+    return res.status(HTTPSTATUS.OK).send(buf);
   } catch (e) {
     next(e);
   }

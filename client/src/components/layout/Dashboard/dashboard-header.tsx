@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Menu,
@@ -6,12 +7,14 @@ import {
   LogOut,
   Copy,
   Check,
+  UserCog,
 } from "lucide-react";
 import { useAuth } from "../../../hooks/use-auth";
 import { useLanguage } from "../../../hooks/use-language";
 import { LanguageSwitcher } from "../../../i18n/locales/components/language-switcher";
 import { ThemeToggle } from "../../theme-toggle";
 import { UserAvatar } from "../../ui/user-avatar";
+import { personName } from "../../../lib/person-name";
 
 interface Props {
   onMenuClick: () => void;
@@ -31,6 +34,9 @@ export function DashboardHeader({ onMenuClick, titleKey }: Props) {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
   const { user, role, logout } = useAuth();
+  const { lang } = useParams();
+  // Every role has a page for its own account — each with what it may change.
+  const accountUrl = role === "admin" || role === "professor" || role === "student" ? `/${lang}/${role}/account` : null;
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -65,10 +71,7 @@ export function DashboardHeader({ onMenuClick, titleKey }: Props) {
 
   // The account already carries a name; showing the login address instead made
   // the button say "...in@univ-eloued.dz". Name first, address as the fallback.
-  const fullName = [user?.firstName, user?.lastName]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+  const fullName = personName(user);
   const account =
     user?.universityEmail || user?.email || user?.registrationNumber || "";
   const displayName = fullName || account || t("dash.greeting");
@@ -196,6 +199,22 @@ export function DashboardHeader({ onMenuClick, titleKey }: Props) {
               </div>
 
               {/* ── what you can do ── */}
+              {accountUrl && (
+                <div className="border-t border-forest/10 p-2">
+                  <Link
+                    role="menuitem"
+                    to={accountUrl}
+                    onClick={() => setOpen(false)}
+                    data-testid="menu-account"
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-forest transition hover:bg-gold/10"
+                  >
+                    <span className="grid size-8 place-items-center rounded-lg bg-gold/15 text-gold">
+                      <UserCog size={16} />
+                    </span>
+                    <span className="min-w-0 flex-1 text-start">{t("admin.account.menu.profile")}</span>
+                  </Link>
+                </div>
+              )}
               <div className="border-t border-forest/10 px-4 py-3.5">
                 <button
                   role="menuitem"

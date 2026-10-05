@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Role } from "../types/enums";
 import { DEFAULT_LANG, SUPPORTED_LANGS, type LangCode } from "../i18n/i18n";
 import { LanguageLayout } from "../i18n/locales/components/language-layout";
@@ -27,7 +27,6 @@ import { ProfessorProjectDetailPage } from "../features/professor/pages/project-
 
 // Student pages
 import { StudentDashboardPage } from "../features/student/pages/dashboard.page";
-import { StudentBrowseTopicsPage } from "../features/student/pages/browse-topics.page";
 
 // Admin pages
 import { AdminStudentsPage } from "../features/admin/pages/students/student.page";
@@ -40,7 +39,6 @@ import { AdminFacultiesPage } from "../features/admin/pages/faculties/faculties.
 import { ProfessorMilestonesPage } from "../features/professor/pages/Professor-milestones.page";
 import { StudentMyRequestsPage } from "../features/student/pages/my-requests.page";
 import { StudentMyProjectPage } from "../features/student/pages/my-project.page";
-import { StudentTopicDetailPage } from "../features/student/pages/topic-detail.page";
 import { AdminTopicDetailPage } from "../features/admin/pages/topics/topic-detail.page";
 import { PublicTopicDetailPage } from "../features/public/pages/public-topic-detail.page";
 import { PublicTopicsPage } from "../features/public/pages/public-topics.page";
@@ -53,6 +51,7 @@ import { FiliereDetailPage } from "../features/admin/pages/filters/filter-detail
 import { DepartmentDetailPage } from "../features/admin/pages/departments/department-detail.page";
 import { AdminUnassignedStudentsPage } from "../features/admin/pages/filters/unassigned-students.page";
 import { AdminArchivePage } from "../features/admin/pages/archive/archive.Page";
+import { AccountPage } from "../features/account/pages/account.page";
 import { AdminDashboardPage } from "../features/admin/pages/dashboard/dashboard.page";
 import { SpecializationDetailPage } from "../features/admin/pages/filters/specialization-detail.Page";
 import { AdminGroupRequestDetailPage } from "../features/admin/pages/groups/group-requests-details.page";
@@ -61,6 +60,16 @@ import { AdminProfessorDetailPage } from "../features/admin/pages/professors/pro
 import { AdminProjectsPage } from "../features/admin/pages/projects/projects.page";
 import { AdminProjectDetailPage } from "../features/admin/pages/projects/project-detail.page";
 import {AdminMessagesPage} from "../features/admin/pages/messages/messages.page.tsx";
+import { MessagesPage } from "../features/messages/pages/messages.page";
+import { AdminDefenseDetailPage } from "../features/admin/pages/defenses/defense-detail.page";
+import { AdminHomepagePage } from "../features/admin/pages/homepage/homepage.page";
+import { AboutPage } from "../features/home/pages/about.page";
+
+/** Forwards /:lang/student/topics[/:id] to /:lang/topics[/:id]. */
+function ToPublicTopics() {
+  const { lang, id } = useParams();
+  return <Navigate to={`/${lang}/topics${id ? `/${id}` : ""}`} replace />;
+}
 
 export function AppRouter() {
   return (
@@ -73,6 +82,8 @@ export function AppRouter() {
           <Route index element={<HomePage />} />
           <Route path="topics" element={<PublicTopicsPage />} /> {/* ← */}
           <Route path="topics/:id" element={<PublicTopicDetailPage />} />{" "}
+          {/* عن المنصة — نصوصها وصورها من «واجهة الموقع» في لوحة الإدارة */}
+          <Route path="about" element={<AboutPage />} />
           {/* ← */}
           {/* غير مصرح */}
           <Route path="403" element={<UnauthorizedPage />} />
@@ -124,6 +135,8 @@ export function AppRouter() {
           <Route path="topics/:id" element={<ProfessorTopicDetailPage />} />
           {/* طلبات الالتحاق انتقل قرارها إلى الإدارة — أُزيل مسار الأستاذ */}
           <Route path="milestones" element={<ProfessorMilestonesPage />} />
+          <Route path="messages" element={<MessagesPage />} />
+          <Route path="account" element={<AccountPage />} />
           <Route path="groups" element={<ProfessorProjectsPage />} />
           <Route
             path="groups/:groupId"
@@ -143,10 +156,15 @@ export function AppRouter() {
           }
         >
           <Route index element={<StudentDashboardPage />} />
-          <Route path="topics" element={<StudentBrowseTopicsPage />} />
-          <Route path="topics/:id" element={<StudentTopicDetailPage />} />
+          {/* The student's own copy of the topic pages is gone — the public
+              ones show the same topics and open the same request dialog.
+              Old links and bookmarks are forwarded there. */}
+          <Route path="topics" element={<ToPublicTopics />} />
+          <Route path="topics/:id" element={<ToPublicTopics />} />
           <Route path="requests" element={<StudentMyRequestsPage />} />
           <Route path="project" element={<StudentMyProjectPage />} />
+          <Route path="messages" element={<MessagesPage />} />
+          <Route path="account" element={<AccountPage />} />
         </Route>
 
         {/* ==================== ADMIN ==================== */}
@@ -179,12 +197,14 @@ export function AppRouter() {
             element={<AdminGroupRequestDetailPage />}
           />
           <Route path="defenses" element={<AdminDefensesPage />} />
+          <Route path="defenses/:id" element={<AdminDefenseDetailPage />} />
           <Route path="projects" element={<AdminProjectsPage />} />
           <Route
             path="projects/:id"
             element={<AdminProjectDetailPage />}
           />
           <Route path="academic-years" element={<AdminArchivePage />} />
+          <Route path="account" element={<AccountPage />} />
           <Route
             path="specializations/:specializationId"
             element={<SpecializationDetailPage />}
@@ -208,6 +228,9 @@ export function AppRouter() {
             element={<AdminUnassignedStudentsPage />}
           />
           <Route path="messages" element={<AdminMessagesPage />} />
+          <Route path="homepage" element={<AdminHomepagePage />} />
+          {/* الاسم القديم، يوم كانت الصفحة للصور وحدها. */}
+          <Route path="home-slides" element={<Navigate to="../homepage" replace />} />
         </Route>
       </Route>
 

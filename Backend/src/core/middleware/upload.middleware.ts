@@ -106,6 +106,47 @@ export const cardImageUpload = (
   });
 };
 
+/**
+ * ملفّ Excel للاستيراد: في الذاكرة لا على القرص — يُقرأ ولا يُحفظ.
+ *
+ * ولا يُصدَّق اسمه ولا نوعه المُعلَن وحدهما: xlsx أرشيفُ ZIP، فبايتاته
+ * الأولى «PK\x03\x04» — والمتحكّم يتحقّق منها قبل أن يُعطى للمحلِّل.
+ */
+const XLSX_MIME = new Set([
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  // بعض المتصفّحات على ويندوز ترسله هكذا حين لا تعرف نوعه
+  "application/octet-stream",
+]);
+export const MAX_XLSX_BYTES = 5 * 1024 * 1024; // 5 MB — ألف طالبٍ بضع مئات الكيلوبايت
+
+const xlsxUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_XLSX_BYTES, files: 1, fields: 5, parts: 10, headerPairs: 100 },
+  fileFilter: (_req, file, cb) => {
+    if (XLSX_MIME.has(file.mimetype) && /\.xlsx$/i.test(file.originalname))
+      return cb(null, true);
+    cb(
+      new BadRequestException(
+        "نوع الملفّ غير مدعوم — ارفع ملفّ Excel بصيغة .xlsx",
+        ErrorCodeEnum.VALIDATION_ERROR,
+      ),
+    );
+  },
+});
+
+/** يستقبل ملفّ الاستيراد في الحقل `file`، ويُترجم تعثّر الرفع إلى خطأ عميل. */
+export const xlsxFileUpload = (req: Request, res: Response, next: NextFunction) => {
+  xlsxUpload.single("file")(req, res, (err: unknown) => {
+    if (!err) return next();
+    if (err instanceof MulterError || err instanceof AppError) return next(err);
+    return next(new BadRequestException("طلب رفعٍ غير صالح", ErrorCodeEnum.VALIDATION_ERROR));
+  });
+};
+
+/** أرشيف ZIP — وxlsx منه. */
+export const looksLikeXlsx = (b: Buffer) =>
+  b.length >= 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
+
 /** Leading bytes that genuinely identify each accepted format. */
 const MAGIC: { ext: string; test: (b: Buffer) => boolean }[] = [
   {

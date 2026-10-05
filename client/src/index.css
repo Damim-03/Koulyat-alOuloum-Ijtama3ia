@@ -349,8 +349,14 @@ body {
   color: var(--t-cream-2);
 }
 
+[data-theme="dark"] .text-cream\/95 {
+  color: color-mix(in oklab, var(--t-on-brand) 95%, transparent);
+}
 [data-theme="dark"] .text-cream\/90 {
   color: color-mix(in oklab, var(--t-on-brand) 90%, transparent);
+}
+[data-theme="dark"] .text-cream\/85 {
+  color: color-mix(in oklab, var(--t-on-brand) 85%, transparent);
 }
 [data-theme="dark"] .text-cream\/80 {
   color: color-mix(in oklab, var(--t-on-brand) 80%, transparent);
@@ -382,17 +388,30 @@ body {
 [data-theme="dark"] .text-cream\/35 {
   color: color-mix(in oklab, var(--t-on-brand) 35%, transparent);
 }
+[data-theme="dark"] .text-cream\/30 {
+  color: color-mix(in oklab, var(--t-on-brand) 30%, transparent);
+}
+[data-theme="dark"] .text-cream\/25 {
+  color: color-mix(in oklab, var(--t-on-brand) 25%, transparent);
+}
+[data-theme="dark"] .text-cream\/20 {
+  color: color-mix(in oklab, var(--t-on-brand) 20%, transparent);
+}
 [data-theme="dark"] .text-cream\/10 {
   color: color-mix(in oklab, var(--t-on-brand) 10%, transparent);
 }
 
 /* `gold` stays light in both themes, so a label sitting on it must stay dark.
-   Both classes live on the same element, so this targets exactly those. */
+   Both classes live on the same element, so this targets exactly those —
+   solid gold, and the gold gradients the premium buttons are painted with. */
 [data-theme="dark"] .bg-gold.text-forest-deep,
 [data-theme="dark"] .bg-gold.text-forest,
 [data-theme="dark"] .bg-gold-soft.text-forest-deep,
 [data-theme="dark"] .bg-gold-soft.text-forest,
-[data-theme="dark"] .hover\:bg-gold-soft.text-forest-deep:hover {
+[data-theme="dark"] .hover\:bg-gold-soft.text-forest-deep:hover,
+[data-theme="dark"] .from-gold.text-forest-deep,
+[data-theme="dark"] .from-gold.text-forest,
+[data-theme="dark"] .from-gold-soft.text-forest-deep {
   color: var(--t-brand-deep);
 }
 
@@ -449,13 +468,38 @@ body {
       );
   }
 
-  /* concentric "seal" ring behind the auth brand mark (hero signature) */
-  .seal-ring {
-    background: repeating-radial-gradient(
-      circle at center,
-      rgba(193, 150, 90, 0) 0 9px,
-      rgba(193, 150, 90, 0.1) 9px 10px
+  /* A single band of light crossing the university seal once it lands. */
+  .logo-shine::after {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    background: linear-gradient(
+      105deg,
+      transparent 35%,
+      rgba(255, 255, 255, 0.65) 50%,
+      transparent 65%
     );
+    transform: translateX(-120%);
+    animation: logoShine 1.6s 0.7s ease-in-out both;
+    pointer-events: none;
+  }
+}
+
+@keyframes caretBlink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes logoShine {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-shine::after {
+    display: none;
   }
 }
 
@@ -843,5 +887,63 @@ select {
   }
   100% {
     transform: translateX(400%);
+  }
+}
+
+/* The wall behind a chat: a faint gold grain over the page colour, so the
+   bubbles float on something — in both themes, from the theme's own tokens. */
+.chat-wallpaper {
+  background-color: color-mix(in oklab, var(--t-cream-2) 55%, transparent);
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--t-gold) 16%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 18px 18px;
+}
+
+/* ── Messages: the folding chat list ─────────────────────────
+   The panel's width is what moves; its two faces cross-fade inside it. */
+.chat-fold {
+  transition: width 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes rail-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rail-in {
+  animation: rail-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* The rail's list fades at its edges instead of being cut. */
+.rail-fade {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-fold {
+    transition: none;
+  }
+  .rail-in {
+    animation: none;
+  }
+}
+
+/* A pulse travelling a connection while the error screen checks it. */
+@keyframes signal-travel {
+  0% {
+    inset-inline-start: 0.25rem;
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    inset-inline-start: calc(100% - 0.75rem);
+    opacity: 0;
   }
 }

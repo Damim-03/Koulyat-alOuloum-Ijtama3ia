@@ -1,8 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { adminApi, type ListParams } from "../api/admin.api";
 import { serverMessage } from "../../../lib/api/error";
-import type { AcademicStructurePayload } from "../../../types/admin";
+import type { AcademicStructurePayload, TitlesListParams } from "../../../types/admin";
 import { t } from "i18next";
 
 const KEYS = {
@@ -19,6 +19,16 @@ const KEYS = {
   projects: (p?: object) => ["admin", "projects", p ?? {}] as const,
   defenses: (p?: object) => ["admin", "defenses", p ?? {}] as const,
 };
+
+/**
+ * Every level of the academic structure counts the levels below it — a
+ * faculty its departments and specializations, a department its domains — so
+ * a change anywhere in the chain refreshes all of them, not just its own list.
+ */
+function refreshStructure(qc: QueryClient) {
+  for (const k of ["faculties", "departments", "domains", "filieres", "specializations"])
+    qc.invalidateQueries({ queryKey: ["admin", k] });
+}
 
 // ─── STATS ───
 export function useAdminStats() {
@@ -142,11 +152,12 @@ export function useCreateDomain() {
   return useMutation({
     mutationFn: (data: unknown) => adminApi.createDomain(data),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: ["admin", "domains"] });
       qc.invalidateQueries({ queryKey: ["admin", "departments"] });
       toast.success(t("toast.domainAdded"));
     },
-    onError: () => toast.error(t("toast.addFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.addFailed"))),
   });
 }
 export function useUpdateDomain() {
@@ -155,10 +166,11 @@ export function useUpdateDomain() {
     mutationFn: ({ id, data }: { id: string; data: unknown }) =>
       adminApi.updateDomain(id, data),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: ["admin", "domains"] });
       toast.success(t("toast.updated"));
     },
-    onError: () => toast.error(t("toast.updateFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
   });
 }
 export function useDeleteDomain() {
@@ -166,11 +178,12 @@ export function useDeleteDomain() {
   return useMutation({
     mutationFn: (id: string) => adminApi.deleteDomain(id),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: ["admin", "domains"] });
       qc.invalidateQueries({ queryKey: ["admin", "departments"] });
       toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error(t("toast.deleteFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.deleteFailed"))),
   });
 }
 
@@ -206,6 +219,43 @@ export function useCreateStudent() {
     onError: () => toast.error(t("toast.studentAddFailed")),
   });
 }
+// ── استيراد الطلبة من Excel ──
+// بلا toast: النافذة تعرض النتيجة كاملة — التقرير صفّاً صفّاً، أو الحسابات.
+export function useStudentImportPreview() {
+  return useMutation({
+    mutationFn: (file: File) => adminApi.previewStudentImport(file),
+  });
+}
+export function useImportStudents() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => adminApi.importStudents(file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "students"] });
+      qc.invalidateQueries({ queryKey: KEYS.stats });
+      qc.invalidateQueries({ queryKey: KEYS.dashboard });
+    },
+  });
+}
+
+// ── استيراد الأساتذة من Excel — كالطلبة ──
+export function useProfessorImportPreview() {
+  return useMutation({
+    mutationFn: (file: File) => adminApi.previewProfessorImport(file),
+  });
+}
+export function useImportProfessors() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => adminApi.importProfessors(file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "professors"] });
+      qc.invalidateQueries({ queryKey: KEYS.stats });
+      qc.invalidateQueries({ queryKey: KEYS.dashboard });
+    },
+  });
+}
+
 export function useUpdateStudent() {
   const qc = useQueryClient();
   return useMutation({
@@ -301,10 +351,11 @@ export function useCreateFaculty() {
   return useMutation({
     mutationFn: (data: unknown) => adminApi.createFaculty(data),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: KEYS.faculties });
       toast.success(t("toast.facultyAdded"));
     },
-    onError: () => toast.error(t("toast.addFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.addFailed"))),
   });
 }
 export function useUpdateFaculty() {
@@ -313,10 +364,11 @@ export function useUpdateFaculty() {
     mutationFn: ({ id, data }: { id: string; data: unknown }) =>
       adminApi.updateFaculty(id, data),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: KEYS.faculties });
       toast.success(t("toast.updated"));
     },
-    onError: () => toast.error(t("toast.updateFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
   });
 }
 export function useDeleteFaculty() {
@@ -324,10 +376,11 @@ export function useDeleteFaculty() {
   return useMutation({
     mutationFn: (id: string) => adminApi.deleteFaculty(id),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: KEYS.faculties });
       toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error(t("toast.deleteFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.deleteFailed"))),
   });
 }
 
@@ -343,10 +396,11 @@ export function useCreateDepartment() {
   return useMutation({
     mutationFn: (data: unknown) => adminApi.createDepartment(data),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: KEYS.departments });
       toast.success(t("toast.departmentAdded"));
     },
-    onError: () => toast.error(t("toast.addFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.addFailed"))),
   });
 }
 export function useUpdateDepartment() {
@@ -355,10 +409,11 @@ export function useUpdateDepartment() {
     mutationFn: ({ id, data }: { id: string; data: unknown }) =>
       adminApi.updateDepartment(id, data),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: KEYS.departments });
       toast.success(t("toast.updated"));
     },
-    onError: () => toast.error(t("toast.updateFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
   });
 }
 export function useDeleteDepartment() {
@@ -366,10 +421,11 @@ export function useDeleteDepartment() {
   return useMutation({
     mutationFn: (id: string) => adminApi.deleteDepartment(id),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: KEYS.departments });
       toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error(t("toast.deleteFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.deleteFailed"))),
   });
 }
 
@@ -393,11 +449,12 @@ export function useCreateFiliere() {
   return useMutation({
     mutationFn: (data: unknown) => adminApi.createFiliere(data),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: ["admin", "filieres"] });
       qc.invalidateQueries({ queryKey: ["admin", "domains"] });
       toast.success(t("toast.filiereAdded"));
     },
-    onError: () => toast.error(t("toast.addFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.addFailed"))),
   });
 }
 export function useUpdateFiliere() {
@@ -406,10 +463,11 @@ export function useUpdateFiliere() {
     mutationFn: ({ id, data }: { id: string; data: unknown }) =>
       adminApi.updateFiliere(id, data),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: ["admin", "filieres"] });
       toast.success(t("toast.updated"));
     },
-    onError: () => toast.error(t("toast.updateFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
   });
 }
 export function useDeleteFiliere() {
@@ -417,11 +475,12 @@ export function useDeleteFiliere() {
   return useMutation({
     mutationFn: (id: string) => adminApi.deleteFiliere(id),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: ["admin", "filieres"] });
       qc.invalidateQueries({ queryKey: ["admin", "domains"] });
       toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error(t("toast.deleteFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.deleteFailed"))),
   });
 }
 
@@ -437,10 +496,11 @@ export function useCreateSpecialization() {
   return useMutation({
     mutationFn: (data: unknown) => adminApi.createSpecialization(data),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: KEYS.specializations });
       toast.success(t("toast.specializationAdded"));
     },
-    onError: () => toast.error(t("toast.addFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.addFailed"))),
   });
 }
 export function useUpdateSpecialization() {
@@ -449,10 +509,11 @@ export function useUpdateSpecialization() {
     mutationFn: ({ id, data }: { id: string; data: unknown }) =>
       adminApi.updateSpecialization(id, data),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: KEYS.specializations });
       toast.success(t("toast.updated"));
     },
-    onError: () => toast.error(t("toast.updateFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
   });
 }
 export function useDeleteSpecialization() {
@@ -460,10 +521,11 @@ export function useDeleteSpecialization() {
   return useMutation({
     mutationFn: (id: string) => adminApi.deleteSpecialization(id),
     onSuccess: () => {
+      refreshStructure(qc);
       qc.invalidateQueries({ queryKey: KEYS.specializations });
       toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error(t("toast.deleteFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.deleteFailed"))),
   });
 }
 
@@ -480,6 +542,8 @@ export function useCreateAcademicYear() {
     mutationFn: (data: unknown) => adminApi.createAcademicYear(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.academicYears });
+      // The archive and the years panel read the same years with their figures.
+      qc.invalidateQueries({ queryKey: ["admin", "archive"] });
       toast.success(t("toast.yearAdded"));
     },
     onError: () => toast.error(t("toast.addFailed")),
@@ -492,6 +556,8 @@ export function useUpdateAcademicYear() {
       adminApi.updateAcademicYear(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.academicYears });
+      // The archive and the years panel read the same years with their figures.
+      qc.invalidateQueries({ queryKey: ["admin", "archive"] });
       toast.success(t("toast.updated"));
     },
     onError: () => toast.error(t("toast.updateFailed")),
@@ -503,9 +569,11 @@ export function useActivateAcademicYear() {
     mutationFn: (id: string) => adminApi.activateAcademicYear(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.academicYears });
+      // The archive and the years panel read the same years with their figures.
+      qc.invalidateQueries({ queryKey: ["admin", "archive"] });
       toast.success(t("toast.yearActivated"));
     },
-    onError: () => toast.error(t("toast.activateFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.activateFailed"))),
   });
 }
 export function useDeleteAcademicYear() {
@@ -514,13 +582,89 @@ export function useDeleteAcademicYear() {
     mutationFn: (id: string) => adminApi.deleteAcademicYear(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.academicYears });
+      // The archive and the years panel read the same years with their figures.
+      qc.invalidateQueries({ queryKey: ["admin", "archive"] });
       toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error(t("toast.deleteFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.deleteFailed"))),
+  });
+}
+
+// ─── THE ARCHIVE ───
+// The keys name "academic-years" too, so a year added, renamed or activated
+// anywhere refreshes the archive; and a live record names what it is built
+// from, so it follows the work while the year is open.
+const ARCHIVE_KEY = ["admin", "archive"] as const;
+
+export function useArchiveYears() {
+  return useQuery({
+    queryKey: [...ARCHIVE_KEY, "years", "academic-years"],
+    queryFn: adminApi.listArchiveYears,
+  });
+}
+
+export function useYearRecord(id: string | null) {
+  return useQuery({
+    queryKey: [...ARCHIVE_KEY, "record", id, "students", "topics", "projects", "defenses"],
+    queryFn: () => adminApi.getYearRecord(id as string),
+    enabled: !!id,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useYearReadiness(id: string | null) {
+  return useQuery({
+    queryKey: [...ARCHIVE_KEY, "readiness", id],
+    queryFn: () => adminApi.getYearReadiness(id as string),
+    enabled: !!id,
+  });
+}
+
+function useArchiveRefresh() {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: ARCHIVE_KEY });
+    qc.invalidateQueries({ queryKey: KEYS.academicYears });
+    qc.invalidateQueries({ queryKey: ["common", "academic-years"] });
+  };
+}
+
+export function useCloseYear() {
+  const refresh = useArchiveRefresh();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; confirmTitle: string; note?: string; nextYearId?: string; nextYearTitle?: string }) =>
+      adminApi.closeYear(id, data),
+    onSuccess: () => {
+      refresh();
+      toast.success(t("admin.yearArchive.closed"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("admin.yearArchive.closeFailed"))),
+  });
+}
+
+export function useReopenYear() {
+  const refresh = useArchiveRefresh();
+  return useMutation({
+    mutationFn: ({ id, activate }: { id: string; activate?: boolean }) => adminApi.reopenYear(id, { activate }),
+    onSuccess: () => {
+      refresh();
+      toast.success(t("admin.yearArchive.reopened"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("admin.yearArchive.reopenFailed"))),
   });
 }
 
 // ─── TOPICS ───
+/** The list of titles; under the topics key, so a change to any topic refreshes it. */
+export function useTopicTitlesList(params: TitlesListParams, enabled = true) {
+  return useQuery({
+    queryKey: ["admin", "topics", "titles-list", params],
+    queryFn: () => adminApi.topicTitlesList(params),
+    enabled,
+  });
+}
+
 export function useAdminTopics(params?: ListParams) {
   return useQuery({
     queryKey: KEYS.topics(params),
@@ -844,6 +988,7 @@ export function useRemoveProjectMember() {
     }) => adminApi.removeProjectMember(groupId, studentId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      qc.invalidateQueries({ queryKey: ["admin", "project"] });
       qc.invalidateQueries({ queryKey: ["admin", "topics"] });
       toast.success(t("toast.studentRemovedFromProject"));
     },
@@ -871,16 +1016,31 @@ export function useDissolveProject() {
       qc.invalidateQueries({ queryKey: ["admin", "students"] });
       qc.invalidateQueries({ queryKey: ["admin", "dashboard"] });
       toast.success(
-        t("toast.projectDissolved", { defaultValue: "فُسخ المشروع" }),
+        t("toast.projectDissolved", { defaultValue: "فُسخت المذكرة" }),
       );
     },
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { message?: string } } })
         ?.response?.data?.message;
       toast.error(
-        msg || t("toast.dissolveFailed", { defaultValue: "تعذّر فسخ المشروع" }),
+        msg || t("toast.dissolveFailed", { defaultValue: "تعذّر فسخ المذكرة" }),
       );
     },
+  });
+}
+
+/** يعيّن مسؤول الفريق مباشرةً — في أيّ مرحلة، بما فيها بعد اكتمال العدد. */
+export function useSetProjectLeader() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, studentId }: { groupId: string; studentId: string }) =>
+      adminApi.setProjectLeader(groupId, studentId),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      qc.invalidateQueries({ queryKey: ["admin", "project", v.groupId] });
+      toast.success(t("toast.leaderChanged"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("toast.leaderChangeFailed"))),
   });
 }
 
@@ -907,7 +1067,8 @@ export function useChangeSupervisor() {
       qc.invalidateQueries({ queryKey: ["admin", "project", v.id] });
       toast.success(t("toast.supervisorChanged"));
     },
-    onError: () => toast.error(t("toast.supervisorChangeFailed")),
+    // «هو المشرف الحالي» أو «غير موجود» أوضح من «تعذّر التغيير».
+    onError: (e) => toast.error(serverMessage(e, t("toast.supervisorChangeFailed"))),
   });
 }
 export function useAssignStudent() {
@@ -920,7 +1081,8 @@ export function useAssignStudent() {
       qc.invalidateQueries({ queryKey: ["admin", "project", v.id] });
       toast.success(t("toast.studentAdded"));
     },
-    onError: () => toast.error(t("toast.studentAddFailed")),
+    // الحدّ الأقصى والمشروع الآخر يصلان برسالة الخادم لا بنصٍّ عامّ.
+    onError: (e) => toast.error(serverMessage(e, t("toast.studentAddFailed"))),
   });
 }
 
@@ -929,6 +1091,30 @@ export function useAdminDefenses(params?: ListParams) {
   return useQuery({
     queryKey: KEYS.defenses(params),
     queryFn: () => adminApi.listDefenses(params),
+    // Filtering keeps the old rows on screen until the new ones arrive.
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** One defence with everything its details page shows. */
+export function useDefense(id: string | null) {
+  return useQuery({
+    queryKey: ["admin", "defense", id],
+    queryFn: () => adminApi.getDefense(id as string),
+    enabled: !!id,
+  });
+}
+
+/** Would this slot clash with another scheduled defence? */
+export function useDefenseConflicts(
+  params: { date: string; durationMinutes?: number; room?: string; professorIds?: string; excludeId?: string } | null,
+) {
+  return useQuery({
+    queryKey: ["admin", "defenses", "conflicts", params],
+    queryFn: () => adminApi.defenseConflicts(params!),
+    enabled: !!params?.date,
+    staleTime: 10_000,
+    placeholderData: keepPreviousData,
   });
 }
 export function useCreateDefense() {
@@ -936,10 +1122,14 @@ export function useCreateDefense() {
   return useMutation({
     mutationFn: (data: unknown) => adminApi.createDefense(data),
     onSuccess: () => {
+      // المناقشة تظهر في المشروع وقائمته أيضاً، لا في صفحة المناقشات وحدها.
       qc.invalidateQueries({ queryKey: ["admin", "defenses"] });
+      qc.invalidateQueries({ queryKey: ["admin", "defense"] });
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      qc.invalidateQueries({ queryKey: ["admin", "project"] });
       toast.success(t("toast.defenseScheduled"));
     },
-    onError: () => toast.error(t("toast.scheduleFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.scheduleFailed"))),
   });
 }
 export function useUpdateDefense() {
@@ -949,9 +1139,12 @@ export function useUpdateDefense() {
       adminApi.updateDefense(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "defenses"] });
+      qc.invalidateQueries({ queryKey: ["admin", "defense"] });
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      qc.invalidateQueries({ queryKey: ["admin", "project"] });
       toast.success(t("toast.updated"));
     },
-    onError: () => toast.error(t("toast.updateFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
   });
 }
 export function useDeleteDefense() {
@@ -960,9 +1153,12 @@ export function useDeleteDefense() {
     mutationFn: (id: string) => adminApi.deleteDefense(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "defenses"] });
+      qc.invalidateQueries({ queryKey: ["admin", "defense"] });
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      qc.invalidateQueries({ queryKey: ["admin", "project"] });
       toast.success(t("toast.deleted"));
     },
-    onError: () => toast.error(t("toast.deleteFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.deleteFailed"))),
   });
 }
 

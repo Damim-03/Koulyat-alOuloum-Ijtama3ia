@@ -17,6 +17,7 @@ import {
   TriangleAlert,
   Loader2,
   UserX,
+  ShieldAlert,
   SendHorizontal,
   Users,
 } from "lucide-react";
@@ -30,9 +31,11 @@ import {
   useStudentLookup,
 } from "../hooks/Student-hook";
 import { useDebouncedValue } from "../../../hooks/use-debounced-value";
+import { useAuthStore } from "../../../store/auth.store";
 import { Stepper } from "../../../components/ui/stepper";
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import type { BrowseTopic, LookupStudent } from "../../../types/student.types";
+import { personName } from "../../../lib/person-name";
 
 interface Props {
   open: boolean;
@@ -44,7 +47,7 @@ interface Props {
 
 function nameOf(s: LookupStudent): string {
   return (
-    [s.user?.firstName, s.user?.lastName].filter(Boolean).join(" ") ||
+    personName(s.user) ||
     s.registrationNumber ||
     ""
   );
@@ -53,7 +56,34 @@ function specOf(s: LookupStudent): string {
   return s.specialization?.name ?? "";
 }
 
-type MemberMeta = { name: string; spec: string };
+/**
+ * `self`: الخادم وجد أنّ هذا الرقم هو رقم المرسِل نفسه.
+ * `otherGroup`: الطالب في مجموعةٍ أخرى — لا يُضاف.
+ */
+type MemberMeta = {
+  name: string;
+  spec: string;
+  self?: boolean;
+  otherGroup?: LookupStudent["otherGroup"];
+};
+
+/**
+ * رقمٌ في صورته القياسية للمقارنة وحدها — لا يُرسَل هكذا.
+ *
+ * من كتب رقمه بلوحة مفاتيح عربية (٢٠٢٠…) أو فارسية، أو فصل بين أرقامه
+ * بمسافة، يكتب الرقم نفسه؛ ومقارنةٌ حرفيّة تُفلته من التحقّق.
+ */
+function normReg(v: string): string {
+  return v
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
+function sameReg(a: string, b?: string | null): boolean {
+  return !!b && normReg(a) !== "" && normReg(a) === normReg(b);
+}
 
 /**
  * مقعدٌ واحد في المجموعة.
@@ -72,6 +102,7 @@ function MemberSlot({
   onChange,
   onResolved,
   taken,
+  selfReg,
   topicSpec,
   disabled,
 }: {
@@ -81,6 +112,8 @@ function MemberSlot({
   onResolved: (reg: string, meta: MemberMeta) => void;
   /** أرقام المقاعد الأخرى — لمنع تكرار الزميل نفسه. */
   taken: string[];
+  /** رقم تسجيل المرسِل — لا يُقبل في مقعد زميل. */
+  selfReg?: string | null;
   /** تخصّص الموضوع — يُقارَن بتخصّص الزميل. */
   topicSpec?: string | null;
   disabled?: boolean;
@@ -88,23 +121,47 @@ function MemberSlot({
   const { t } = useTranslation();
   const reg = value.trim();
   const debounced = useDebouncedValue(reg, 350);
-  const isDupe = reg.length > 0 && taken.includes(reg);
-  const term = reg.length > 0 && !isDupe && debounced === reg ? reg : "";
+
+  /**
+   * رقمُ المرسِل نفسه يُكشف مع الضغطة التي تُكمله: مقارنةٌ محلّية بلا انتظارٍ
+   * للتأخير ولا ذهابٍ إلى الخادم، ولا يُبحث عنه أصلاً. وما يفلت منها — كتابةٌ
+   * تطابقها قاعدة البيانات ولا يطابقها النصّ — يُعلّمه البحث بـ`isSelf`.
+   */
+  const typedSelf = sameReg(reg, selfReg);
+  const isDupe = !typedSelf && reg.length > 0 && taken.includes(reg);
+  const term =
+    reg.length > 0 && !typedSelf && !isDupe && debounced === reg ? reg : "";
   const lookup = useStudentLookup(term);
 
   const status = !reg
     ? "idle"
-    : isDupe
-      ? "dupe"
-      : !term || lookup.isFetching
-        ? "loading"
-        : lookup.isSuccess && lookup.data
-          ? "found"
-          : lookup.isSuccess || lookup.isError
-            ? "notfound"
-            : "loading";
+    : typedSelf
+      ? "self"
+      : isDupe
+        ? "dupe"
+        : !term || lookup.isFetching
+          ? "loading"
+          : lookup.isSuccess && lookup.data
+            ? lookup.data.isSelf
+              ? "self"
+              : lookup.data.otherGroup
+                ? "busy"
+                : "found"
+            : lookup.isSuccess || lookup.isError
+              ? "notfound"
+              : "loading";
 
-  const found = status === "found" ? (lookup.data ?? null) : null;
+  const invalid =
+    status === "notfound" ||
+    status === "dupe" ||
+    status === "self" ||
+    status === "busy";
+  /** ما يمنع التقدّم ولا يُصلحه إلّا تغيير الرقم — يُبرَز أشدّ. */
+  const hard = status === "self" || status === "busy";
+  const hit =
+    status === "found" || hard ? (lookup.data ?? null) : null;
+  const found = status === "found" ? hit : null;
+  const busy = status === "busy" ? hit : null;
 
   /**
    * تخصّصٌ مختلف: تنبيهٌ لا منع.
@@ -121,10 +178,16 @@ function MemberSlot({
     !!norm(specOf(found)) &&
     norm(specOf(found)) !== norm(topicSpec);
 
+  // والمعلَّم من الخادم يُبلَّغ كذلك، فيمنع الأبُ التقدّم به.
   useEffect(() => {
-    if (found && reg)
-      onResolved(reg, { name: nameOf(found), spec: specOf(found) });
-  }, [found, reg, onResolved]);
+    if (hit && reg)
+      onResolved(reg, {
+        name: nameOf(hit),
+        spec: specOf(hit),
+        self: !!hit.isSelf,
+        otherGroup: hit.otherGroup ?? null,
+      });
+  }, [hit, reg, onResolved]);
 
   // رموز السمة لا ألوان ثابتة: `sage` و`brick` ينقلبان مع الوضع الداكن،
   // و`emerald-400` يبقى كما هو فيه.
@@ -132,18 +195,23 @@ function MemberSlot({
     ? "border-gold focus:border-gold focus:ring-gold/25"
     : status === "found"
       ? "border-sage focus:border-sage focus:ring-sage/25"
-      : status === "notfound" || status === "dupe"
-        ? "border-brick/70 focus:border-brick focus:ring-brick/20"
-        : "border-forest/15 focus:border-gold focus:ring-gold/25";
+      : hard
+        ? "border-brick ring-4 ring-brick/15 focus:border-brick focus:ring-brick/25"
+        : invalid
+          ? "border-brick/70 focus:border-brick focus:ring-brick/20"
+          : "border-forest/15 focus:border-gold focus:ring-gold/25";
 
   /** إطار المقعد نفسه يقول حالته، فتُقرأ الصفوف الثلاثة بنظرة. */
   const seatTone = mismatch
     ? "border-gold/50 bg-gold/5"
     : status === "found"
       ? "border-sage/45 bg-sage/5"
-      : status === "notfound" || status === "dupe"
-        ? "border-brick/40 bg-brick/5"
-        : "border-clay/15 bg-cream-2";
+      : hard
+        ? "border-brick/60 bg-brick/10"
+        : invalid
+          ? "border-brick/40 bg-brick/5"
+          : "border-clay/15 bg-cream-2";
+  const errorId = `seat-${seat}-error`;
 
   return (
     <li
@@ -161,6 +229,8 @@ function MemberSlot({
             placeholder={t("stu.regNumberPlaceholder")}
             dir="ltr"
             disabled={disabled}
+            aria-invalid={invalid || undefined}
+            aria-describedby={invalid ? errorId : undefined}
             className={`w-full rounded-xl border-2 bg-cream pe-4 ps-11 py-2.5 text-sm text-forest outline-none transition focus:ring-4 disabled:opacity-50 ${ring}`}
           />
           <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
@@ -173,6 +243,7 @@ function MemberSlot({
               ) : (
                 <CheckCircle2 size={18} className="text-sage" />
               ))}
+            {hard && <ShieldAlert size={18} className="text-brick" />}
             {(status === "notfound" || status === "dupe") && (
               <UserX size={18} className="text-brick" />
             )}
@@ -237,8 +308,56 @@ function MemberSlot({
             </p>
           )}
 
+          {/*
+            في مجموعةٍ أخرى: بطاقتُه تبقى، حمراء — ليعرف القائد مَن كتب رقمه،
+            فيتبيّن أهو زميلٌ سبقه إليه غيره أم رقمٌ أخطأه.
+          */}
+          {status === "busy" && busy && (
+            <>
+              <div className="flex items-center gap-3 rounded-xl border border-brick/40 bg-brick/10 p-2.5 opacity-90">
+                <UserAvatar user={busy.user} size={36} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-forest">
+                    {nameOf(busy)}
+                  </p>
+                  <p className="truncate text-[11px] text-clay">
+                    <span dir="ltr">{busy.registrationNumber}</span>
+                  </p>
+                </div>
+                <ShieldAlert size={18} className="shrink-0 text-brick" />
+              </div>
+              <p
+                id={errorId}
+                role="alert"
+                data-testid={`seat-${seat}-busy`}
+                className="mt-1.5 flex items-start gap-2 rounded-xl border border-brick/50 bg-brick/10 px-3 py-2.5 text-xs font-semibold leading-relaxed text-brick"
+              >
+                <ShieldAlert size={16} className="mt-px shrink-0" />
+                {busy.otherGroup === "project"
+                  ? t("stu.memberHasProject")
+                  : t("stu.memberInOtherGroup")}
+              </p>
+            </>
+          )}
+
+          {/* لا بطاقة طالبٍ هنا: صورتك في مقعد زميلٍ توحي بأنّه قُبل. */}
+          {status === "self" && (
+            <p
+              id={errorId}
+              role="alert"
+              data-testid={`seat-${seat}-self`}
+              className="flex items-start gap-2 rounded-xl border border-brick/50 bg-brick/10 px-3 py-2.5 text-xs font-semibold leading-relaxed text-brick"
+            >
+              <ShieldAlert size={16} className="mt-px shrink-0" />
+              {t("stu.selfAsMember")}
+            </p>
+          )}
+
           {(status === "notfound" || status === "dupe") && (
-            <p className="flex items-center gap-2 rounded-xl border border-brick/30 bg-brick/5 px-3 py-2 text-xs font-medium text-brick">
+            <p
+              id={errorId}
+              className="flex items-center gap-2 rounded-xl border border-brick/30 bg-brick/5 px-3 py-2 text-xs font-medium text-brick"
+            >
               <UserX size={15} className="shrink-0" />
               {status === "dupe"
                 ? t("stu.duplicateMember")
@@ -291,6 +410,28 @@ export function GroupRequestDialog({
   const totalCount = filled.length + 1; // +1 leader
 
   /**
+   * المجموعة تُرسَل كاملة: لا «التالي» ولا Enter ولا إرسال حتى يكون في كلّ
+   * مقعدٍ زميلٌ وُجد صاحبُ رقمه — لا فارغ، ولا رقمٌ مجهول أو مكرّر، ولا رقمُ
+   * المرسِل، ولا طالبٌ في مجموعةٍ أخرى. والتخصّصُ المختلف تنبيهٌ لا يمنع.
+   *
+   * والحكمُ من `meta`: لا يُكتب فيه رقمٌ إلّا بعد أن يجده البحث.
+   */
+  const myReg = useAuthStore((s) => s.user?.registrationNumber) ?? null;
+  const seatRegs = Array.from({ length: seats }, (_, i) =>
+    (slots[i] ?? "").trim(),
+  );
+  const readyCount = seatRegs.filter(
+    (reg) =>
+      !!reg &&
+      seatRegs.filter((r) => r === reg).length === 1 &&
+      !sameReg(reg, myReg) &&
+      !!meta[reg] &&
+      !meta[reg].self &&
+      !meta[reg].otherGroup,
+  ).length;
+  const seatsComplete = readyCount === seats;
+
+  /**
    * المقاعد هي مصدر الحقيقة، والاستمارة تتبعها في نفس المعالج — لا في أثرٍ
    * بعد الرسم. فما يُرسَل هو ما يراه الطالب في الصفوف، بلا وسيط.
    */
@@ -306,9 +447,18 @@ export function GroupRequestDialog({
     );
   }
 
+  // يُقارَن كلّ ما يمنع لا الاسم وحده: الاسمُ نفسه قد يعود بحالٍ أخرى.
   const remember = useCallback(
     (reg: string, m: MemberMeta) =>
-      setMeta((prev) => (prev[reg]?.name === m.name ? prev : { ...prev, [reg]: m })),
+      setMeta((prev) => {
+        const cur = prev[reg];
+        return cur &&
+          cur.name === m.name &&
+          cur.self === m.self &&
+          cur.otherGroup === m.otherGroup
+          ? prev
+          : { ...prev, [reg]: m };
+      }),
     [],
   );
 
@@ -326,13 +476,11 @@ export function GroupRequestDialog({
   const index = Math.min(stepIndex, steps.length - 1);
   const step = steps[index]!;
   const isLast = index === steps.length - 1;
+  const blocked = step.key === "members" && !seatsComplete;
 
   const requirements = topic?.requirements ?? [];
   const supervisorName =
-    [topic?.professor?.user?.firstName, topic?.professor?.user?.lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim() || t("stu.supervisor");
+    personName(topic?.professor?.user) || t("stu.supervisor");
 
   function closeAll() {
     setStepIndex(0);
@@ -346,13 +494,19 @@ export function GroupRequestDialog({
   function onFormSubmit(ev: React.FormEvent<HTMLFormElement>) {
     ev.preventDefault();
     if (!isLast) {
-      setStepIndex(index + 1);
+      if (!blocked) setStepIndex(index + 1);
       return;
     }
     void handleSubmit(submit)();
   }
 
   function submit(data: CreateGroupRequestInput) {
+    // حارسٌ أخير: لو وصلت مجموعةٌ ناقصة أو رقمٌ مرفوض إلى المراجعة بطريقٍ ما،
+    // يُعاد الطالب إلى المقاعد.
+    if (!seatsComplete) {
+      setStepIndex(steps.findIndex((s) => s.key === "members"));
+      return;
+    }
     createReq.mutate(data, {
       onSuccess: () => {
         reset();
@@ -530,12 +684,27 @@ export function GroupRequestDialog({
                           taken={slots
                             .map((s) => s.trim())
                             .filter((s, j) => s && j !== i)}
+                          selfReg={myReg}
                           topicSpec={topic.specialization?.name}
                           disabled={createReq.isPending}
                         />
                       );
                     })}
                   </ul>
+
+                  {/* الزرّ المطفأ وحده لا يقول لماذا. */}
+                  {!seatsComplete && (
+                    <p
+                      data-testid="seats-hint"
+                      className="mt-3 flex items-center gap-2 rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-xs font-medium text-forest"
+                    >
+                      <Info size={14} className="shrink-0 text-gold" />
+                      {t("stu.fillAllSeats", {
+                        done: readyCount,
+                        total: seats,
+                      })}
+                    </p>
+                  )}
                 </div>
 
               </>
@@ -677,8 +846,9 @@ export function GroupRequestDialog({
               <button
                 type="button"
                 onClick={() => setStepIndex(index + 1)}
+                disabled={blocked}
                 data-testid="request-next"
-                className="inline-flex items-center gap-1 rounded-xl bg-gold px-7 py-3 font-bold text-forest-deep shadow-lg shadow-gold/20 transition hover:bg-gold-soft active:scale-95"
+                className="inline-flex items-center gap-1 rounded-xl bg-gold px-7 py-3 font-bold text-forest-deep shadow-lg shadow-gold/20 transition hover:bg-gold-soft active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
               >
                 {t("stu.next")}
                 <ChevronLeft size={18} className="ltr:rotate-180" />

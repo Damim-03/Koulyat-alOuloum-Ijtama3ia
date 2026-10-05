@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Search,
@@ -39,11 +39,12 @@ import { None } from "../../../../lib/none";
 import { Select } from "../../../../components/ui/select";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
+import { personName as nameByLang } from "../../../../lib/person-name";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 function personName(u: any) {
-  return [u?.firstName, u?.lastName].filter(Boolean).join(" ") || "\u2014";
+  return nameByLang(u) || "\u2014";
 }
 function fmtDate(iso?: string) {
   if (!iso) return noneText();
@@ -73,7 +74,12 @@ export function AdminGroupRequestsPage() {
 
   // ── filters ──
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
+  // A link may arrive with its filter — the dashboard's "pending requests".
+  const [initial] = useSearchParams();
+  const [status, setStatus] = useState(() => {
+    const s = initial.get("status") ?? "";
+    return (STATUS_FILTERS as readonly string[]).includes(s) ? s : "";
+  });
   const [professorId, setProfessorId] = useState("");
   const [facultyId, setFacultyId] = useState("");
   const [departmentId, setDepartmentId] = useState("");

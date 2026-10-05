@@ -9,12 +9,14 @@ import {
   Flag,
   Link2,
   FileText,
+  FileCheck2,
   Gavel,
   Check,
   X,
   ExternalLink,
   CheckCircle2,
   Users,
+  Users2,
   Trash2,
   Send,
   EyeOff,
@@ -23,6 +25,16 @@ import {
   Undo2,
   History,
   ChevronDown,
+  Hourglass,
+  Inbox,
+  Layers,
+  CalendarDays,
+  CalendarClock,
+  Crown,
+  IdCard,
+  Info,
+  AlertCircle,
+  type LucideIcon,
 } from "lucide-react";
 import {
   useAdminTopic,
@@ -36,21 +48,28 @@ import {
 import { TopicDeleteDialog } from "../../components/dialog/topic/topic-delete-dialog.form";
 import { ProjectMembersDialog } from "../../components/dialog/projects/project-members-dialog.form";
 import { EditAssignedTopicDialog } from "../../components/dialog/projects/edit-assigned-topic-dialog.form";
+import { SupervisionDialog } from "../../../supervision/components/supervision-dialog";
 import i18n from "../../../../i18n/i18n";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { StatusPill } from "../../../../components/ui/status-pill";
 import { noneText } from "../../../../lib/none-text";
 import { None } from "../../../../lib/none";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
+import { personName } from "../../../../lib/person-name";
 
-const STATUS_STYLES: Record<string, string> = {
-  approved: "bg-emerald-100 text-emerald-700",
-  open: "bg-emerald-100 text-emerald-700",
-  pending: "bg-amber-100 text-amber-700",
-  rejected: "bg-red-100 text-red-700",
-  full: "bg-violet-100 text-violet-700",
-  archived: "bg-gray-200 text-gray-600",
-};
+/**
+ * One topic, from the administration's side.
+ *
+ * The administration decides here, so the decision leads: right under the
+ * header, full width, with the reason any button is missing said beside the
+ * buttons. It used to sit at the bottom of a narrow sidebar, under a card
+ * that only repeated the header's facts.
+ *
+ * Below it, in order: a team waiting for that decision (the usual reason a
+ * button is missing), what the topic is and who took it, earlier refused
+ * attempts, and the topic's requirements, objectives and references.
+ */
 
 type TopicReference = { title: string; url: string };
 
@@ -60,10 +79,19 @@ type PersonRef = {
   avatarUrl?: string | null;
 };
 
+type StudentLite = {
+  id: string;
+  registrationNumber?: string | null;
+  user?: PersonRef | null;
+};
+
 /** Display name for a person, falling back to a dash rather than an empty gap. */
 function nameOf(user?: PersonRef | null) {
-  return [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "—";
+  return personName(user) || "—";
 }
+
+const CARD =
+  "rounded-3xl border border-forest/10 bg-cream-card shadow-[0_4px_24px_rgba(38,66,61,0.06)]";
 
 export function AdminTopicDetailPage() {
   const { t } = useTranslation();
@@ -74,7 +102,6 @@ export function AdminTopicDetailPage() {
   // always return to /<lang>/admin/topics (not the admin dashboard).
   const topicsPath = `/${lang}/admin/topics`;
 
-  // NOTE: create useAdminTopic(id) in admin-hook.ts → GET /admin/topics/:id
   const { data: topic, isLoading, isError, refetch } = useAdminTopic(id);
   const approve = useApproveTopic();
   const reject = useRejectTopic();
@@ -88,6 +115,7 @@ export function AdminTopicDetailPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   function fmtDate(iso?: string) {
     if (!iso) return noneText();
@@ -101,9 +129,7 @@ export function AdminTopicDetailPage() {
   }
 
   if (isLoading) {
-    return (
-      <LoadingArea className="font-body py-20" />
-    );
+    return <LoadingArea className="font-body py-20" />;
   }
 
   // انقطاعُ الاتّصال ليس «غير موجود»: يُقال ما جرى ويُعرض زرُّ إعادة.
@@ -112,7 +138,7 @@ export function AdminTopicDetailPage() {
   }
   if (!topic) {
     return (
-      <div className="font-body py-20 text-center text-sm text-clay">
+      <div className={`${CARD} px-6 py-20 text-center font-body text-sm text-clay`}>
         {t("admin.noTopics")}
       </div>
     );
@@ -120,9 +146,9 @@ export function AdminTopicDetailPage() {
 
   const u = topic.professor?.user;
   const profName =
-    [u?.firstName, u?.lastName].filter(Boolean).join(" ") ||
+    personName(u) ||
     topic.professor?.universityEmail ||
-    "\u2014";
+    "—";
   const requirements: string[] = topic.requirements ?? [];
   const objectives: string[] = topic.objectives ?? [];
   const references: TopicReference[] =
@@ -131,15 +157,7 @@ export function AdminTopicDetailPage() {
     topic as {
       projectGroup?: {
         id: string;
-        members?: {
-          id: string;
-          isLeader: boolean;
-          student?: {
-            id: string;
-            registrationNumber?: string | null;
-            user?: PersonRef | null;
-          };
-        }[];
+        members?: { id: string; isLeader: boolean; student?: StudentLite }[];
       } | null;
     }
   ).projectGroup;
@@ -166,9 +184,8 @@ export function AdminTopicDetailPage() {
    * Teams still waiting for a decision on this topic.
    *
    * A pending request reserves the topic, so the server refuses to publish,
-   * reject or archive it. The screen used to know nothing about them: it said
-   * "no group has formed yet", offered the three buttons, and all three
-   * failed. Now the team is on the page and the buttons step aside for it.
+   * reject or archive it. The team is on the page, and the decision card
+   * says why those buttons stepped aside.
    */
   const pendingRequests =
     (
@@ -177,14 +194,7 @@ export function AdminTopicDetailPage() {
           id: string;
           createdAt: string;
           leader?: { id: string } | null;
-          members?: {
-            id: string;
-            student?: {
-              id: string;
-              registrationNumber?: string | null;
-              user?: PersonRef | null;
-            } | null;
-          }[];
+          members?: { id: string; student?: StudentLite | null }[];
         }[];
       }
     ).groupRequests ?? [];
@@ -205,14 +215,7 @@ export function AdminTopicDetailPage() {
           createdAt: string;
           updatedAt: string;
           leader?: { id: string; registrationNumber?: string | null } | null;
-          members?: {
-            id: string;
-            student?: {
-              id: string;
-              registrationNumber?: string | null;
-              user?: PersonRef | null;
-            } | null;
-          }[];
+          members?: { id: string; student?: StudentLite | null }[];
         }[];
       }
     ).pastRequests ?? [];
@@ -221,6 +224,7 @@ export function AdminTopicDetailPage() {
   const requestsUsed =
     (topic as { _count?: { groupRequests?: number } })._count?.groupRequests ??
     0;
+  const capReached = requestCap !== null && requestsUsed >= requestCap;
 
   function doApprove() {
     approve.mutate(topic!.id, { onSuccess: () => refetch() });
@@ -249,641 +253,520 @@ export function AdminTopicDetailPage() {
   function doUnarchive() {
     unarchive.mutate(topic!.id, { onSuccess: () => refetch() });
   }
+
   return (
-    <div className="font-body">
-      {/* Top bar */}
-      <div className="mb-6 flex items-center justify-between">
-        <button
-          onClick={() => navigate(topicsPath)}
-          className="inline-flex items-center gap-2 font-serif text-sm font-bold text-forest transition hover:opacity-80"
+    <div className="space-y-6 font-body">
+      {/* ══════════ header ══════════ */}
+      <section className="relative rounded-3xl bg-linear-to-br from-forest to-forest-deep p-6 text-cream shadow-[0_12px_40px_rgba(26,49,45,0.25)] sm:p-8">
+        {/* ornament, clipped by a layer of its own so the card never scrolls */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl"
         >
-          <ChevronRight size={18} className="ltr:rotate-180" />
-          {t("admin.backToTopics")}
-        </button>
-        <div className="flex items-center gap-3">
-          <span
-            className={`rounded-full px-3 py-1 text-[11px] font-bold ${STATUS_STYLES[topic.status] ?? "bg-gray-100 text-gray-600"}`}
-          >
-            {t(`status.${topic.status}`, { defaultValue: topic.status })}
-          </span>
-          <button
-            onClick={() => setEditOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-forest/20 px-3 py-1.5 text-xs font-semibold text-forest transition hover:bg-forest/5"
-          >
-            <Pencil size={14} />
-            {t("admin.editTopic")}
-          </button>
-          {/* This used to open the members dialog whenever a group existed —
-              a red "delete" button that showed a member list instead. Deleting
-              is now just deleting; members are managed from their own card.
-
-              It was also offered unconditionally, so on a topic that had
-              formed a group it failed every time, and the hook replaced the
-              server's explanation with "delete failed" — leaving no way to
-              learn that archiving was the answer. The server's verdict drives
-              it now, and its reason is the tooltip. */}
-          <button
-            onClick={() => setConfirmOpen(true)}
-            disabled={!deletableViaWizard}
-            title={
-              can(topic, "delete")
-                ? undefined
-                : deletableViaWizard
-                  ? t("admin.deleteStartsWithDissolve")
-                  : blockReason(topic, "delete", t)
-            }
-            className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-          >
-            <Trash2 size={14} />
-            {t("admin.delete", { defaultValue: t("pro.delete") })}
-          </button>
+          <div
+            className="absolute inset-0 opacity-[0.07]"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 1px 1px, #fff 1px, transparent 0)",
+              backgroundSize: "18px 18px",
+            }}
+          />
+          <div className="absolute -end-16 -top-28 size-96 rounded-full bg-gold/25 blur-3xl" />
+          <div className="absolute -start-10 -bottom-32 size-80 rounded-full bg-soft-sage/15 blur-3xl" />
+          <div className="absolute inset-x-10 bottom-0 h-px bg-linear-to-r from-transparent via-gold/70 to-transparent" />
         </div>
-      </div>
 
-      {/* Hero header card */}
-      <div className="mb-6 overflow-hidden rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
-          <div className="space-y-4">
-            <h1 className="max-w-3xl font-serif text-2xl font-bold leading-tight text-forest lg:text-3xl">
+        {/* back, and the topic's own actions */}
+        <div className="relative mb-6 flex flex-wrap items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => navigate(topicsPath)}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-soft-sage transition hover:text-cream"
+          >
+            <ChevronRight size={17} className="ltr:rotate-180" />
+            {t("admin.backToTopics")}
+          </button>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {hasGroup && (
+              <button
+                type="button"
+                onClick={() => setSheetOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-gold/50 px-3.5 py-2 text-xs font-semibold text-gold-soft transition hover:bg-gold/15"
+              >
+                <FileCheck2 size={15} />
+                {t("supervision.sheet")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-xs font-bold text-[var(--t-brand-deep)] transition hover:bg-gold-soft"
+            >
+              <Pencil size={15} />
+              {t("admin.editTopic")}
+            </button>
+            {/* Deleting is just deleting; members are managed from their own
+                card. The server's verdict decides whether it is offered, and
+                its reason is the tooltip when it is not. */}
+            <button
+              type="button"
+              onClick={() => setConfirmOpen(true)}
+              disabled={!deletableViaWizard}
+              title={
+                can(topic, "delete")
+                  ? undefined
+                  : deletableViaWizard
+                    ? t("admin.deleteStartsWithDissolve")
+                    : blockReason(topic, "delete", t)
+              }
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[#f0a48f]/50 px-3.5 py-2 text-xs font-semibold text-[#f0a48f] transition hover:bg-[#f0a48f]/10 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+            >
+              <Trash2 size={15} />
+              {t("admin.delete", { defaultValue: t("pro.delete") })}
+            </button>
+          </div>
+        </div>
+
+        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          {/* what the topic is */}
+          <div className="min-w-0 flex-1">
+            <div className="mb-3 flex flex-wrap gap-2">
+              <StatusPill status={topic.status} />
+              <HeroChip icon={Layers}>
+                {topic.specialization?.name ?? <None />}
+              </HeroChip>
+              <HeroChip icon={CalendarDays}>
+                {topic.academicYear?.title ?? <None fem />}
+              </HeroChip>
+              <HeroChip icon={Users2}>
+                {t("admin.maxStudentsN", { n: topic.maxStudents })}
+              </HeroChip>
+              <HeroChip icon={CalendarClock}>{fmtDate(topic.createdAt)}</HeroChip>
+            </div>
+            <h1 className="font-serif text-3xl leading-tight font-bold break-words text-cream lg:text-4xl">
               {topic.title}
             </h1>
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full bg-soft-sage/30 px-3 py-1 text-[11px] font-medium text-forest">
-                {topic.specialization?.name ?? <None />}
-              </span>
-              <span className="rounded-full bg-forest/5 px-3 py-1 text-[11px] font-medium text-clay">
-                {topic.academicYear?.title ?? <None fem />}
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-gold/15 px-3 py-1 text-[11px] font-medium text-gold">
-                <Users size={14} />
-                {t("admin.maxStudentsN", { n: topic.maxStudents })}
-              </span>
+
+            {/* who proposed it */}
+            <div className="mt-5 inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 py-2 ps-2 pe-5">
+              <UserAvatar
+                user={u}
+                size={44}
+                tone="gold"
+                className="text-[var(--t-brand-deep)]! ring-2 ring-gold/60"
+              />
+              <div className="min-w-0">
+                <p className="text-[11px] text-soft-sage">{t("admin.supervisor")}</p>
+                <p className="truncate text-sm font-bold text-cream">{profName}</p>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-xl border border-forest/10 bg-cream-2 p-4">
-            <div className="text-start">
-              <h4 className="text-sm font-bold text-forest">{profName}</h4>
-              <p className="text-[11px] text-clay">{t("admin.supervisor")}</p>
-            </div>
-            <UserAvatar user={u} size={48} className="rounded-xl" />
+          {/* how it is doing, in three numbers */}
+          <div className="grid shrink-0 grid-cols-3 gap-3">
+            <HeroStat
+              icon={Users}
+              value={hasGroup ? `${members.length}/${topic.maxStudents}` : "0"}
+              label={t("admin.groupMembers")}
+            />
+            <HeroStat
+              icon={Inbox}
+              // The cap is read before a refusal: the last one closes the topic.
+              value={requestCap !== null ? `${requestsUsed}/${requestCap}` : String(requestsUsed)}
+              label={t("pro.requestsCount")}
+              tone={capReached ? "alarm" : undefined}
+            />
+            <HeroStat
+              icon={Hourglass}
+              value={String(pendingRequests.length)}
+              label={t("admin.td.awaiting")}
+              tone={claimed ? "gold" : undefined}
+            />
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Main grid */}
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
-        {/* Left column (wide) */}
-        <div className="space-y-6 lg:col-span-2">
-          {/* Description */}
-          <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-            <div className="mb-4 flex items-center gap-2 border-b border-forest/10 pb-3">
-              <Subtitles size={18} className="text-gold" />
-              <h2 className="font-serif text-lg font-bold text-forest">
-                {t("admin.topicDescriptionLabel")}
-              </h2>
-            </div>
-            <p className="whitespace-pre-line leading-relaxed text-clay">
-              {topic.description || <None />}
+      {/* ══════════ the decision ══════════ */}
+      <section className={`p-6 ${CARD}`}>
+        <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-forest/10 pb-4">
+          <h2 className="flex items-center gap-2.5 font-serif text-lg font-bold text-forest">
+            <span className="grid size-9 place-items-center rounded-xl bg-gold/15 text-gold">
+              <Gavel size={18} />
+            </span>
+            {t("admin.adminAction")}
+          </h2>
+          <span className="flex items-center gap-2 text-xs text-clay">
+            {t("admin.currentStatus")}
+            <StatusPill status={topic.status} />
+          </span>
+        </header>
+
+        {rejecting ? (
+          <div className="space-y-3">
+            <label className="text-xs font-semibold text-forest">
+              {t("admin.rejectionReason")}
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              autoFocus
+              className="w-full resize-y rounded-2xl border border-forest/15 bg-cream-2 p-4 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
+              placeholder={t("admin.rejectionReasonPlaceholder")}
+            />
+            <p className="text-[11px] text-clay">
+              {t("admin.rejectReasonToProf", {
+                defaultValue: t("admin.rejectionReachesProfessor"),
+              })}
             </p>
-          </section>
-
-          {/* Group members — for an assigned topic this is the point of the
-              page, and it was previously reachable only through the delete
-              button. */}
-          <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-forest/10 pb-3">
-              <div className="flex items-center gap-2">
-                <Users size={18} className="text-gold" />
-                <h2 className="font-serif text-lg font-bold text-forest">
-                  {t("admin.groupMembers")}
-                </h2>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={doReject}
+                disabled={reject.isPending}
+                className="inline-flex items-center gap-2 rounded-xl bg-brick px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+              >
+                <X size={16} />
+                {t("admin.confirmReject")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRejecting(false);
+                  setReason("");
+                }}
+                className="rounded-xl border border-forest/20 px-5 py-2.5 text-sm font-bold text-forest transition hover:bg-forest/5"
+              >
+                {t("admin.cancel")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Why buttons are missing, said beside them rather than left as
+                a gap the reader has to explain to themselves. */}
+            {(hasGroup || claimed || (topic.status === "rejected" && topic.rejectionReason)) && (
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                 {hasGroup && (
-                  <span className="rounded-full bg-forest/10 px-2 py-0.5 text-[11px] font-bold text-forest tabular-nums">
-                    {t("admin.membersOfMax", {
-                      n: members.length,
-                      max: topic.maxStudents,
+                  <Note tone="sage" icon={Info}>
+                    {t("admin.hasGroupNote", {
+                      defaultValue: t("admin.topicHasGroupHint"),
                     })}
-                  </span>
+                  </Note>
+                )}
+                {claimed && (
+                  <Note tone="gold" icon={Hourglass}>
+                    {t("admin.blockedByRequest")}{" "}
+                    <Link
+                      to={`/${lang}/admin/group-requests`}
+                      className="inline-flex items-center gap-1 font-bold text-gold transition hover:opacity-80"
+                    >
+                      <Gavel size={12} />
+                      {t("admin.decideOnRequest")}
+                    </Link>
+                  </Note>
+                )}
+                {topic.status === "rejected" && topic.rejectionReason && (
+                  <Note tone="brick" icon={AlertCircle}>
+                    <span className="font-bold">{t("status.rejected")}:</span>{" "}
+                    {topic.rejectionReason}
+                  </Note>
                 )}
               </div>
-              {hasGroup && (
-                <button
-                  onClick={() => setMembersOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-forest/20 px-3 py-1.5 text-xs font-semibold text-forest transition hover:bg-forest/5"
+            )}
+
+            {/*
+              Contextual actions.
+
+              Each reads the server's verdict. When it says no, the button
+              stays visible but disabled with the reason on hover: an action
+              that simply vanishes teaches nothing about why.
+            */}
+            <div className="flex flex-wrap gap-2.5">
+              {can(topic, "approve") && (
+                <ActBtn onClick={doApprove} disabled={approve.isPending} variant="approve">
+                  <Check size={17} />
+                  {t("admin.approveTopicBtn")}
+                </ActBtn>
+              )}
+              {can(topic, "publish") && (
+                <ActBtn onClick={doPublish} disabled={publish.isPending} variant="publish">
+                  <Send size={17} />
+                  {t("admin.publish", { defaultValue: t("admin.publishTopic") })}
+                </ActBtn>
+              )}
+              {can(topic, "unpublish") && (
+                <ActBtn onClick={doUnpublish} disabled={unpublish.isPending} variant="neutral">
+                  <EyeOff size={17} />
+                  {t("admin.unpublish")}
+                </ActBtn>
+              )}
+              {can(topic, "reject") && (
+                <ActBtn onClick={() => setRejecting(true)} variant="reject">
+                  <X size={17} />
+                  {t("admin.rejectTopicBtn")}
+                </ActBtn>
+              )}
+              {topic.status === "archived" ? (
+                <ActBtn
+                  onClick={doUnarchive}
+                  disabled={unarchive.isPending || !can(topic, "unarchive")}
+                  title={blockReason(topic, "unarchive", t)}
+                  variant="publish"
                 >
-                  <Users size={14} />
-                  {t("admin.manageMembers")}
-                </button>
+                  <Undo2 size={17} />
+                  {t("admin.unarchive")}
+                </ActBtn>
+              ) : (
+                // Archiving is offered on every decided topic, and refused
+                // with its reason when a team is still waiting on it.
+                ["approved", "open", "full"].includes(topic.status) && (
+                  <ActBtn
+                    onClick={doArchive}
+                    disabled={archive.isPending || !can(topic, "archive")}
+                    title={blockReason(topic, "archive", t)}
+                    variant="neutral"
+                  >
+                    <Archive size={17} />
+                    {t("admin.archive")}
+                  </ActBtn>
+                )
               )}
             </div>
 
-            {members.length === 0 ? (
-              <p className="py-4 text-center text-sm text-clay">
-                {t("admin.noGroupYet")}
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {members.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`flex items-center gap-3 rounded-xl border p-3 ${
-                      m.isLeader
-                        ? "border-gold bg-gold/5"
-                        : "border-forest/10 bg-cream-2"
-                    }`}
-                  >
-                    <UserAvatar user={m.student?.user} size={38} />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-forest">
-                        {nameOf(m.student?.user)}
-                        {m.isLeader && (
-                          <span className="ms-2 rounded-full bg-gold/15 px-1.5 py-0.5 text-[9px] font-bold text-gold">
-                            {t("admin.leader")}
-                          </span>
-                        )}
-                      </p>
-                      <p className="truncate text-[11px] text-clay" dir="ltr">
-                        {m.student?.registrationNumber ?? ""}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+            <p className="text-[11px] text-clay/80">{t("admin.decisionNote")}</p>
+          </div>
+        )}
+      </section>
 
-          {/* A team waiting for a decision. Placed above the content
-              because it is the reason the buttons on the right are missing. */}
-          {claimed && (
-            <section className="rounded-2xl border-2 border-gold/50 bg-gold/5 p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-gold/30 pb-3">
-                <div className="flex items-center gap-2">
-                  <Users size={18} className="text-gold" />
-                  <h2 className="font-serif text-lg font-bold text-forest">
-                    {t("admin.teamWaiting")}
-                  </h2>
+      {/* ══════════ a team waiting on that decision ══════════ */}
+      {claimed && (
+        <section className="rounded-3xl border-2 border-gold/45 bg-gold/5 p-6">
+          <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-gold/25 pb-4">
+            <h2 className="flex items-center gap-2.5 font-serif text-lg font-bold text-forest">
+              <span className="grid size-9 place-items-center rounded-xl bg-gold/20 text-gold">
+                <Users size={18} />
+              </span>
+              {t("admin.teamWaiting")}
+            </h2>
+            <Link
+              to={`/${lang}/admin/group-requests`}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-xs font-bold text-forest-deep transition hover:bg-gold-soft"
+            >
+              <Gavel size={14} />
+              {t("admin.decideOnRequest")}
+            </Link>
+          </header>
+
+          <p className="mb-4 text-xs leading-relaxed text-clay">
+            {t("admin.teamWaitingNote")}
+          </p>
+
+          <div className="space-y-4">
+            {pendingRequests.map((r) => (
+              <div key={r.id}>
+                <p className="mb-2 text-[11px] text-clay">
+                  {t("admin.sentOn", { date: fmtDate(r.createdAt) })}
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {(r.members ?? []).map((m) => (
+                    <StudentCard
+                      key={m.id}
+                      student={m.student}
+                      leader={m.student?.id === r.leader?.id}
+                      leaderLabel={t("admin.leader")}
+                    />
+                  ))}
                 </div>
-                <Link
-                  to={`/${lang}/admin/group-requests`}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3 py-1.5 text-xs font-bold text-forest-deep transition hover:bg-gold-soft"
-                >
-                  <Gavel size={14} />
-                  {t("admin.decideOnRequest")}
-                </Link>
               </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-              <p className="mb-4 text-xs leading-relaxed text-clay">
-                {t("admin.teamWaitingNote")}
-              </p>
+      {/* ══════════ what it asks, and who took it ══════════
+          Two cards on one row share one height. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Section icon={Subtitles} title={t("admin.topicDescriptionLabel")}>
+          <p className="leading-relaxed whitespace-pre-line text-forest/85">
+            {topic.description || <None />}
+          </p>
+        </Section>
 
-              {pendingRequests.map((r) => (
-                <div key={r.id} className="mb-3 last:mb-0">
-                  <p className="mb-2 text-[11px] text-clay">
-                    {t("admin.sentOn", { date: fmtDate(r.createdAt) })}
-                  </p>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {(r.members ?? []).map((m) => (
-                      <div
-                        key={m.id}
-                        className="flex items-center gap-3 rounded-xl border border-forest/10 bg-cream-card p-3"
-                      >
-                        <UserAvatar user={m.student?.user} size={38} />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-forest">
-                            {nameOf(m.student?.user)}
-                            {m.student?.id === r.leader?.id && (
-                              <span className="ms-2 rounded-full bg-gold/15 px-1.5 py-0.5 text-[9px] font-bold text-gold">
-                                {t("admin.leader")}
-                              </span>
-                            )}
-                          </p>
-                          <p className="truncate text-[11px] text-clay" dir="ltr">
-                            {m.student?.registrationNumber ?? ""}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+        <Section
+          icon={Users}
+          title={t("admin.groupMembers")}
+          badge={
+            hasGroup
+              ? t("admin.membersOfMax", { n: members.length, max: topic.maxStudents })
+              : undefined
+          }
+          action={
+            hasGroup ? (
+              <button
+                type="button"
+                onClick={() => setMembersOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-forest/20 px-3 py-1.5 text-xs font-semibold text-forest transition hover:border-gold/50 hover:bg-gold/10"
+              >
+                <Users size={14} />
+                {t("admin.manageMembers")}
+              </button>
+            ) : undefined
+          }
+        >
+          {members.length === 0 ? (
+            <EmptyNote icon={Users} text={t("admin.noGroupYet")} />
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {members.map((m) => (
+                <StudentCard
+                  key={m.id}
+                  student={m.student}
+                  leader={m.isLeader}
+                  leaderLabel={t("admin.leader")}
+                />
+              ))}
+            </div>
+          )}
+        </Section>
+      </div>
+
+      {/*
+        المحاولاتُ السابقة — تحت الحيّ لا بجانبه.
+        الفرقُ بينهما ليس في التاريخ بل في ما يُفعل بهما: ذاك يُقرَّر فيه،
+        وهذه تُقرأ. ولو عُرضا سواءً لَبدا للمسؤول أنّ أمامه اختياراً بين
+        فرقٍ — وهو اختيارٌ لا وجود له.
+      */}
+      {pastRequests.length > 0 && (
+        <details className={`group ${CARD}`}>
+          <summary className="flex cursor-pointer list-none items-center gap-2.5 p-5 text-forest marker:hidden">
+            <span className="grid size-9 place-items-center rounded-xl bg-forest/8 text-clay">
+              <History size={17} />
+            </span>
+            <h2 className="font-serif text-base font-bold">{t("admin.pastAttempts")}</h2>
+            <span className="rounded-full bg-forest/8 px-2 py-0.5 text-[11px] font-bold text-clay tabular-nums">
+              {pastRequests.length}
+            </span>
+            <ChevronDown size={16} className="ms-auto text-clay transition group-open:rotate-180" />
+          </summary>
+
+          <div className="space-y-3 border-t border-forest/10 p-5">
+            <p className="text-xs leading-relaxed text-clay">{t("admin.pastAttemptsNote")}</p>
+
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              {pastRequests.map((r) => (
+                <div key={r.id} className="rounded-2xl bg-cream-2/70 p-4 ring-1 ring-forest/8">
+                  <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <StatusPill status="rejected" />
+                    <span className="text-[11px] text-clay">
+                      {t("admin.sentOn", { date: fmtDate(r.createdAt) })}
+                    </span>
+                    <span className="text-[11px] text-clay">
+                      {t("admin.rejectedOn", { date: fmtDate(r.updatedAt) })}
+                    </span>
                   </div>
+
+                  <p className="mb-2 flex flex-wrap items-center gap-1.5 text-sm text-forest">
+                    {(r.members ?? []).map((m) => (
+                      <span
+                        key={m.id}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-cream-card px-2 py-1 ring-1 ring-forest/10"
+                      >
+                        <span className="text-[13px]">{nameOf(m.student?.user)}</span>
+                        <span dir="ltr" className="font-mono text-[11px] text-clay">
+                          {m.student?.registrationNumber ?? ""}
+                        </span>
+                      </span>
+                    ))}
+                  </p>
+
+                  {r.rejectionReason ? (
+                    <p className="rounded-xl bg-brick/8 px-3 py-2 text-[13px] leading-relaxed text-brick">
+                      <span className="font-bold">{t("stu.rejectionReason")}: </span>
+                      {r.rejectionReason}
+                    </p>
+                  ) : (
+                    <p className="text-[12px] text-clay/80">{t("admin.noRejectionReason")}</p>
+                  )}
                 </div>
               ))}
-            </section>
+            </div>
+          </div>
+        </details>
+      )}
+
+      {/* ══════════ requirements, objectives, references ══════════ */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 2xl:grid-cols-3">
+        <Section icon={ListChecks} title={t("admin.requirementsLabel")}>
+          {requirements.length === 0 ? (
+            <EmptyNote icon={ListChecks} text={t("admin.noRequirements")} />
+          ) : (
+            <ul className="space-y-2">
+              {requirements.map((r, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-3 rounded-2xl bg-cream-2/70 px-4 py-3 ring-1 ring-forest/5"
+                >
+                  <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-sage" />
+                  <span className="text-sm font-medium text-forest">{r}</span>
+                </li>
+              ))}
+            </ul>
           )}
+        </Section>
 
-          {/*
-            المحاولاتُ السابقة — تحت الحيّ لا بجانبه.
-            الفرقُ بينهما ليس في التاريخ بل في ما يُفعل بهما: ذاك يُقرَّر فيه،
-            وهذه تُقرأ. ولو عُرضا سواءً لَبدا للمسؤول أنّ أمامه اختياراً بين
-            فرقٍ — وهو اختيارٌ لا وجود له.
-          */}
-          {pastRequests.length > 0 && (
-            <details className="group rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-              <summary className="flex cursor-pointer list-none items-center gap-2 p-5 text-forest marker:hidden">
-                <History size={17} className="text-clay" />
-                <h2 className="font-serif text-base font-bold">
-                  {t("admin.pastAttempts")}
-                </h2>
-                <span className="rounded-full bg-forest/8 px-2 py-0.5 font-mono text-[11px] font-bold text-clay">
-                  {pastRequests.length}
-                </span>
-                <ChevronDown
-                  size={16}
-                  className="ms-auto text-clay transition group-open:rotate-180"
-                />
-              </summary>
-
-              <div className="space-y-3 border-t border-forest/10 p-5">
-                <p className="text-xs leading-relaxed text-clay">
-                  {t("admin.pastAttemptsNote")}
-                </p>
-
-                {pastRequests.map((r) => (
-                  <div
-                    key={r.id}
-                    className="rounded-xl border border-forest/10 bg-cream-2 p-4"
-                  >
-                    <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <span className="rounded-full bg-brick/12 px-2.5 py-0.5 text-[11px] font-bold text-brick">
-                        {t("stu.reqStatus.rejected")}
-                      </span>
-                      <span className="text-[11px] text-clay">
-                        {t("admin.sentOn", { date: fmtDate(r.createdAt) })}
-                      </span>
-                      <span className="text-[11px] text-clay">
-                        {t("admin.rejectedOn", { date: fmtDate(r.updatedAt) })}
-                      </span>
-                    </div>
-
-                    <p className="mb-2 flex flex-wrap items-center gap-1.5 text-sm text-forest">
-                      {(r.members ?? []).map((m) => (
-                        <span
-                          key={m.id}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-cream-card px-2 py-1 ring-1 ring-forest/10"
-                        >
-                          <span className="text-[13px]">
-                            {nameOf(m.student?.user)}
-                          </span>
-                          <span dir="ltr" className="font-mono text-[11px] text-clay">
-                            {m.student?.registrationNumber ?? ""}
-                          </span>
-                        </span>
-                      ))}
-                    </p>
-
-                    {r.rejectionReason ? (
-                      <p className="rounded-lg bg-brick/8 px-3 py-2 text-[13px] leading-relaxed text-brick">
-                        <span className="font-bold">
-                          {t("stu.rejectionReason")}:{" "}
-                        </span>
-                        {r.rejectionReason}
-                      </p>
-                    ) : (
-                      <p className="text-[12px] text-clay/80">
-                        {t("admin.noRejectionReason")}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </details>
+        <Section icon={Flag} title={t("admin.objectivesLabel")}>
+          {objectives.length === 0 ? (
+            <EmptyNote icon={Flag} text={t("admin.noObjectives")} />
+          ) : (
+            <ol className="space-y-2">
+              {objectives.map((o, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-3 rounded-2xl bg-cream-2/70 px-4 py-3 ring-1 ring-forest/5"
+                >
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-gold/15 font-serif text-sm font-bold text-gold tabular-nums">
+                    {i + 1}
+                  </span>
+                  <p className="pt-0.5 text-sm text-forest">{o}</p>
+                </li>
+              ))}
+            </ol>
           )}
+        </Section>
 
-          {/* Requirements */}
-          {requirements.length > 0 ? (
-            <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-              <div className="mb-5 flex items-center gap-2 border-b border-forest/10 pb-3">
-                <ListChecks size={18} className="text-gold" />
-                <h2 className="font-serif text-lg font-bold text-forest">
-                  {t("admin.requirementsLabel")}
-                </h2>
-              </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {requirements.map((r, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 rounded-lg bg-cream-2 p-3 transition hover:bg-forest/5"
-                  >
-                    <CheckCircle2 size={18} className="shrink-0 text-sage" />
-                    <span className="text-sm font-medium text-forest">{r}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )
-           : (
-            <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-              <div className="mb-4 flex items-center gap-2 border-b border-forest/10 pb-3">
-                <ListChecks size={18} className="text-clay/60" />
-                <h2 className="font-serif text-lg font-bold text-forest">
-                  {t("admin.requirementsLabel")}
-                </h2>
-              </div>
-              <p className="py-2 text-center text-sm text-clay">
-                {t("admin.noRequirements")}
-              </p>
-            </section>
-          )}
-
-          {/* Objectives */}
-          {objectives.length > 0 ? (
-            <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-              <div className="mb-5 flex items-center gap-2 border-b border-forest/10 pb-3">
-                <Flag size={18} className="text-gold" />
-                <h2 className="font-serif text-lg font-bold text-forest">
-                  {t("admin.objectivesLabel")}
-                </h2>
-              </div>
-              <ul className="space-y-4">
-                {objectives.map((o, i) => (
-                  <li key={i} className="flex gap-4">
-                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-forest/10 font-bold text-forest">
-                      {i + 1}
-                    </span>
-                    <p className="pt-1 text-sm text-clay">{o}</p>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )
-           : (
-            <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-              <div className="mb-4 flex items-center gap-2 border-b border-forest/10 pb-3">
-                <Flag size={18} className="text-clay/60" />
-                <h2 className="font-serif text-lg font-bold text-forest">
-                  {t("admin.objectivesLabel")}
-                </h2>
-              </div>
-              <p className="py-2 text-center text-sm text-clay">
-                {t("admin.noObjectives")}
-              </p>
-            </section>
-          )}
-
-          {/* References */}
-          {references.length > 0 ? (
-            <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-              <div className="mb-5 flex items-center gap-2 border-b border-forest/10 pb-3">
-                <Link2 size={18} className="text-gold" />
-                <h2 className="font-serif text-lg font-bold text-forest">
-                  {t("admin.referencesLabel")}
-                </h2>
-              </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="grid lg:col-span-2 2xl:col-span-1">
+          <Section icon={Link2} title={t("admin.referencesLabel")}>
+            {references.length === 0 ? (
+              <EmptyNote icon={Link2} text={t("admin.noReferencesYet")} />
+            ) : (
+              <ul className="space-y-2">
                 {references.map((ref, i) => (
-                  <div
+                  <li
                     key={i}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-forest/15 p-4 transition hover:bg-cream-2"
+                    className="flex items-center justify-between gap-3 rounded-2xl bg-cream-2/70 px-4 py-3 ring-1 ring-forest/5"
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <FileText size={18} className="shrink-0 text-clay" />
-                      <p className="truncate text-sm font-medium text-forest">
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <FileText size={16} className="shrink-0 text-gold" />
+                      <span className="truncate text-sm font-medium text-forest">
                         {ref.title}
-                      </p>
-                    </div>
+                      </span>
+                    </span>
                     <a
                       href={ref.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      dir="ltr"
-                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-forest/20 px-3 py-1 text-[11px] font-bold text-forest transition hover:bg-forest/5"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-forest/15 px-2.5 py-1 text-[11px] font-bold text-forest transition hover:border-gold/50 hover:bg-gold/10"
                     >
                       <ExternalLink size={12} />
                       {t("admin.openLink")}
                     </a>
-                  </div>
+                  </li>
                 ))}
-              </div>
-            </section>
-          )
-           : (
-            <section className="rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-              <div className="mb-4 flex items-center gap-2 border-b border-forest/10 pb-3">
-                <Link2 size={18} className="text-clay/60" />
-                <h2 className="font-serif text-lg font-bold text-forest">
-                  {t("admin.referencesLabel")}
-                </h2>
-              </div>
-              <p className="py-2 text-center text-sm text-clay">
-                {t("admin.noReferencesYet")}
-              </p>
-            </section>
-          )}
-        </div>
-
-        {/* Right column (sidebar) */}
-        <div className="space-y-6">
-          {/* Summary info */}
-          <div className="relative overflow-hidden rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-            <div className="absolute right-0 top-0 h-full w-1.5 bg-gold" />
-            <h3 className="mb-6 font-serif text-lg font-bold text-forest">
-              {t("admin.topicInfo")}
-            </h3>
-            <div className="space-y-1">
-              <InfoRow
-                label={t("admin.specialization")}
-                value={topic.specialization?.name ?? noneText()}
-              />
-              <InfoRow
-                label={t("admin.academicYear")}
-                value={topic.academicYear?.title ?? noneText(true)}
-              />
-              <InfoRow
-                label={t("admin.maxCapacity")}
-                value={t("admin.maxStudentsN", { n: topic.maxStudents })}
-              />
-              {/*
-                لا يُعرض لموضوعٍ بلا سقف: سطرٌ يقول «بلا حدّ» يشغل مكاناً
-                ولا يضيف خبراً. ويُقرأ قبل الرفض: الرفضُ الأخير يُغلق الموضوع.
-              */}
-              {requestCap !== null && (
-                <InfoRow
-                  label={t("admin.maxRequests")}
-                  value={`${requestsUsed} / ${requestCap}`}
-                  tone={requestsUsed >= requestCap ? "danger" : undefined}
-                />
-              )}
-              <InfoRow
-                label={t("admin.createdAt")}
-                value={fmtDate(topic.createdAt)}
-                last
-              />
-            </div>
-          </div>
-
-          {/* Decision card */}
-          <div className="rounded-2xl border-2 border-forest/10 bg-cream-card p-6 shadow-[0_8px_30px_rgba(38,66,61,0.08)]">
-            <h3 className="mb-6 flex items-center gap-2 font-serif text-lg font-bold text-forest">
-              <Gavel size={18} />
-              {t("admin.adminAction")}
-            </h3>
-
-            {rejecting ? (
-              <div className="space-y-3">
-                <label className="text-xs font-medium text-forest">
-                  {t("admin.rejectionReason")}
-                </label>
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  rows={4}
-                  className="w-full resize-y rounded-xl border border-forest/15 bg-cream-2 p-3 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-                  placeholder={t("admin.rejectionReasonPlaceholder")}
-                />
-                <p className="text-[11px] text-clay">
-                  {t("admin.rejectReasonToProf", {
-                    defaultValue: t("admin.rejectionReachesProfessor"),
-                  })}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={doReject}
-                    disabled={reject.isPending}
-                    className="flex-1 rounded-xl bg-red-500 py-3 font-bold text-white transition hover:bg-red-600 disabled:opacity-60"
-                  >
-                    {t("admin.confirmReject")}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setRejecting(false);
-                      setReason("");
-                    }}
-                    className="flex-1 rounded-xl border border-forest/20 py-3 font-bold text-forest transition hover:bg-forest/5"
-                  >
-                    {t("admin.cancel")}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {/* current status */}
-                <div className="flex items-center justify-between rounded-xl bg-cream-2 px-3 py-2.5">
-                  <span className="text-xs text-clay">
-                    {t("admin.currentStatus", {
-                      defaultValue: t("admin.currentStatus"),
-                    })}
-                  </span>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${STATUS_STYLES[topic.status] ?? "bg-gray-100 text-gray-600"}`}
-                  >
-                    {t(`status.${topic.status}`, {
-                      defaultValue: topic.status,
-                    })}
-                  </span>
-                </div>
-
-                {hasGroup && (
-                  <p className="rounded-lg bg-soft-sage/30 px-3 py-2 text-xs leading-relaxed text-forest">
-                    {t("admin.hasGroupNote", {
-                      defaultValue:
-                        t("admin.topicHasGroupHint"),
-                    })}
-                  </p>
-                )}
-
-                {/* Says why three buttons are missing, instead of leaving a
-                    gap the reader has to explain to themselves. */}
-                {claimed && (
-                  <div className="rounded-lg border border-gold/40 bg-gold/10 px-3 py-2.5">
-                    <p className="mb-2 text-xs leading-relaxed text-forest">
-                      {t("admin.blockedByRequest")}
-                    </p>
-                    <Link
-                      to={`/${lang}/admin/group-requests`}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-gold transition hover:opacity-80"
-                    >
-                      <Gavel size={13} />
-                      {t("admin.decideOnRequest")}
-                    </Link>
-                  </div>
-                )}
-
-                {/*
-                  Contextual actions.
-
-                  Each of these used to carry its own copy of the server's
-                  rules — a status list plus a `!hasGroup` here and a
-                  `!claimed` there — and the copies drifted. They read the
-                  server's verdict now, and when it says no, the button stays
-                  visible but disabled with the reason on hover: an action that
-                  simply vanishes teaches nothing about why.
-                */}
-                {can(topic, "approve") && (
-                  <ActBtn
-                    onClick={doApprove}
-                    disabled={approve.isPending}
-                    variant="approve"
-                  >
-                    <Check size={18} />
-                    {t("admin.approveTopicBtn")}
-                  </ActBtn>
-                )}
-                {can(topic, "publish") && (
-                  <ActBtn
-                    onClick={doPublish}
-                    disabled={publish.isPending}
-                    variant="publish"
-                  >
-                    <Send size={18} />
-                    {t("admin.publish", { defaultValue: t("admin.publishTopic") })}
-                  </ActBtn>
-                )}
-                {can(topic, "unpublish") && (
-                  <ActBtn
-                    onClick={doUnpublish}
-                    disabled={unpublish.isPending}
-                    variant="neutral"
-                  >
-                    <EyeOff size={18} />
-                    {t("admin.unpublish", { defaultValue: t("admin.unpublish") })}
-                  </ActBtn>
-                )}
-                {can(topic, "reject") && (
-                  <ActBtn onClick={() => setRejecting(true)} variant="reject">
-                    <X size={18} />
-                    {t("admin.rejectTopicBtn")}
-                  </ActBtn>
-                )}
-                {topic.status === "archived" ? (
-                  <ActBtn
-                    onClick={doUnarchive}
-                    disabled={unarchive.isPending || !can(topic, "unarchive")}
-                    title={blockReason(topic, "unarchive", t)}
-                    variant="publish"
-                  >
-                    <Undo2 size={18} />
-                    {t("admin.unarchive", { defaultValue: t("admin.unarchive") })}
-                  </ActBtn>
-                ) : (
-                  // Archiving is offered on every decided topic, and refused
-                  // with its reason when a team is still waiting on it.
-                  ["approved", "open", "full"].includes(topic.status) && (
-                    <ActBtn
-                      onClick={doArchive}
-                      disabled={archive.isPending || !can(topic, "archive")}
-                      title={blockReason(topic, "archive", t)}
-                      variant="neutral"
-                    >
-                      <Archive size={18} />
-                      {t("admin.archive", { defaultValue: t("admin.archive") })}
-                    </ActBtn>
-                  )
-                )}
-
-                {topic.status === "rejected" && topic.rejectionReason && (
-                  <p className="rounded-lg bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-600">
-                    <span className="font-semibold">
-                      {t("status.rejected")}:
-                    </span>{" "}
-                    {topic.rejectionReason}
-                  </p>
-                )}
-
-                <p className="pt-1 text-center text-[11px] text-clay opacity-70">
-                  {t("admin.decisionNote")}
-                </p>
-              </div>
+              </ul>
             )}
-          </div>
+          </Section>
         </div>
       </div>
 
@@ -904,6 +787,10 @@ export function AdminTopicDetailPage() {
         onClose={() => setEditOpen(false)}
         onUpdated={() => refetch()}
       />
+
+      {sheetOpen && (
+        <SupervisionDialog topicId={topic.id} onClose={() => setSheetOpen(false)} />
+      )}
 
       {/*
         الحذف معالجٌ لا تأكيدٌ واحد: موضوعٌ قامت عليه مجموعةٌ لا تقبل الخلفية
@@ -928,37 +815,171 @@ export function AdminTopicDetailPage() {
   );
 }
 
-function InfoRow({
-  label,
+/* ══════════════════ pieces ══════════════════ */
+
+function HeroChip({
+  icon: Icon,
+  children,
+}: {
+  icon: LucideIcon;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/8 px-3 py-1 text-xs text-cream">
+      <Icon size={12} className="text-gold-soft" />
+      {children}
+    </span>
+  );
+}
+
+function HeroStat({
+  icon: Icon,
   value,
-  last,
+  label,
   tone,
 }: {
-  label: string;
+  icon: LucideIcon;
   value: string;
-  last?: boolean;
-  /** `danger` للقيمة التي بلغت حدّها — تُقرأ قبل أن يُتّخذ القرار. */
-  tone?: "danger";
+  label: string;
+  /** `alarm` for a cap that has been reached — read before refusing. */
+  tone?: "gold" | "alarm";
 }) {
   return (
     <div
-      className={`flex items-center justify-between py-2 ${last ? "" : "border-b border-forest/5"}`}
+      className={`flex min-w-24 flex-col items-center rounded-2xl border px-4 py-3 text-center ${
+        tone === "alarm"
+          ? "border-[#f0a48f]/50 bg-[#f0a48f]/10"
+          : tone === "gold"
+            ? "border-gold/60 bg-gold/15"
+            : "border-white/10 bg-white/5"
+      }`}
     >
-      <span className="text-sm text-clay">{label}</span>
-      <span
-        className={`font-bold ${tone === "danger" ? "text-brick" : "text-forest"}`}
-      >
+      <Icon size={17} className={`mb-1 ${tone === "alarm" ? "text-[#f0a48f]" : "text-gold-soft"}`} />
+      <span dir="ltr" className="font-serif text-2xl leading-none font-bold text-cream tabular-nums">
         {value}
       </span>
+      <span className="mt-1 text-[11px] text-soft-sage">{label}</span>
+    </div>
+  );
+}
+
+/** A card that fills its grid cell, so neighbours on a row share one height. */
+function Section({
+  icon: Icon,
+  title,
+  badge,
+  action,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  badge?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={`flex flex-col p-6 ${CARD}`}>
+      <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-forest/10 pb-4">
+        <h2 className="flex items-center gap-2.5 font-serif text-lg font-bold text-forest">
+          <span className="grid size-9 place-items-center rounded-xl bg-gold/15 text-gold">
+            <Icon size={18} />
+          </span>
+          {title}
+          {badge && (
+            <span className="rounded-full bg-forest/8 px-2.5 py-0.5 text-[11px] font-bold text-clay tabular-nums">
+              {badge}
+            </span>
+          )}
+        </h2>
+        {action}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/** Centred in whatever height the row gives it. */
+function EmptyNote({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2.5 py-4 text-center">
+      <span className="grid size-11 place-items-center rounded-full bg-gold/10 text-gold ring-4 ring-gold/5">
+        <Icon size={19} />
+      </span>
+      <p className="max-w-sm text-sm text-clay">{text}</p>
+    </div>
+  );
+}
+
+function Note({
+  tone,
+  icon: Icon,
+  children,
+}: {
+  tone: "sage" | "gold" | "brick";
+  icon: LucideIcon;
+  children: React.ReactNode;
+}) {
+  const cls =
+    tone === "gold"
+      ? "bg-gold/10 ring-gold/30 [&>svg]:text-gold"
+      : tone === "brick"
+        ? "bg-brick/8 ring-brick/25 text-brick [&>svg]:text-brick"
+        : "bg-sage/10 ring-sage/25 [&>svg]:text-sage";
+  return (
+    <div className={`flex items-start gap-2.5 rounded-2xl px-4 py-3 text-xs leading-relaxed text-forest ring-1 ${cls}`}>
+      <Icon size={15} className="mt-0.5 shrink-0" />
+      <p>{children}</p>
+    </div>
+  );
+}
+
+function StudentCard({
+  student,
+  leader,
+  leaderLabel,
+}: {
+  student?: StudentLite | null;
+  leader?: boolean;
+  leaderLabel: string;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-2xl p-3.5 ring-1 ${
+        leader ? "bg-gold/8 ring-gold/35" : "bg-cream-2/70 ring-forest/8"
+      }`}
+    >
+      <UserAvatar
+        user={student?.user}
+        size={46}
+        className={leader ? "ring-2 ring-gold" : "ring-2 ring-forest/10"}
+      />
+      <div className="min-w-0">
+        <p className="truncate font-serif text-sm font-bold text-forest">
+          {nameOf(student?.user)}
+        </p>
+        <p
+          dir="ltr"
+          className="flex items-center gap-1 text-[11px] text-clay tabular-nums rtl:justify-end"
+        >
+          <IdCard size={11} />
+          {student?.registrationNumber ?? ""}
+        </p>
+        {leader && (
+          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-bold text-gold">
+            <Crown size={10} />
+            {leaderLabel}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
 const ACT_VARIANTS: Record<string, string> = {
-  approve: "bg-emerald-600 text-white shadow-md hover:bg-emerald-700",
-  publish: "bg-forest text-cream shadow-md hover:bg-forest-deep",
-  reject: "border-2 border-red-400 text-red-500 hover:bg-red-50",
-  neutral: "border border-forest/20 text-forest hover:bg-forest/5",
+  approve: "bg-sage text-cream-card shadow-[0_6px_16px_rgba(74,112,102,0.3)] hover:opacity-90",
+  publish: "bg-gold text-forest-deep shadow-[0_6px_16px_rgba(193,150,90,0.3)] hover:bg-gold-soft",
+  reject: "border-2 border-brick/50 text-brick hover:bg-brick/10",
+  neutral: "border border-forest/20 text-forest hover:border-gold/50 hover:bg-gold/10",
 };
 
 function ActBtn({
@@ -977,10 +998,11 @@ function ActBtn({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       title={disabled ? title : undefined}
-      className={`flex w-full items-center justify-center gap-3 rounded-xl py-3.5 font-bold transition active:scale-95 disabled:opacity-60 ${ACT_VARIANTS[variant]}`}
+      className={`inline-flex min-w-40 items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${ACT_VARIANTS[variant]}`}
     >
       {children}
     </button>

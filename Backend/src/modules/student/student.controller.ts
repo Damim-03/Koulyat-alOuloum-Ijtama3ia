@@ -15,6 +15,7 @@ import {
   getMyGroupRequestsService,
   cancelGroupRequestService,
   getMyProjectService,
+  getStudentDashboardService,
 } from "./student.service";
 
 // ─── BROWSE TOPICS ─────────────────────────────────────────────
@@ -148,6 +149,20 @@ export const getMyProjectController = async (
   try {
     const project = await getMyProjectService(req.user!.userId);
     return res.status(HTTPSTATUS.OK).json({ project });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── DASHBOARD ─────────────────────────────────────────────────
+export const getStudentDashboardController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const dashboard = await getStudentDashboardService(req.user!.userId);
+    return res.status(HTTPSTATUS.OK).json(dashboard);
   } catch (error) {
     next(error);
   }

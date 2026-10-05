@@ -64,30 +64,32 @@ ON DUPLICATE KEY UPDATE `isActive` = 1, `updatedAt` = @NOW;
 
 INSERT INTO `User`
   (`id`, `firstName`, `lastName`, `email`, `username`, `password`, `phone`,
-   `role`, `status`, `isVerified`, `createdAt`, `updatedAt`)
+   `gender`, `role`, `status`, `isVerified`, `createdAt`, `updatedAt`)
 VALUES
   -- ─── المسؤول ───
   ('usr-admin-0001', 'أحمد', 'بن علي',
    'admin@univ-eloued.dz', 'admin', @HASH, '0550000001',
-   'admin', 'active', 1, @NOW, @NOW),
+   'male', 'admin', 'active', 1, @NOW, @NOW),
 
   -- ─── الأستاذ ───
   ('usr-prof-0001', 'خالد', 'مرابط',
    'k.merabet@univ-eloued.dz', 'k.merabet', @HASH, '0550000002',
-   'professor', 'active', 1, @NOW, @NOW),
+   'male', 'professor', 'active', 1, @NOW, @NOW),
 
   -- ─── الطلبة الثلاثة ───
   ('usr-stud-0001', 'سارة', 'بوعلام',
    'sara.boualam@univ-eloued.dz', 'sara.boualam', @HASH, '0550000003',
-   'student', 'active', 1, @NOW, @NOW),
+   'female', 'student', 'active', 1, @NOW, @NOW),
 
   ('usr-stud-0002', 'يوسف', 'حمادي',
    'youcef.hamadi@univ-eloued.dz', 'youcef.hamadi', @HASH, '0550000004',
-   'student', 'active', 1, @NOW, @NOW),
+   'male', 'student', 'active', 1, @NOW, @NOW),
 
   ('usr-stud-0003', 'أمينة', 'زروقي',
    'amina.zerrouki@univ-eloued.dz', 'amina.zerrouki', @HASH, '0550000005',
-   'student', 'active', 1, @NOW, @NOW)
+   'female', 'student', 'active', 1, @NOW, @NOW)
+-- الجنس يُكتب عند الإنشاء فقط، كما في الحسابات الحقيقية — ولا يمسّ إعادةُ
+-- التشغيل جنساً اختاره صاحبه أو الإدارة.
 ON DUPLICATE KEY UPDATE
   `password`  = VALUES(`password`),
   `status`    = 'active',

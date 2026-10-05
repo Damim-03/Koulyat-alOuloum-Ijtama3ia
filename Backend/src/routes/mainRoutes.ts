@@ -6,6 +6,8 @@ import commonRoutes from "../modules/common/common.routes";
 import studentRoutes from "../modules/student/student.routes";
 import publicRoutes from "../modules/public/public.routes";
 import messagesRoutes from "../modules/messages/messages.routes";
+import accountRoutes from "../modules/account/account.routes";
+import siteRoutes from "../modules/site/site.routes";
 import supervisionRoutes, {
   verifyRoutes,
 } from "../modules/supervision/supervision.routes";
@@ -20,6 +22,9 @@ mainRoute.use("/auth", authRoutes);
 
 mainRoute.use("/messages", messagesRoutes);
 
+// The signed-in person's own account, for every role.
+mainRoute.use("/account", accountRoutes);
+
 mainRoute.use("/admin", adminRoutes);
 
 mainRoute.use("/professor", professorRoutes);
@@ -29,6 +34,9 @@ mainRoute.use("/student", studentRoutes);
 mainRoute.use("/common", commonRoutes);
 
 mainRoute.use("/public", publicRoutes);
+
+// واجهة الموقع للزائر — بلا تسجيل دخول، انظر `siteRoutes`.
+mainRoute.use("/site", siteRoutes);
 
 mainRoute.use("/supervision-documents", supervisionRoutes);
 

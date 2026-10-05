@@ -10,12 +10,22 @@ import {
   getMyGroupRequestsController,
   cancelGroupRequestController,
   getMyProjectController,
+  getStudentDashboardController,
 } from "./student.controller";
 
 const studentRoutes = Router();
 
 studentRoutes.use(authMiddleware);
 studentRoutes.use(requireRole("student"));
+
+//
+// Dashboard — one read for the whole first screen
+//
+studentRoutes.get(
+  "/dashboard",
+  roleGuard([Permissions.VIEW_OWN_APPLICATIONS]),
+  getStudentDashboardController,
+);
 
 //
 // Browse published topics

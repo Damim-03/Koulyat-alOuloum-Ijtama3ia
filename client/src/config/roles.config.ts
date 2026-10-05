@@ -59,34 +59,14 @@ export const ROLES: Record<LoginRole, RoleConfig> = {
   },
 };
 
-/** Keys, not copy — same reason as RoleConfig above. */
+/** Keys, not copy — same reason as RoleConfig above. The steps themselves
+ *  are drawn by the help dialog, which shows each field as it looks. */
 export interface HelpContent {
   titleKey: string;
-  items: { titleKey: string; bodyKey: string }[];
 }
 
 export const HELP: Record<LoginRole, HelpContent> = {
-  student: {
-    titleKey: "auth.helpStudentTitle",
-    items: [
-      { titleKey: "pro.regNumber", bodyKey: "auth.helpRegNumber" },
-      { titleKey: "admin.password", bodyKey: "auth.helpStudentPassword" },
-      { titleKey: "auth.forgotPassword", bodyKey: "auth.helpForgotPassword" },
-    ],
-  },
-  professor: {
-    titleKey: "auth.helpProfessorTitle",
-    items: [
-      { titleKey: "admin.universityEmail", bodyKey: "auth.helpProfessorEmail" },
-      { titleKey: "admin.password", bodyKey: "auth.helpProfessorPassword" },
-      { titleKey: "auth.signInProblem", bodyKey: "auth.helpProfessorProblem" },
-    ],
-  },
-  admin: {
-    titleKey: "auth.helpAdminTitle",
-    items: [
-      { titleKey: "admin.email", bodyKey: "auth.helpAdminEmail" },
-      { titleKey: "auth.signInProblem", bodyKey: "auth.helpAdminProblem" },
-    ],
-  },
+  student: { titleKey: "auth.helpStudentTitle" },
+  professor: { titleKey: "auth.helpProfessorTitle" },
+  admin: { titleKey: "auth.helpAdminTitle" },
 };

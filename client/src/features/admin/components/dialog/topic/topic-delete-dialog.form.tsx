@@ -17,6 +17,7 @@ import { Panel } from "../../form/entity-form";
 import { UserAvatar } from "../../../../../components/ui/user-avatar";
 import { useDeleteTopic, useDissolveProject } from "../../../hooks/admin-hook";
 import { useSendMessage } from "../../../hooks/messages-hook";
+import { personName } from "../../../../../lib/person-name";
 
 type PersonRef = {
   firstName?: string | null;
@@ -54,7 +55,7 @@ interface Props {
 }
 
 const nameOf = (u?: PersonRef) =>
-  [u?.firstName, u?.lastName].filter(Boolean).join(" ").trim();
+  personName(u);
 
 type StepKey = "group" | "supervisor" | "review";
 

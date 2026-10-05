@@ -182,6 +182,43 @@ describe("أستاذٌ آخر لا يمسّ مجموعةً ولا مرحلةً �
     return { topic, group, milestone };
   }
 
+  /**
+   * قائمة المشاريع تحمل ما تقول به الصفحة كيف يسير كلّ مشروع: مراحله
+   * بحالاتها ومواعيدها وعدد ملفّاتها، ومناقشته. وكانت الصفحة تقرأ
+   * `defense` من ردٍّ لا يحمله، فتقول «بدون مناقشة» لكلّ مشروع.
+   */
+  it("قائمة مشاريعه تحمل المراحل والمناقشة — ولا تحمل مشاريع غيره", async () => {
+    const { group, milestone } = await ownedGroupWithMilestone();
+    await prisma.defense.create({
+      data: { groupId: group.id, date: new Date(Date.now() + 5 * 86_400_000), room: "D4" },
+    });
+
+    const mine = (
+      await asOwner(request(app).get("/api/professor/groups")).expect(200)
+    ).body.groups as {
+      id: string;
+      defense: { room: string; status: string } | null;
+      milestones: { id: string; status: string; _count: { submissions: number } }[];
+    }[];
+    const row = mine.find((g) => g.id === group.id);
+
+    expect(row?.defense).toEqual(
+      expect.objectContaining({ room: "D4", status: "scheduled" }),
+    );
+    expect(row?.milestones).toEqual([
+      expect.objectContaining({
+        id: milestone.id,
+        status: "pending",
+        _count: { submissions: 0 },
+      }),
+    ]);
+
+    const theirs = (
+      await asIntruder(request(app).get("/api/professor/groups")).expect(200)
+    ).body.groups as { id: string }[];
+    expect(theirs.some((g) => g.id === group.id)).toBe(false);
+  });
+
   it("قراءة مجموعة غيره ⇒ يُرفض", async () => {
     const { group } = await ownedGroupWithMilestone();
     const res = await asIntruder(

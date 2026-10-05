@@ -20,6 +20,7 @@ import { MilestoneFormDialog } from "../components/milestone-form-dialog";
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import { LoadingArea } from "../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../components/ui/error-retry";
+import { personName } from "../../../lib/person-name";
 
 
 const MS_ACCENT: Record<string, string> = {
@@ -314,12 +315,7 @@ export function ProfessorProjectDetailPage() {
                                     {s.fileName}
                                   </span>
                                   <span className="shrink-0 text-[10px] text-clay">
-                                    {[
-                                      s.uploadedBy?.firstName,
-                                      s.uploadedBy?.lastName,
-                                    ]
-                                      .filter(Boolean)
-                                      .join(" ")}
+                                    {personName(s.uploadedBy)}
                                   </span>
                                 </div>
                                 <a

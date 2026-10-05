@@ -1,49 +1,54 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  Plus,
-  Pencil,
-  Trash2,
+  BookOpen,
   Building2,
-  Search,
-  ArrowDownUp,
-  ChevronLeft,
-  Sparkles,
+  GitBranch,
   GraduationCap,
+  LayoutGrid,
+  Layers,
   Layers3,
+  ListTree,
+  Network,
+  Plus,
+  Sparkles,
   TriangleAlert,
+  UserCog,
+  Users,
+  type LucideIcon,
 } from "lucide-react";
 import {
   useFaculties,
   useDeleteFaculty,
   useDepartments,
+  useDomains,
   useFilieres,
   useSpecializations,
 } from "../../hooks/admin-hook";
 import type { Faculty } from "../../../../types/admin";
-import { useLangNavigate } from "../../../../hooks/useLangNavigate";
 import { FacultyFormDialog } from "../../components/dialog/faculty/faculty-dialog.form";
 import { AcademicStructureWizard } from "../../components/dialog/academic/academic-structure-wizard";
 import { AcademicYearsPanel } from "../../components/academic/academic-years-panel";
-import { CoverBanner } from "../../components/ui/cover-banner";
 import i18n from "../../../../i18n/i18n";
-import { Select } from "../../../../components/ui/select";
-import {
-  buildFacultyIndex,
-  hasGap,
-  type FacultyGaps,
-} from "../../lib/faculty-index";
+import { buildFacultyIndex, hasGap, type FacultyGaps } from "../../lib/faculty-index";
+import { buildReach } from "../../lib/structure-stats";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
+import { DeleteNodeDialog, EmptyLevel, NodeCard, NodeToolbar, type NodeHealth } from "../../components/ui/structure-kit";
+import { StructureTree } from "./structure-tree";
 
-type SortKey = "name" | "departments";
+/**
+ * The academic structure, from the top.
+ *
+ * The university's figures across every level; the faculties as cards — what
+ * each holds and reaches, and where its chain is broken — or the whole
+ * structure as one tree; and the academic years that frame it all.
+ */
 
-/** يعرض العدد برقمين (مثل 08) لمطابقة تصميم البطاقات. */
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
+type SortKey = "name" | "departments" | "students";
 
-/** يقرأ عدّاد علاقة من _count بأمان (يُرجع 0 إن لم يوفّره الخادم بعد). */
+/** Reads a relation counter from `_count` (0 until the server sends it). */
 function countOf(f: Faculty, key: string): number {
   const c = (f as unknown as { _count?: Record<string, number> })._count;
   return c?.[key] ?? 0;
@@ -51,352 +56,282 @@ function countOf(f: Faculty, key: string): number {
 
 export function AdminFacultiesPage() {
   const { t } = useTranslation();
-  const navigate = useLangNavigate();
+  const [sp, setSp] = useSearchParams();
+  const view = sp.get("view") === "tree" ? "tree" : "cards";
 
-  const {
-    data: faculties,
-    isLoading,
-    isError,
-    refetch,
-  } = useFaculties();
+  const { data: faculties, isLoading, isError, refetch } = useFaculties();
   const deleteFaculty = useDeleteFaculty();
-
-  // السلسلة كاملةً: المعالج يجلبها كلّها بهذه النداءات نفسها، فهي مخزَّنة.
   const { data: departments } = useDepartments();
+  const { data: domains } = useDomains();
   const { data: filieres } = useFilieres();
   const { data: specs } = useSpecializations();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<Faculty | null>(null);
+  const [removing, setRemoving] = useState<Faculty | null>(null);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("name");
+  const [chip, setChip] = useState("all");
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const list = faculties ?? [];
-
-  // الفهرس في `lib/faculty-index`: قاعدةٌ تُختبر بلا متصفّح، وهنا الرسم.
+  const list = useMemo(() => faculties ?? [], [faculties]);
   const index = useMemo(
-    () =>
-      buildFacultyIndex(list, departments ?? [], filieres ?? [], specs ?? []),
+    () => buildFacultyIndex(list, departments ?? [], filieres ?? [], specs ?? []),
     [list, departments, filieres, specs],
   );
+  const reach = useMemo(() => buildReach(departments ?? [], filieres ?? [], specs ?? []), [departments, filieres, specs]);
 
-  // بحث + ترتيب على جهة العميل (قائمة الكليات تأتي كاملة من الخادم).
+  const needing = list.filter((f) => {
+    const g = index.get(f.id)?.gaps;
+    return g && hasGap(g);
+  }).length;
+
   const visible = useMemo(() => {
-    let arr = list;
     const q = search.trim().toLowerCase();
-    if (q) {
-      arr = arr.filter((f) => index.get(f.id)?.haystack.includes(q));
-    }
-    return [...arr].sort((a, b) =>
-      sort === "departments"
-        ? countOf(b, "departments") - countOf(a, "departments")
-        : a.name.localeCompare(b.name, i18n.language),
-    );
-  }, [list, search, sort, index]);
+    return list
+      .filter((f) => !q || index.get(f.id)?.haystack.includes(q))
+      .filter((f) => {
+        if (chip !== "gaps") return true;
+        const g = index.get(f.id)?.gaps;
+        return !!g && hasGap(g);
+      })
+      .sort((a, b) =>
+        sort === "departments"
+          ? countOf(b, "departments") - countOf(a, "departments")
+          : sort === "students"
+            ? reach.faculty(b.id).students - reach.faculty(a.id).students
+            : a.name.localeCompare(b.name, i18n.language),
+      );
+  }, [list, search, sort, chip, index, reach]);
+
+  function setView(v: "cards" | "tree") {
+    const next = new URLSearchParams(sp);
+    if (v === "tree") next.set("view", "tree");
+    else next.delete("view");
+    setSp(next, { replace: true });
+  }
 
   function openCreate() {
     setEditing(null);
     setDialogOpen(true);
   }
-  function openEdit(f: Faculty) {
-    setEditing(f);
-    setDialogOpen(true);
-  }
-  function handleDelete(f: Faculty) {
-    if (confirm(t("admin.confirmDeleteFaculty", { name: f.name })))
-      deleteFaculty.mutate(f.id);
-  }
-  function openDetails(f: Faculty) {
-    navigate(`/admin/faculties/${f.id}`);
-  }
+
+  const total = reach.total;
+  const sum = (k: string) => list.reduce((n, f) => n + countOf(f, k), 0);
+  const tiles: { icon: LucideIcon; label: string; value: number; warn?: boolean }[] = [
+    { icon: Building2, label: t("admin.struct.kindPlural.faculty"), value: list.length },
+    { icon: Network, label: t("admin.statDepartments"), value: sum("departments") },
+    { icon: Layers, label: t("admin.statDomains"), value: sum("domains") },
+    { icon: GitBranch, label: t("admin.statFilieres"), value: sum("filieres") },
+    { icon: GraduationCap, label: t("admin.statSpecializations"), value: total.specializations },
+    { icon: Users, label: t("admin.struct.students"), value: total.students },
+    { icon: UserCog, label: t("admin.struct.professors"), value: total.professors },
+    { icon: BookOpen, label: t("admin.struct.topics"), value: total.topics },
+  ];
 
   return (
     <div className="font-body">
-      {/* Header */}
-      <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
-        <div className="space-y-1">
-          <h1 className="font-serif text-3xl font-bold text-forest">
-            {t("admin.facultiesTitle")}
-          </h1>
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-sm text-clay">{t("admin.facultiesSubtitle")}</p>
-            <span className="inline-flex items-center rounded-full bg-forest/10 px-2.5 py-0.5 text-xs font-medium text-forest">
-              {t("admin.facultiesCountBadge", { count: list.length })}
-            </span>
+      {/* ── hero ── */}
+      <section className="forest-glow relative mb-6 overflow-hidden rounded-3xl px-6 py-7 text-cream shadow-[0_18px_50px_-20px_rgba(22,36,31,0.6)] lg:px-8">
+        <div className="dot-matrix pointer-events-none absolute inset-0 opacity-60" />
+        <div className="pointer-events-none absolute -top-24 -end-16 size-80 rounded-full bg-gold/10 blur-3xl" />
+        <div className="relative">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <span className="grid size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft">
+                <Building2 size={26} />
+              </span>
+              <div>
+                <p className="mb-1 inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-gold-soft">
+                  <Sparkles size={12} />
+                  {t("admin.struct.eyebrow")}
+                </p>
+                <h1 className="font-serif text-2xl font-bold text-cream lg:text-3xl">{t("admin.facultiesTitle")}</h1>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-cream/70">{t("admin.struct.subtitle")}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setWizardOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-cream/10 px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-cream/20"
+              >
+                <Layers3 size={17} className="text-gold-soft" />
+                {t("admin.addAcademicStructure")}
+              </button>
+              <button
+                type="button"
+                onClick={openCreate}
+                data-testid="faculty-add"
+                className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-bold text-forest-deep shadow-sm transition hover:bg-gold-soft"
+              >
+                <Plus size={17} />
+                {t("admin.addFaculty")}
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setWizardOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl border border-forest/20 bg-cream-card px-5 py-3 text-sm font-bold text-forest shadow-sm transition hover:border-gold hover:bg-gold/10 active:scale-[0.98]"
-          >
-            <Layers3 size={18} className="text-gold" />{t("admin.addAcademicStructure")}</button>
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-3 text-sm font-bold text-forest-deep shadow-sm transition hover:bg-gold-soft active:scale-[0.98]"
-          >
-            <Plus size={18} />
-            {t("admin.addFaculty")}
-          </button>
-        </div>
-      </div>
 
-      {/* Search + sort */}
-      <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-forest/10 bg-cream-card p-3 shadow-[0_4px_20px_rgba(38,66,61,0.05)] sm:flex-row">
-        <div className="relative flex-1">
-          <Search
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-clay"
-            size={18}
-          />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("admin.searchFaculty")}
-            className="w-full rounded-xl border border-forest/15 bg-cream-2 py-2.5 pr-10 pl-3 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-          />
+          <div className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4 xl:grid-cols-8">
+            {tiles.map((x) => (
+              <div key={x.label} className="rounded-2xl border border-white/10 bg-cream/5 p-3.5 backdrop-blur-sm">
+                <span className="mb-2 flex items-center gap-1.5 text-[11px] text-cream/70">
+                  <x.icon size={14} className="text-gold-soft" />
+                  <span className="truncate">{x.label}</span>
+                </span>
+                <b className="block font-serif text-2xl leading-none text-cream tabular-nums">{x.value}</b>
+              </div>
+            ))}
+          </div>
+          {needing > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setChip("gaps");
+                setView("cards");
+              }}
+              className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-400/10 px-3.5 py-1.5 text-[12px] font-semibold text-amber-100 transition hover:bg-amber-400/20"
+            >
+              <TriangleAlert size={13} className="text-amber-200" />
+              {t("admin.struct.needing", { count: needing })}
+            </button>
+          )}
         </div>
-        {/* الأيقونة في صفّ المحتوى لا فوقه: انظر تعليق `icon` في `Select`. */}
-        <div className="sm:w-56">
-          <Select
-            value={sort}
-            icon={ArrowDownUp}
-            aria-label={t("admin.sortNameAsc")}
-            onChange={(v) => setSort(v as SortKey)}
-            options={[
-              { value: "name", label: t("admin.sortNameAsc") },
-              { value: "departments", label: t("admin.sortDepartmentsDesc") },
-            ]}
-          />
-        </div>
-      </div>
+      </section>
 
-      {/* Grid / states */}
+      <NodeToolbar
+        query={search}
+        onQuery={setSearch}
+        placeholder={t("admin.searchFaculty")}
+        sort={sort}
+        onSort={(v) => setSort(v as SortKey)}
+        sortOptions={[
+          { value: "name", label: t("admin.sortNameAsc") },
+          { value: "departments", label: t("admin.sortDepartmentsDesc") },
+          { value: "students", label: t("admin.struct.sortStudents") },
+        ]}
+        chips={
+          view === "cards"
+            ? [
+                { value: "all", label: t("admin.struct.all"), count: list.length },
+                { value: "gaps", label: t("admin.needsCompletion"), count: needing, tone: "warn" },
+              ]
+            : undefined
+        }
+        chip={chip}
+        onChip={setChip}
+        shown={visible.length}
+        total={list.length}
+        extra={
+          <div className="flex h-11 items-center rounded-xl border border-forest/15 p-1" role="group" aria-label={t("admin.struct.view")}>
+            <ViewBtn on={view === "cards"} onClick={() => setView("cards")} icon={LayoutGrid} label={t("admin.struct.viewCards")} />
+            <ViewBtn on={view === "tree"} onClick={() => setView("tree")} icon={ListTree} label={t("admin.struct.viewTree")} />
+          </div>
+        }
+      />
+
       {isLoading ? (
         <LoadingArea className="py-20" />
       ) : isError ? (
         <ErrorRetry onRetry={() => refetch()} />
       ) : list.length === 0 ? (
-        <EmptyState onAdd={openCreate} />
+        <EmptyLevel icon={GraduationCap} title={t("admin.noFaculties")} hint={t("admin.noFacultiesHint")} actionLabel={t("admin.addFaculty")} onAction={openCreate} />
+      ) : view === "tree" ? (
+        <StructureTree
+          faculties={[...list].sort((a, b) => a.name.localeCompare(b.name, i18n.language))}
+          departments={departments ?? []}
+          domains={domains ?? []}
+          filieres={filieres ?? []}
+          specs={specs ?? []}
+          reach={reach}
+          query={search}
+        />
       ) : visible.length === 0 ? (
-        <div className="rounded-2xl border border-forest/10 bg-cream-card py-16 text-center text-sm text-clay">
-          {t("admin.noFaculties")}
-        </div>
+        <EmptyLevel icon={TriangleAlert} title={t("admin.noFilterResults")} />
       ) : (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {visible.map((f) => (
-            <FacultyCard
-              key={f.id}
-              faculty={f}
-              gaps={index.get(f.id)?.gaps}
-              onDetails={() => openDetails(f)}
-              onEdit={() => openEdit(f)}
-              onDelete={() => handleDelete(f)}
-            />
-          ))}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,330px),1fr))] gap-5">
+          {visible.map((f) => {
+            const r = reach.faculty(f.id);
+            const deps = countOf(f, "departments");
+            return (
+              <NodeCard
+                key={f.id}
+                testId="faculty-card"
+                to={`/admin/faculties/${f.id}`}
+                icon={Building2}
+                iconUrl={f.iconUrl}
+                coverUrl={f.coverUrl}
+                code={f.code}
+                title={f.name}
+                stats={[
+                  { icon: Network, label: t("admin.statDepartments"), value: deps },
+                  { icon: Layers, label: t("admin.statDomains"), value: countOf(f, "domains") },
+                  { icon: GitBranch, label: t("admin.statFilieres"), value: countOf(f, "filieres") },
+                  { icon: GraduationCap, label: t("admin.statSpecializations"), value: countOf(f, "specializations") },
+                ]}
+                people={[
+                  { icon: Users, label: t("admin.struct.students"), value: r.students },
+                  { icon: UserCog, label: t("admin.struct.professors"), value: r.professors },
+                  { icon: BookOpen, label: t("admin.struct.topics"), value: r.topics },
+                ]}
+                health={facultyHealth(index.get(f.id)?.gaps, t)}
+                onEdit={() => {
+                  setEditing(f);
+                  setDialogOpen(true);
+                }}
+                onDelete={() => setRemoving(f)}
+                deleteBlocked={deps > 0 ? t("admin.struct.blocked", { what: t("admin.struct.n.departments", { count: deps }) }) : null}
+              />
+            );
+          })}
         </div>
       )}
 
-      {/* Academic years — same level as the faculties, so they live here. */}
+      {/* Academic years — they frame the whole structure, so they live here. */}
       <AcademicYearsPanel />
 
-      {/* Excellence banner */}
-      <div className="mt-6 overflow-hidden rounded-2xl bg-linear-to-l from-forest-deep to-forest p-6 text-cream">
-        <div className="flex items-center gap-4">
-          <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-cream/10 text-gold">
-            <Sparkles size={24} />
-          </div>
-          <div>
-            <h3 className="font-serif text-lg font-bold">
-              {t("admin.excellenceTitle")}
-            </h3>
-            <p className="text-sm text-cream/70">{t("admin.excellenceBody")}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Mounted only while open so each run starts from a clean draft. */}
-      {wizardOpen && (
-        <AcademicStructureWizard
-          open
-          onClose={() => setWizardOpen(false)}
-        />
-      )}
-
-      <FacultyFormDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        faculty={editing}
+      {wizardOpen && <AcademicStructureWizard open onClose={() => setWizardOpen(false)} />}
+      <FacultyFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} faculty={editing} />
+      <DeleteNodeDialog
+        target={removing}
+        title={t("admin.struct.deleteTitle.faculty")}
+        loading={deleteFaculty.isPending}
+        onConfirm={() => removing && deleteFaculty.mutate(removing.id, { onSuccess: () => setRemoving(null) })}
+        onClose={() => setRemoving(null)}
       />
     </div>
   );
 }
 
-/* ── بطاقة كلية ─────────────────────────────────────────────── */
-function FacultyCard({
-  faculty: f,
-  gaps,
-  onDetails,
-  onEdit,
-  onDelete,
-}: {
-  faculty: Faculty;
-  gaps?: FacultyGaps;
-  onDetails: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const { t } = useTranslation();
-
-  const stats = [
-    { label: t("admin.statDepartments"), value: countOf(f, "departments") },
-    { label: t("admin.statDomains"), value: countOf(f, "domains") },
-    { label: t("admin.statFilieres"), value: countOf(f, "filieres") },
-    {
-      label: t("admin.statSpecializations"),
-      value: countOf(f, "specializations"),
-    },
-  ];
-
-  return (
-    <div className="group flex flex-col overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:border-gold/40">
-      <div className="p-5">
-        <CoverBanner src={f.coverUrl} />
-        {/* Icon + actions */}
-        <div className="mb-5 flex items-start justify-between">
-          {/* شعار الكلّية إن رُفع، وإلّا أيقونة المبنى. و`contain` لا
-              `cover`: الشعار يُقصّ أطرافه بالثاني. */}
-          <div className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-soft-sage/30 text-forest transition group-hover:bg-forest/5">
-            {f.iconUrl ? (
-              // بلا حشوة: الشعار يملأ المربّع كلّه. والحشوة كانت تتركه
-              // صغيراً في وسط فراغٍ لا معنى له، و`contain` يكفي وحده
-              // ليبقى كاملاً غير مقصوص.
-              <img src={f.iconUrl} alt="" className="size-full object-contain" />
-            ) : (
-              <Building2 size={26} />
-            )}
-          </div>
-          <div className="flex gap-1">
-            <button
-              onClick={onEdit}
-              title={t("admin.edit")}
-              className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-            >
-              <Pencil size={16} />
-            </button>
-            <button
-              onClick={onDelete}
-              title={t("admin.delete")}
-              className="grid size-8 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Code + name */}
-        <div className="mb-5 space-y-1">
-          <span
-            className="font-mono text-[11px] font-bold uppercase tracking-widest text-gold"
-            dir="ltr"
-          >
-            {f.code}
-          </span>
-          <h3
-            onClick={onDetails}
-            className="cursor-pointer font-serif text-lg font-bold text-forest transition hover:text-gold"
-          >
-            {f.name}
-          </h3>
-
-          {/*
-            الأعداد تقول كم، ولا تقول أين انقطعت السلسلة. وهذا الوسم يقولها:
-            الموضوع يطلب تخصّصاً، فشعبةٌ بلا تخصّص وقسمٌ بلا شعبة فراغاتٌ
-            تمنع الاستعمال وإن بدا العدّاد عامراً.
-          */}
-          {gaps && hasGap(gaps) && (
-            <div className="pt-1.5">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/35 bg-gold/10 px-2.5 py-1 text-[11px] font-semibold text-forest">
-                <TriangleAlert size={12} className="shrink-0 text-gold" />
-                {gaps.noDept
-                  ? t("admin.gapNoDepartments")
-                  : t("admin.needsCompletion")}
-              </span>
-              {!gaps.noDept && (
-                <p className="mt-1 text-[11px] leading-relaxed text-clay">
-                  {[
-                    gaps.deptNoFiliere > 0 &&
-                      t("admin.gapDeptNoFiliere", {
-                        count: gaps.deptNoFiliere,
-                      }),
-                    gaps.filiereNoSpec > 0 &&
-                      t("admin.gapFiliereNoSpec", {
-                        count: gaps.filiereNoSpec,
-                      }),
-                  ]
-                    .filter(Boolean)
-                    .join(" \u00b7 ")}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-y-4 border-y border-forest/10 py-5">
-          {stats.map((s, i) => (
-            <div
-              key={s.label}
-              className={`text-center ${
-                i % 2 === 0 ? "border-l border-forest/10" : ""
-              }`}
-            >
-              <p className="mb-1 text-[11px] text-clay">{s.label}</p>
-              <p className="font-serif text-lg font-bold text-forest">
-                {pad2(s.value)}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Footer */}
-      <button
-        onClick={onDetails}
-        className="mt-auto flex items-center justify-end gap-2 bg-cream-2 px-5 py-4 text-sm font-bold text-forest transition hover:text-gold"
-      >
-        {t("admin.viewDetails")}
-        <ChevronLeft
-          size={16}
-          className="transition rtl:group-hover:-translate-x-1 ltr:group-hover:translate-x-1 ltr:rotate-180"
-        />
-      </button>
-    </div>
-  );
+/** Where a faculty's chain is broken — or that it is whole. */
+function facultyHealth(g: FacultyGaps | undefined, t: (k: string, o?: Record<string, unknown>) => string): NodeHealth | null {
+  if (!g) return null;
+  if (!hasGap(g)) return { tone: "ok", label: t("admin.struct.health.complete") };
+  if (g.noDept) return { tone: "warn", label: t("admin.gapNoDepartments") };
+  return {
+    tone: "warn",
+    label: t("admin.needsCompletion"),
+    detail: [
+      g.deptNoFiliere > 0 && t("admin.gapDeptNoFiliere", { count: g.deptNoFiliere }),
+      g.filiereNoSpec > 0 && t("admin.gapFiliereNoSpec", { count: g.filiereNoSpec }),
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  };
 }
 
-/* ── حالة فارغة ─────────────────────────────────────────────── */
-function EmptyState({ onAdd }: { onAdd: () => void }) {
-  const { t } = useTranslation();
+function ViewBtn({ on, onClick, icon: Icon, label }: { on: boolean; onClick: () => void; icon: LucideIcon; label: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="mb-6 grid size-28 place-items-center rounded-full bg-cream-card shadow-sm">
-        <GraduationCap size={56} className="text-clay/40" />
-      </div>
-      <h2 className="font-serif text-2xl font-bold text-forest">
-        {t("admin.noFaculties")}
-      </h2>
-      <p className="mx-auto mb-8 mt-2 max-w-xs text-sm text-clay">
-        {t("admin.noFacultiesHint")}
-      </p>
-      <button
-        onClick={onAdd}
-        className="inline-flex items-center gap-2 rounded-xl bg-gold px-8 py-3 text-sm font-bold text-forest-deep shadow-sm transition hover:bg-gold-soft"
-      >
-        <Plus size={18} />
-        {t("admin.addFaculty")}
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      title={label}
+      className={`inline-flex h-full items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition ${
+        on ? "bg-forest text-cream dark:bg-gold/15 dark:text-gold" : "text-clay hover:bg-forest/5 hover:text-forest"
+      }`}
+    >
+      <Icon size={15} />
+      <span className="hidden sm:inline">{label}</span>
+    </button>
   );
 }

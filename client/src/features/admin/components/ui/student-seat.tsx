@@ -12,6 +12,7 @@ import {
 import { useStudents } from "../../hooks/admin-hook";
 import { useDebouncedValue } from "../../../../hooks/use-debounced-value";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { personName } from "../../../../lib/person-name";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -23,7 +24,7 @@ export interface SeatStudent {
 }
 
 const nameOf = (u: any) =>
-  [u?.firstName, u?.lastName].filter(Boolean).join(" ").trim();
+  personName(u);
 
 /**
  * مقعدُ طالبٍ في موضوعٍ مُسنَد.

@@ -4,6 +4,7 @@ import { ChevronDown, Search, X, Check } from "lucide-react";
 
 import { useProfessors } from "../../hooks/admin-hook";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { personName } from "../../../../lib/person-name";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -27,7 +28,7 @@ interface Props {
 }
 
 function fullName(u: any) {
-  return [u?.firstName, u?.lastName].filter(Boolean).join(" ");
+  return personName(u);
 }
 export function ProfessorPicker({ value, onChange, className = "" }: Props) {
   const { t } = useTranslation();

@@ -9,6 +9,9 @@ export interface AuthUser {
   // profile fields — populated by GET /auth/me
   firstName?: string;
   lastName?: string;
+  /** The name in Latin script — what French and English show. */
+  firstNameLatin?: string | null;
+  lastNameLatin?: string | null;
   avatarUrl?: string;
   /** Decides the default avatar when there is no photo. */
   gender?: Gender | null;

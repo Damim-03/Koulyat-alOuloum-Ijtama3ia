@@ -1,12 +1,14 @@
 import { client } from "../../../lib/api/client";
 import type {
-  PublicTopic,
+  PublicTopicsPage,
   PublicTopicDetail,
+  PublicTopicFilters,
   PublicLookup,
-  Paginated,
 } from "../../../types/public.types";
 
 const BASE = "/public";
+
+export type PublicTopicsSort = "newest" | "oldest" | "title";
 
 export interface PublicTopicsParams {
   page?: number;
@@ -15,15 +17,21 @@ export interface PublicTopicsParams {
   departmentId?: string;
   specializationId?: string;
   academicYearId?: string;
+  professorId?: string;
+  maxStudents?: number;
   availability?: "available" | "reserved";
+  sort?: PublicTopicsSort;
   [key: string]: unknown;
 }
 
 export const publicApi = {
   listTopics: (params?: PublicTopicsParams) =>
     client
-      .get<Paginated<PublicTopic>>(`${BASE}/topics`, { params })
+      .get<PublicTopicsPage>(`${BASE}/topics`, { params })
       .then((r) => r.data),
+
+  getTopicFilters: () =>
+    client.get<PublicTopicFilters>(`${BASE}/topic-filters`).then((r) => r.data),
 
   getTopic: (id: string) =>
     client

@@ -16,6 +16,13 @@ export interface LookupStudent {
   registrationNumber: string;
   user?: UserRef;
   specialization?: { name?: string | null } | null; // اختياري
+  /** الخادم يقول إنّه الطالب نفسه — بالمعرّف لا بالنصّ. */
+  isSelf?: boolean;
+  /**
+   * في مجموعةٍ أخرى: `project` له مشروعٌ قائم، و`request` في طلبٍ حيٍّ
+   * لفريقٍ آخر. وطلباتُ المرسِل نفسه لا تُعدّ.
+   */
+  otherGroup?: "project" | "request" | null;
 }
 
 export interface ProfessorRef {
@@ -61,6 +68,8 @@ export interface BrowseTopic {
 export interface GroupRequestMember {
   id: string;
   student?: StudentRef;
+  /** Present on project members (ProjectMember.isLeader). */
+  isLeader?: boolean;
 }
 
 export interface GroupRequest {
@@ -74,22 +83,25 @@ export interface GroupRequest {
     id: string;
     title: string;
     status?: TopicStatus;
+    maxStudents?: number;
 
     professor?: {
       id: string;
-      user?: {
-        firstName?: string | null;
-        lastName?: string | null;
-      };
-    };
+      user?: DashPerson | null;
+    } | null;
 
     academicYear?: {
       id: string;
       title: string;
-    };
+    } | null;
+
+    specialization?: { id: string; name: string } | null;
   };
   members?: GroupRequestMember[];
+  /** False when a teammate sent it with this student in the team. */
+  isLeader?: boolean;
   createdAt: string;
+  updatedAt?: string;
 }
 
 // ─── my project (after acceptance) ─────────────────────────────
@@ -115,6 +127,11 @@ export interface DefenseRef {
   date: string;
   room: string;
   status?: "scheduled" | "completed" | "cancelled";
+  grade?: number | null;
+  committee?: {
+    role: "president" | "supervisor" | "examiner";
+    professor: { id: string; user: DashPerson | null } | null;
+  }[];
 }
 
 export interface MyProject {
@@ -124,10 +141,113 @@ export interface MyProject {
     title: string;
     description?: string;
     professor?: ProfessorRef;
+    academicYear?: { id: string; title: string } | null;
+    specialization?: { id: string; name: string } | null;
   };
   members?: GroupRequestMember[];
   milestones?: StudentMilestone[];
   defense?: DefenseRef | null;
+}
+
+// ─── dashboard (GET /student/dashboard) ────────────────────────
+/** A person as the dashboard shows one: a name and an avatar. */
+export interface DashPerson {
+  firstName: string | null;
+  lastName: string | null;
+  avatarUrl?: string | null;
+  gender?: string | null;
+}
+
+/** Where the student stands — derived on the server from the rows. */
+export type StudentStage =
+  | "choose_topic"
+  | "awaiting_decision"
+  | "in_progress"
+  | "defense_scheduled"
+  | "defended";
+
+export interface StudentDashRequest {
+  id: string;
+  priority: number;
+  status: GroupRequestStatus;
+  rejectionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** False when a teammate sent it with this student in the team. */
+  isLeader: boolean;
+  membersCount: number;
+  leader: { user: DashPerson | null } | null;
+  topic: {
+    id: string;
+    title: string;
+    professor: { user: DashPerson | null } | null;
+  };
+}
+
+export interface StudentDashMilestone {
+  id: string;
+  title: string;
+  deadline: string;
+  status: MilestoneStatus;
+  order: number;
+  submissions: number;
+}
+
+export interface StudentDashProject {
+  id: string;
+  topic: {
+    id: string;
+    title: string;
+    professor: { user: DashPerson | null } | null;
+  };
+  members: {
+    id: string;
+    isLeader: boolean;
+    student: { id: string; registrationNumber: string; user: DashPerson | null };
+  }[];
+  milestones: StudentDashMilestone[];
+  progress: { total: number; completed: number; overdue: number; percent: number };
+  nextMilestone: StudentDashMilestone | null;
+  defense: {
+    id: string;
+    date: string;
+    room: string;
+    status: "scheduled" | "completed" | "cancelled";
+    grade: number | null;
+    committee: {
+      role: "president" | "supervisor" | "examiner";
+      professor: { user: DashPerson | null } | null;
+    }[];
+  } | null;
+  supervisionDocument: {
+    id: string;
+    documentNumber: string;
+    createdAt: string;
+  } | null;
+}
+
+export interface StudentDashMilestoneLite {
+  id: string;
+  title: string;
+  deadline: string;
+}
+
+export interface StudentDashboard {
+  student: {
+    registrationNumber: string;
+    specialization: SpecializationLite | null;
+    academicYear: { id: string; title: string } | null;
+  };
+  stage: StudentStage;
+  /** Topics still open to a request in the student's specialization. */
+  availableTopics: number;
+  requests: StudentDashRequest[];
+  project: StudentDashProject | null;
+  attention: {
+    overdueMilestones: StudentDashMilestoneLite[];
+    dueThisWeek: StudentDashMilestoneLite[];
+    rejectedRequests: StudentDashRequest[];
+  };
 }
 
 export interface MMember {

@@ -41,6 +41,9 @@ export interface UserLite {
   id: string;
   firstName: string | null;
   lastName: string | null;
+  /** الاسم باللاتينية كما في الوثائق الفرنسية — اختياريّ. */
+  firstNameLatin?: string | null;
+  lastNameLatin?: string | null;
   email: string | null;
   username: string | null;
   avatarUrl?: string | null;
@@ -146,10 +149,165 @@ export interface Specialization {
   _count?: { students: number; topics: number };
 }
 
+// ── The list of memoir titles, as the department prints it ──
+export type TitlesListMode = "before" | "after";
+type TitlesPerson = {
+  firstName: string | null;
+  lastName: string | null;
+  firstNameLatin: string | null;
+  lastNameLatin: string | null;
+};
+export interface TitlesListRow {
+  id: string;
+  title: string;
+  status: string;
+  maxStudents: number;
+  supervisor: TitlesPerson & { id: string; grade: unknown; email: string | null };
+  /** Leader first; empty before assignment. */
+  students: (TitlesPerson & { registrationNumber: string; isLeader: boolean })[];
+}
+export interface TitlesListGroup {
+  specialization: { id: string; name: string; level: string };
+  filiere: { id: string; name: string } | null;
+  department: { id: string; name: string } | null;
+  faculty: { id: string; name: string } | null;
+  rows: TitlesListRow[];
+}
+export interface TopicTitlesList {
+  mode: TitlesListMode;
+  year: { id: string; title: string } | null;
+  groups: TitlesListGroup[];
+}
+export interface TitlesListParams {
+  mode: TitlesListMode;
+  academicYearId?: string;
+  professorId?: string;
+  facultyId?: string;
+  departmentId?: string;
+  filiereId?: string;
+  specializationId?: string;
+}
+
 export interface AcademicYear {
   id: string;
   title: string;
   isActive: boolean;
+  /** Set once the year is closed into the archive. */
+  archivedAt?: string | null;
+}
+
+// ── The archive of academic years ──
+export interface ArchiveYear {
+  id: string;
+  title: string;
+  isActive: boolean;
+  archivedAt: string | null;
+  archivedByName: string | null;
+  counts: {
+    students: number;
+    topics: number;
+    projects: number;
+    defended: number;
+    averageGrade: number | null;
+  };
+}
+
+export type Mention = "excellent" | "veryGood" | "good" | "fair" | "fail";
+type SpecRef = { id: string; name: string; level: string };
+
+export interface YearSummary {
+  students: number;
+  studentsWithProject: number;
+  topics: number;
+  topicsByStatus: Record<string, number>;
+  projects: number;
+  defenses: { total: number; completed: number; scheduled: number; cancelled: number };
+  graded: number;
+  averageGrade: number | null;
+  bestGrade: number | null;
+  passRate: number | null;
+  mentions: Record<Mention, number>;
+  requests: Record<string, number>;
+  supervisors: number;
+}
+
+export interface YearDefense {
+  id: string;
+  date: string;
+  durationMinutes: number;
+  room: string;
+  status: "scheduled" | "completed" | "cancelled";
+  grade: number | null;
+  mention: Mention | null;
+  notes: string | null;
+  committee: { role: string; id: string; name: string; latinName?: string | null }[];
+}
+
+export interface YearRecord {
+  year: { id: string; title: string };
+  generatedAt: string;
+  summary: YearSummary;
+  bySpecialization: (SpecRef & { students: number; topics: number; projects: number; defended: number; averageGrade: number | null })[];
+  supervisors: { id: string; name: string; latinName?: string | null; topics: number; projects: number; defended: number; averageGrade: number | null }[];
+  students: {
+    id: string;
+    registrationNumber: string;
+    name: string;
+    latinName: string | null;
+    gender: "male" | "female" | null;
+    avatarUrl: string | null;
+    accountStatus: string;
+    specialization: SpecRef;
+    project: { id: string; title: string; leader: boolean } | null;
+    defense: { status: string; grade: number | null; mention: Mention | null } | null;
+  }[];
+  topics: {
+    id: string;
+    title: string;
+    status: string;
+    maxStudents: number;
+    createdAt: string;
+    specialization: SpecRef;
+    supervisor: { id: string; name: string; latinName?: string | null };
+    department: string | null;
+    requests: number;
+    projectId: string | null;
+    members: number;
+  }[];
+  projects: {
+    id: string;
+    topicId: string;
+    title: string;
+    createdAt: string;
+    specialization: SpecRef;
+    supervisor: { id: string; name: string; latinName?: string | null; gender: "male" | "female" | null; avatarUrl: string | null };
+    members: { id: string; name: string; latinName?: string | null; registrationNumber: string; leader: boolean; gender: "male" | "female" | null; avatarUrl: string | null }[];
+    milestones: { total: number; completed: number; late: number; submissions: number };
+    defense: YearDefense | null;
+  }[];
+  defenses: (YearDefense & {
+    projectId: string;
+    title: string;
+    students: string[];
+    studentsLatin?: (string | null)[];
+    supervisor: string;
+    supervisorLatin?: string | null;
+  })[];
+}
+
+export interface YearRecordResponse {
+  source: "archive" | "live";
+  archivedAt: string | null;
+  archivedByName: string | null;
+  note: string | null;
+  isActive: boolean;
+  record: YearRecord;
+}
+
+export interface YearReadiness {
+  year: { id: string; title: string; archivedAt: string | null };
+  ready: boolean;
+  items: { key: string; count: number; level: "ok" | "info" | "warn"; extra?: { upcoming?: number } }[];
 }
 
 // ── Students / Professors ──
@@ -160,6 +318,97 @@ export interface Student {
   user?: UserLite;
   specialization?: Specialization;
   academicYear?: AcademicYear;
+}
+
+// ─── الاستيراد من Excel (الطلبة والأساتذة) ───
+/** مفتاح عمودٍ في ملفّ الاستيراد — تأتي الأعمدة مع التقرير من الخادم. */
+export type ImportColumnKey = string;
+export type ImportColumnKind = "req" | "opt" | "auto";
+export interface ImportColumn {
+  key: ImportColumnKey;
+  header: string;
+  kind: ImportColumnKind;
+  group: "personal" | "academic" | "professional";
+  /** حرفه في الملف المرفوع، أو null إن غاب عنه. */
+  letter: string | null;
+}
+export type ImportIssueLevel = "error" | "warning" | "info";
+export interface ImportIssue {
+  level: ImportIssueLevel;
+  message: string;
+}
+/** ok: سليمة · error/warning: فيها ما يُقال · empty: اختيارية فارغة · auto: تملؤها المنصّة. */
+export type ImportCellState = "ok" | "error" | "warning" | "empty" | "auto";
+export interface ImportCell {
+  /** كما في الملف. كلمة المرور نجومٌ بطولها. */
+  value: string;
+  /** ما سيُحفظ أو يُشتقّ — إن خالف المكتوب، أو ملأته المنصّة. */
+  saved?: string;
+  state: ImportCellState;
+  issues?: ImportIssue[];
+}
+export interface StudentImportRow {
+  /** رقم الصفّ في Excel — ما يُبحث عنه عند التصحيح. */
+  row: number;
+  /** مخفيٌّ في Excel. */
+  hidden?: boolean;
+  cells: Record<ImportColumnKey, ImportCell>;
+  /** ما يخصّ الصفّ كلّه لا خانةً منه. */
+  issues?: ImportIssue[];
+  errors: number;
+  warnings: number;
+}
+export interface StudentImportReport {
+  fileErrors: string[];
+  fileWarnings: string[];
+  file?: {
+    sheetName: string;
+    headerRow: number;
+    otherSheets: string[];
+    ignored: { header: string; letter: string }[];
+  };
+  columns: ImportColumn[];
+  rows: StudentImportRow[];
+  summary: { total: number; valid: number; invalid: number; warned: number };
+}
+export interface StudentImportPreview {
+  report: StudentImportReport;
+  /** الملف نفسه مُعلَّماً بأخطائه وتنبيهاته (base64) — حين يكون فيه ما يُعلَّم. */
+  annotatedFile?: string;
+}
+/** تقرير أيّ استيراد — الطلبة والأساتذة بالشكل نفسه. */
+export type ImportReport = StudentImportReport;
+export type ImportRow = StudentImportRow;
+export type ImportPreviewResult = StudentImportPreview;
+
+/** نتيجة استيرادٍ نجح: الحسابات بمعرّفاتها، وكلمة المرور المولَّدة وحدها. */
+export interface ImportResult {
+  created: number;
+  accounts: ({ firstName: string; lastName: string; password: string | null } & Record<string, string | null>)[];
+  accountsFile: string;
+}
+
+export interface ProfessorImportResult extends ImportResult {
+  accounts: {
+    employeeNumber: string;
+    universityEmail: string;
+    firstName: string;
+    lastName: string;
+    password: string | null;
+  }[];
+}
+
+export interface StudentImportResult {
+  created: number;
+  accounts: {
+    registrationNumber: string;
+    firstName: string;
+    lastName: string;
+    /** المولَّدة وحدها؛ null لما كُتب في الملف. */
+    password: string | null;
+  }[];
+  /** ملفّ الحسابات (base64) — يُنزَّل مرّةً، ولا يُحفظ في المنصّة. */
+  accountsFile: string;
 }
 
 // A professor's supervised topic, as returned by GET /admin/professors/:id.
@@ -250,6 +499,7 @@ export interface TopicOccupancy {
 }
 
 export interface AdminTopic {
+  professorId?: string;
   references: TopicReference[];
   id: string;
   title: string;
@@ -271,6 +521,24 @@ export interface AdminTopic {
   createdAt: string;
 }
 
+/** ملفٌّ سلّمه الفريق في مرحلة، ومن سلّمه. */
+export interface AdminSubmission {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  fileSize?: number | null;
+  mimeType?: string | null;
+  version: number;
+  createdAt: string;
+  uploadedBy?: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    avatarUrl?: string | null;
+    gender?: string | null;
+  } | null;
+}
+
 export interface AdminMilestone {
   id: string;
   title: string;
@@ -278,16 +546,52 @@ export interface AdminMilestone {
   deadline: string;
   status: string;
   order: number;
+  _count?: { submissions: number };
+  /** آخر الملفات (حتى عشرة)؛ و`_count` هو العدد الحقيقي. */
+  submissions?: AdminSubmission[];
+}
+
+/** تقدّم المشروع كما يحسبه الخادم للقائمة — «متأخرة» بعلامتها أو بتاريخها. */
+export interface AdminProjectProgress {
+  total: number;
+  completed: number;
+  inProgress: number;
+  overdue: number;
+  submissions: number;
+  nextDeadline: { title: string; deadline: string } | null;
+  lastActivityAt: string | null;
+}
+
+export interface AdminProjectStats {
+  total: number;
+  defenseScheduled: number;
+  defenseDone: number;
+  noDefense: number;
+  withOverdue: number;
+  noPlan: number;
 }
 
 export interface AdminProject {
   id: string;
   topic?: AdminTopic;
-  members?: { id: string; student?: Student }[];
+  members?: { id: string; isLeader?: boolean; createdAt?: string; student?: Student }[];
   milestones?: AdminMilestone[];
-  defense?: AdminDefense | null;
+  defense?: (AdminDefense & { _count?: { committee: number } }) | null;
   _count?: { milestones: number };
+  progress?: AdminProjectProgress;
+  /** تفاصيل المشروع وحدها. */
+  insights?: {
+    submissions: number;
+    lastSubmissionAt: string | null;
+    origin: { kind: "request" | "assignment"; requestId: string | null; since: string };
+  };
+  /** حكم الخادم على الفسخ، قبل النقر لا بعده. */
+  actions?: {
+    canDissolve: boolean;
+    dissolveBlockers: { submissions: number; defense: boolean };
+  };
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface DefenseCommitteeMember {
@@ -296,15 +600,51 @@ export interface DefenseCommitteeMember {
   professor?: Professor;
 }
 
+export interface DefenseClash {
+  id: string;
+  title: string;
+  date: string;
+  room: string;
+  professorId?: string;
+  name?: string;
+}
+
+export interface DefenseClashes {
+  room: DefenseClash[];
+  professors: DefenseClash[];
+}
+
 export interface AdminDefense {
   id: string;
+  groupId?: string;
   date: string;
+  /** How long the session lasts (60 by default). */
+  durationMinutes?: number;
+  /** date + duration, computed by the server. */
+  endsAt?: string;
   room: string;
   grade: number | null;
   status?: "scheduled" | "completed" | "cancelled";
   notes?: string | null;
-  committee?: DefenseCommitteeMember[];
+  committee?: (DefenseCommitteeMember & { professorId?: string })[];
   group?: AdminProject;
+  /** Scheduled defences overlapping this one by room or by juror. */
+  clashes?: DefenseClashes;
+}
+
+/** The whole schedule's figures — not the page's, not the filter's. */
+export interface DefenseStats {
+  total: number;
+  upcoming: number;
+  today: number;
+  week: number;
+  completed: number;
+  cancelled: number;
+  stale: number;
+  noCommittee: number;
+  averageGrade: number | null;
+  rooms: number;
+  readyToSchedule: number;
 }
 
 export interface AdminGroupRequestMember {
