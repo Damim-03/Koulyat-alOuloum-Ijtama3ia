@@ -103,6 +103,12 @@ model User {
   firstName String?
   lastName  String?
 
+  /// الاسم كما يُكتب بالحروف اللاتينية في الوجه الفرنسيّ للوثائق الرسمية.
+  /// لا يُشتقّ من العربي — «حمادي» قد تكون Hamadi أو Hammadi — فيُدخَل كما
+  /// هو في وثائق صاحبه. واختياريّ: من لا اسم لاتينيّ له يُعرض باسمه العربي.
+  firstNameLatin String?
+  lastNameLatin  String?
+
   email    String? @unique
   username String? @unique
 
@@ -142,11 +148,17 @@ model Message {
   subject    String?
   body       String             @db.Text
   broadcast  String? // "all" | "students" | "professors" | "students:<specId>"
+  /// The conversation this message belongs to: the id of its first message.
+  /// NULL on a first message, so a conversation is `id = X OR threadId = X`.
+  threadId   String?
+  /// The message this one answers, when it is a reply.
+  replyToId  String?
   createdAt  DateTime           @default(now())
   recipients MessageRecipient[]
 
   @@index([senderId])
   @@index([createdAt])
+  @@index([threadId])
 }
 
 model MessageRecipient {
@@ -156,9 +168,14 @@ model MessageRecipient {
   userId    String
   user      User      @relation("ReceivedMessages", fields: [userId], references: [id], onDelete: Cascade)
   readAt    DateTime?
+  /// Removed from this recipient's inbox. The row stays so the sender keeps
+  /// an honest recipient count and read receipt; deleting it used to make a
+  /// message "sent to 3" quietly become "sent to 2".
+  deletedAt DateTime?
 
   @@unique([messageId, userId])
   @@index([userId, readAt])
+  @@index([userId, deletedAt])
 }
 
 //
@@ -291,11 +308,37 @@ model Specialization {
 model AcademicYear {
   id String @id @default(uuid())
 
-  title    String  @unique
-  isActive Boolean @default(false)
+  title      String    @unique
+  isActive   Boolean   @default(false)
+  /// Closed and kept: the year's record was frozen on this day. An archived
+  /// year takes no new students or topics until it is reopened.
+  archivedAt DateTime?
 
   students Student[]
   topics   GraduationTopic[]
+  archive  AcademicYearArchive?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// A closed year, as it stood when it was closed: its figures and every record
+/// — students, topics, projects, defences and grades — so the year can be read
+/// back exactly, whatever later happens to the live rows.
+model AcademicYearArchive {
+  id String @id @default(uuid())
+
+  academicYearId String       @unique
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  /// The full record (see `buildYearRecord`).
+  snapshot Json
+  /// The headline figures, for lists that should not load the whole record.
+  summary  Json
+
+  note           String? @db.Text
+  archivedById   String?
+  archivedByName String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -638,9 +681,12 @@ model Submission {
 model Defense {
   id String @id @default(uuid())
 
-  date  DateTime
-  room  String
-  grade Float?
+  date            DateTime
+  /// How long the session lasts — what "the room is taken" and "the jury is
+  /// busy" are measured against.
+  durationMinutes Int      @default(60)
+  room            String
+  grade           Float?
 
   status DefenseStatus @default(scheduled)
   notes  String?
@@ -824,4 +870,93 @@ model SupervisionDocument {
 
   @@index([topicId])
   @@index([status])
+}
+
+//
+// ════════════════════════════════════════════════════════════
+//  HOME SLIDES (صور واجهة الصفحة الرئيسية)
+// ════════════════════════════════════════════════════════════
+//
+
+/// أين تُعرض الصورة: خلف عنوان الصفحة الرئيسية، أو في معرض صفحة «عن المنصة»،
+/// أو خلفيةً للوحة الترحيب في صفحة الدخول، أو خلفيةً لرأس «عن المنصة».
+enum SlidePlacement {
+  home
+  about
+  login
+  aboutHero
+}
+
+/// صورةٌ تختارها الإدارة وترتّبها: خلف عنوان الصفحة الرئيسية، أو في معرض
+/// «عن المنصة»، أو خلف لوحة الترحيب في صفحة الدخول، أو خلف رأس «عن المنصة»
+/// (`placement`). يقرؤها الزائر بلا تسجيل دخول — فلا يُعاد منها
+/// إلّا ما يُعرض. والترتيب والسقف لكلّ موضعٍ على حدة.
+model HomeSlide {
+  id String @id @default(uuid())
+
+  placement SlidePlacement @default(home)
+
+  /// مسارٌ نسبيّ من رفع الإدارة (`/uploads/cards/<file>`).
+  imageUrl String @db.VarChar(2048)
+
+  /// سطرٌ اختياريّ يُقرأ في زاوية الصورة — «حفل التخرّج ٢٠٢٦» مثلاً.
+  caption String? @db.VarChar(160)
+
+  /// المعطَّلة تبقى في القائمة ولا تظهر للزائر.
+  isActive Boolean @default(true)
+
+  /// ترتيب العرض، تصاعدياً.
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([placement, isActive, sortOrder])
+}
+
+//
+// ════════════════════════════════════════════════════════════
+//  NEWS (آخر الأخبار) — شريط الأخبار في الصفحة الرئيسية
+// ════════════════════════════════════════════════════════════
+//
+
+/// خبرٌ في شريط «آخر الأخبار». العربية أصل، والفرنسية والإنجليزية اختياريّتان:
+/// ما لم يُترجَم يُعرض بالعربية في الواجهتين الأخريين.
+model NewsItem {
+  id String @id @default(uuid())
+
+  text   String  @db.VarChar(300)
+  textFr String? @db.VarChar(300)
+  textEn String? @db.VarChar(300)
+
+  /// تاريخ الخبر كما يُعرض («16 مارس») — يومٌ لا لحظة.
+  date DateTime @db.Date
+
+  /// رابطٌ اختياريّ: مسارٌ داخليّ (`/topics`) أو عنوانٌ مطلق.
+  linkUrl String? @db.VarChar(2048)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, date])
+}
+
+//
+// ════════════════════════════════════════════════════════════
+//  SITE CONTENT — نصوص الواجهة التي تحرّرها الإدارة
+// ════════════════════════════════════════════════════════════
+//
+
+/// كتلةُ محتوى واحدة لكلّ مفتاح — «كلمة رئيس القسم» أوّلها.
+///
+/// JSON لا أعمدة: بنية الكتلة تختلف من مفتاحٍ إلى آخر، والتحقّق منها في
+/// مخطّطات zod لكلّ مفتاح (`site.validation.ts`)، لا في القاعدة.
+model SiteContent {
+  slug String @id @db.VarChar(64)
+
+  value Json
+
+  updatedAt DateTime @updatedAt
 }

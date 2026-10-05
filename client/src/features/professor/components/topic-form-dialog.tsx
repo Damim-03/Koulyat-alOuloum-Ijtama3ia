@@ -50,6 +50,7 @@ import { ListInput } from "../../../components/ui/list-input";
 import { StudentPicker, type PickedStudent } from "./student-picker";
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import { Select } from "../../../components/ui/select";
+import { personName } from "../../../lib/person-name";
 
 /**
  * Proposing a topic, in the same room the administration proposes one in.
@@ -251,7 +252,7 @@ export function TopicFormDialog({
   if (!open) return null;
 
   const professorName =
-    [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
+    personName(user) ||
     user?.universityEmail ||
     "—";
 

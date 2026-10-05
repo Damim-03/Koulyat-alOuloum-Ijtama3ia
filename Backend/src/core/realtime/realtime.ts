@@ -88,3 +88,23 @@ export const emitToUsers = (
 export const pushNotification = (userId: string, notification: unknown) => {
   io?.to(room.user(userId)).emit("notification", notification);
 };
+
+/**
+ * A named event with its own payload, to particular people.
+ *
+ * `data:changed` carries no rows on purpose, and most screens only need to
+ * refetch. A new message is the exception: the recipient should be told *who*
+ * wrote and *what about* the moment it lands — a toast cannot wait for a
+ * refetch. One emit to all the rooms at once, however many recipients.
+ */
+export const emitEvent = (userIds: string[], event: string, payload: unknown) => {
+  if (!io || userIds.length === 0) return;
+  io.to([...new Set(userIds)].map(room.user)).emit(event, payload);
+};
+
+/** Whether the person has at least one live connection right now. */
+export const isOnline = (userId: string) =>
+  (io?.sockets.adapter.rooms.get(room.user(userId))?.size ?? 0) > 0;
+
+/** The realtime server, for modules that listen to client events. */
+export const realtimeServer = () => io;

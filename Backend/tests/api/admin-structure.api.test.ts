@@ -427,16 +427,11 @@ describe("الميادين", () => {
   });
 
   /**
-   * تعليقٌ في `deleteDomainService` يقول: «عند ربط الشعبة بالميدان أضِف هنا
-   * فحص _count.filieres كما في القسم». والمخطّط يربطهما فعلاً عبر
-   * `Filiere.domainId`، والعلاقة اختيارية — فحذف ميدانٍ له شعب لا يُمنع، بل
-   * تبقى الشعبة ويُفرَغ انتماؤها بصمت.
-   *
-   * وهذا التأكيد يصف **ما يقع اليوم** لا ما ينبغي أن يقع. فإن أُضيف الفحص
-   * لاحقاً سلك الاختبار الفرع الآخر وبقي أخضر، وهو الموضع الذي يُراجَع فيه
-   * القرار.
+   * `Filiere.domainId` اختياريّ وقيده `ON DELETE SET NULL`: لو حُذف الميدان
+   * بقيت شعبه وزال انتماؤها بصمت، فغابت عن صفحته وبقيت معلّقةً تحت القسم.
+   * فالحذف يُمنع ما دامت له شعب، كما يُمنع حذف القسم.
    */
-  it("وحذف ميدانٍ له شعب: الشعبة تبقى ويُفرَغ انتماؤها — لا حارس بعد", async () => {
+  it("وحذف ميدانٍ له شعب يُمنع، وتبقى الشعبة في ميدانها", async () => {
     const tree = await emptyTree();
     const domain = await prisma.domain.create({
       data: {
@@ -453,21 +448,13 @@ describe("الميادين", () => {
     const res = await as(
       request(app).delete(`/api/admin/domains/${domain.id}`),
     );
-
-    if (res.status === 200) {
-      const after = await prisma.filiere.findUnique({
-        where: { id: tree.filiere.id },
-      });
-      expect(after).not.toBeNull(); // الشعبة لم تُحذف معه
-      expect(after!.domainId).toBeNull(); // لكن انتماءها زال بلا إشعار
-    } else {
-      // أُضيف الحارس لاحقاً: الحذف يُمنع، وهو السلوك الأفضل.
-      expect(res.status).toBe(400);
-      expect(
-        (await prisma.filiere.findUnique({ where: { id: tree.filiere.id } }))!
-          .domainId,
-      ).toBe(domain.id);
-    }
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("شعبة");
+    expect(await prisma.domain.findUnique({ where: { id: domain.id } })).not.toBeNull();
+    expect(
+      (await prisma.filiere.findUnique({ where: { id: tree.filiere.id } }))!
+        .domainId,
+    ).toBe(domain.id);
   });
 });
 

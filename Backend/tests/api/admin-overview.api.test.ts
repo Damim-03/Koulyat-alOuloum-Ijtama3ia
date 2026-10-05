@@ -472,7 +472,7 @@ describe("إسناد موضوعٍ بفريقه", () => {
         leaderStudentId: free.id,
       }),
     ).expect(400);
-    expect(res.body.message).toContain("مشروع");
+    expect(res.body.message).toContain("مذكرة");
   });
 
   it("وطالبٌ غير موجود ⇒ 400", async () => {
@@ -654,7 +654,7 @@ describe("تعديل الموضوع المُسنَد", () => {
       memberStudentIds: [keep.id, busy.team[0]!.id],
       leaderStudentId: keep.id,
     }).expect(400);
-    expect(res.body.message).toContain("مشروع");
+    expect(res.body.message).toContain("مذكرة");
   });
 
   /**

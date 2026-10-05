@@ -40,11 +40,17 @@ export function FieldBox({
   icon: Icon,
   required,
   error,
+  group,
   children,
 }: {
   label: string;
   icon: LucideIcon;
   required?: boolean;
+  /**
+   * A field of several controls (the gender's two buttons): a `<label>` would
+   * hand every click on its text to the first of them, choosing for the user.
+   */
+  group?: boolean;
   /** Validation message for this field; the edit dialogs report at the top. */
   error?: string;
   children: ReactNode;
@@ -70,8 +76,9 @@ export function FieldBox({
     ? "-mx-2 rounded-xl border border-brick/35 bg-brick/5 px-2 py-1.5 border-s-4 border-s-brick"
     : "";
 
+  const Tag = group ? "div" : "label";
   return (
-    <label className={`block ${boxCls}`}>
+    <Tag className={`block ${boxCls}`} role={group ? "group" : undefined} aria-label={group ? label : undefined}>
       <span
         className={`mb-1 flex items-center gap-1.5 text-[11px] font-medium ${
           invalid ? "text-brick" : "text-clay"
@@ -83,6 +90,6 @@ export function FieldBox({
       </span>
       {children}
       {error && <p className="mt-1 text-[11px] text-brick">{error}</p>}
-    </label>
+    </Tag>
   );
 }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { entityId } from "../../core/validation/id";
+import { imageUrl } from "../../core/validation/image-url";
 
 //
 // ─── SHARED ───────────────────────────────────────────────────
@@ -41,6 +42,34 @@ const passwordSchema = z
   .string()
   .min(8, "Password must be at least 8 characters")
   .max(72, "Password must be at most 72 characters");
+
+/**
+ * الاسم باللاتينية: حروفٌ لاتينية — بما فيها المشكولة الفرنسية (é، ç…) —
+ * ومسافةٌ أو شرطةٌ أو فاصلةٌ علوية بين الكلمات، ولا شيء غيرها.
+ *
+ * ويُكتب على عادة الوثائق الفرنسية أيّاً كان ما أُدخل: اللقب بأحرفٍ كبيرة
+ * (HAMADI)، والاسم بحرفٍ أوّلَ كبيرٍ لكلّ كلمة (Nour El Houda). فيُحفظ
+ * بشكلٍ واحد، ويُبحث عنه ويُطبع كما هو.
+ */
+const LATIN_NAME = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '\-][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/;
+const latinBase = z
+  .string()
+  .trim()
+  .transform((s) => s.replace(/\s+/g, " "))
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(60)
+      .regex(LATIN_NAME, "الاسم باللاتينية: حروفٌ لاتينية فقط"),
+  );
+export const toLatinLast = (s: string) => s.toLocaleUpperCase("fr");
+export const toLatinFirst = (s: string) =>
+  s
+    .toLocaleLowerCase("fr")
+    .replace(/(^|[ '\-])(\p{L})/gu, (_m, sep: string, ch: string) => sep + ch.toLocaleUpperCase("fr"));
+export const latinFirstName = latinBase.transform(toLatinFirst);
+export const latinLastName = latinBase.transform(toLatinLast);
 
 export const listUsersSchema = listQuerySchema.extend({
   role: RoleEnum.optional(),
@@ -117,6 +146,8 @@ export const listStudentsSchema = listQuerySchema.extend({
   filiereId: entityId.optional(),
   departmentId: entityId.optional(),
   facultyId: entityId.optional(),
+  // المستوى صفةٌ للتخصص: يُرشَّح به عبر تخصص الطالب، ويجتمع مع الهرم أعلاه.
+  level: LevelEnum.optional(),
   unassigned: z.enum(["true", "false"]).optional(),
   // `search` matches the student's name; this one targets the number alone.
   registrationNumber: z.string().trim().optional(),
@@ -134,9 +165,11 @@ export const createStudentSchema = z.object({
   // user side
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
+  firstNameLatin: latinFirstName.optional(),
+  lastNameLatin: latinLastName.optional(),
   email: z.string().email().optional(),
   phone: z.string().trim().min(1).optional(),
-  avatarUrl: z.string().url().optional(),
+  avatarUrl: imageUrl.optional(),
   password: passwordSchema,
   gender: GenderEnum.optional(),
   // student side
@@ -155,10 +188,13 @@ export type CreateStudentDTO = z.infer<typeof createStudentSchema>;
 export const updateStudentSchema = z.object({
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
+  // null = امسح الاسم اللاتيني، كما في البريد والهاتف أدناه.
+  firstNameLatin: latinFirstName.nullable().optional(),
+  lastNameLatin: latinLastName.nullable().optional(),
   // null = امسح القيمة (مثل حذف الصورة). كما في updateProfessorSchema.
   email: z.string().email().nullable().optional(),
   phone: z.string().trim().min(1).nullable().optional(),
-  avatarUrl: z.string().url().nullable().optional(),
+  avatarUrl: imageUrl.nullable().optional(),
   gender: GenderEnum.nullable().optional(),
   registrationNumber: z.string().trim().min(1).optional(),
   specializationId: entityId.optional(),
@@ -231,7 +267,12 @@ export const listProjectsSchema = listQuerySchema.extend({
   defense: z
     .enum(["none", "scheduled", "completed", "cancelled"])
     .optional(),
-  sort: z.enum(["newest", "oldest", "defenseSoon"]).optional(),
+  /**
+   * ما يحتاج تدخّلاً: `late` مرحلةٌ فات موعدها ولم تُنجَز (بعلامتها أو بتاريخها)،
+   * و`noPlan` مشروعٌ لم تُوضع له مرحلةٌ واحدة بعد.
+   */
+  health: z.enum(["late", "noPlan"]).optional(),
+  sort: z.enum(["newest", "oldest", "defenseSoon", "title"]).optional(),
 });
 export type ListProjectsDTO = z.infer<typeof listProjectsSchema>;
 
@@ -282,7 +323,7 @@ export const updateProfessorSchema = z.object({
   lastName: z.string().trim().min(1).optional(),
   email: z.string().email().nullable().optional(), // ← جديد
   phone: z.string().trim().min(1).nullable().optional(), // ← جديد
-  avatarUrl: z.string().url().nullable().optional(), // ← جديد
+  avatarUrl: imageUrl.nullable().optional(), // ← جديد
   gender: GenderEnum.nullable().optional(),
   // كما في الإنشاء: النطاق يُفرض في الخدمة مقابل UniversityDomain.
   universityEmail: z.string().email("بريد إلكتروني غير صالح").optional(),
@@ -551,6 +592,33 @@ export const updateAcademicYearSchema = z.object({
 });
 export type UpdateAcademicYearDTO = z.infer<typeof updateAcademicYearSchema>;
 
+/**
+ * Closing a year. The title is typed back as a deliberate act, and the
+ * year that follows is either one that exists or a new title — not both.
+ */
+export const closeAcademicYearSchema = z
+  .object({
+    confirmTitle: z.string().trim().min(1).max(40),
+    note: z.string().trim().max(2000).optional(),
+    nextYearId: entityId.optional(),
+    nextYearTitle: z
+      .string()
+      .trim()
+      .regex(/^\d{4}\/\d{4}$/, "الصيغة: 2026/2027")
+      .optional(),
+  })
+  .refine((d) => !(d.nextYearId && d.nextYearTitle), {
+    message: "اختر سنةً موجودة أو اكتب عنوان سنةٍ جديدة — لا الاثنين",
+    path: ["nextYearTitle"],
+  });
+export type CloseAcademicYearDTO = z.infer<typeof closeAcademicYearSchema>;
+
+export const reopenAcademicYearSchema = z.object({
+  /** Make it the current year again once it is open. */
+  activate: z.boolean().optional().default(false),
+});
+export type ReopenAcademicYearDTO = z.infer<typeof reopenAcademicYearSchema>;
+
 //
 // ─── TOPICS ───────────────────────────────────────────────────
 //
@@ -567,6 +635,22 @@ export const listTopicsSchema = listQuerySchema.extend({
   filiereId: entityId.optional(),
 });
 export type ListTopicsDTO = z.infer<typeof listTopicsSchema>;
+
+/**
+ * The list of memoir titles, as the department prints it: before assignment
+ * (the validated proposals, with their supervisors) or after (the memoirs
+ * that have students, with their names). The same scope as the topics page.
+ */
+export const topicTitlesListSchema = z.object({
+  mode: z.enum(["before", "after"]).default("after"),
+  academicYearId: entityId.optional(),
+  professorId: entityId.optional(),
+  specializationId: entityId.optional(),
+  filiereId: entityId.optional(),
+  departmentId: entityId.optional(),
+  facultyId: entityId.optional(),
+});
+export type TopicTitlesListDTO = z.infer<typeof topicTitlesListSchema>;
 
 export const rejectTopicSchema = z.object({
   reason: z.string().trim().optional(),
@@ -699,26 +783,52 @@ const committeeMemberSchema = z.object({
   role: CommitteeRoleEnum,
 });
 
+/**
+ * اللجنة قائمةُ مقاعد لا قائمةُ أسماء: الأستاذ لا يجلس مرّتين، وللجلسة رئيسٌ
+ * واحد. كان التكرار يصل القاعدة فيردّه فهرسها الفريد برسالةٍ عامّة، ورئيسان
+ * يمرّان بلا اعتراض — فتُقال القاعدة هنا بلسانها.
+ */
+const committeeSchema = z
+  .array(committeeMemberSchema)
+  .max(7, { message: "لا تتّسع اللجنة لأكثر من سبعة أعضاء" })
+  .superRefine((list, ctx) => {
+    const seen = new Set<string>();
+    list.forEach((m, i) => {
+      if (seen.has(m.professorId))
+        ctx.addIssue({
+          code: "custom",
+          path: [i, "professorId"],
+          message: "الأستاذ نفسه مكرّر في اللجنة — لكلّ أستاذٍ مقعدٌ واحد",
+        });
+      seen.add(m.professorId);
+    });
+    if (list.filter((m) => m.role === "president").length > 1)
+      ctx.addIssue({ code: "custom", message: "للّجنة رئيسٌ واحد فقط" });
+  });
+
 export const createDefenseSchema = z.object({
   groupId: entityId,
   date: z.string().datetime({ message: "date must be ISO datetime" }),
-  room: z.string().trim().min(1),
+  room: z.string().trim().min(1).max(120),
+  durationMinutes: z.number().int().min(15).max(480).optional(),
   grade: z.number().min(0).max(20).optional(),
   status: DefenseStatusEnum.optional(),
-  notes: z.string().trim().optional(),
+  notes: z.string().trim().max(2000).optional(),
   // Optional committee assigned at scheduling time.
-  committee: z.array(committeeMemberSchema).optional(),
+  committee: committeeSchema.optional(),
 });
 export type CreateDefenseDTO = z.infer<typeof createDefenseSchema>;
 
 export const updateDefenseSchema = z.object({
   date: z.string().datetime().optional(),
-  room: z.string().trim().min(1).optional(),
-  grade: z.number().min(0).max(20).optional(),
+  room: z.string().trim().min(1).max(120).optional(),
+  durationMinutes: z.number().int().min(15).max(480).optional(),
+  // `null` يمحو الدرجة — درجةٌ سُجّلت خطأً كانت لا تُرفع إلا بحذف المناقشة.
+  grade: z.number().min(0).max(20).nullable().optional(),
   status: DefenseStatusEnum.optional(),
-  notes: z.string().trim().optional(),
+  notes: z.string().trim().max(2000).optional(),
   // When provided, the committee is fully replaced with this list.
-  committee: z.array(committeeMemberSchema).optional(),
+  committee: committeeSchema.optional(),
 });
 export type UpdateDefenseDTO = z.infer<typeof updateDefenseSchema>;
 
@@ -733,3 +843,46 @@ export const listNotificationsSchema = z.object({
   unread: z.coerce.boolean().optional().default(false),
 });
 export type ListNotificationsDTO = z.infer<typeof listNotificationsSchema>;
+
+//
+// ─── DEFENSES: list, clashes, export ──────────────────────────
+//
+const idList = z
+  .string()
+  .max(4000)
+  .optional()
+  .transform((v) => (v ? v.split(",").map((x) => x.trim()).filter(Boolean) : []));
+
+export const listDefensesSchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  /** Topic, room, a member's name or registration number, a juror's name. */
+  search: z.string().trim().max(200).optional(),
+  status: DefenseStatusEnum.optional(),
+  /**
+   * `upcoming` scheduled from now on · `today` · `week` the next seven days ·
+   * `past` · `stale` still "scheduled" although its date has gone by.
+   */
+  when: z.enum(["upcoming", "today", "week", "past", "stale"]).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  /** On the jury, or supervising the project. */
+  professorId: entityId.optional(),
+  room: z.string().trim().max(120).optional(),
+  specializationId: entityId.optional(),
+  academicYearId: entityId.optional(),
+  /** What needs fixing. */
+  issue: z.enum(["noCommittee", "noPresident", "noGrade"]).optional(),
+  sort: z.enum(["dateAsc", "dateDesc"]).optional(),
+});
+export type ListDefensesDTO = z.infer<typeof listDefensesSchema>;
+
+export const defenseConflictsSchema = z.object({
+  date: z.string().datetime(),
+  durationMinutes: z.coerce.number().int().min(15).max(480).optional().default(60),
+  room: z.string().trim().max(120).optional(),
+  professorIds: idList,
+  /** The defence being edited, which cannot clash with itself. */
+  excludeId: entityId.optional(),
+});
+export type DefenseConflictsDTO = z.infer<typeof defenseConflictsSchema>;

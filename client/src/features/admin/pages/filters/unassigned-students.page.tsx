@@ -13,6 +13,7 @@ import { None } from "../../../../lib/none";
 import { Select } from "../../../../components/ui/select";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
+import { personName } from "../../../../lib/person-name";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -300,9 +301,7 @@ export function AdminUnassignedStudentsPage() {
                       <div className="flex items-center gap-3">
                         <UserAvatar user={s.user} size={36} />
                         <p className="text-sm font-medium text-forest">
-                          {[s.user?.firstName, s.user?.lastName]
-                            .filter(Boolean)
-                            .join(" ") || "\u2014"}
+                          {personName(s.user) || "\u2014"}
                         </p>
                       </div>
                     </td>

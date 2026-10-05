@@ -332,3 +332,66 @@ describe("من يملك الرفع", () => {
       .expect(403);
   });
 });
+
+//
+// ═══ ما يُرفع يُحفظ ═══
+//
+
+/**
+ * الرفعُ وحده لا يكفي: الرابط الذي يُعيده يُحفظ بعدها في صفّ صاحبه.
+ *
+ * صار الرابط نسبيّاً، وبقيت مخطّطات الحفظ تشترط عنواناً مطلقاً — فكانت
+ * الصورة تُرفع ثمّ يُردّ حفظها بـ400، ولا تظهر لطالبٍ ولا أستاذ. والاختبار
+ * يمرّ بالطريق كلّه كما تمرّ به نافذة التعديل: ارفع، ثمّ احفظ ما عاد.
+ */
+describe("الرابط المرفوع يُحفظ في الملفّ الشخصيّ", () => {
+  it("صورةُ الطالب: تُرفع ثمّ تُحفظ", async () => {
+    const [s] = f.nextStudents(1);
+    const res = await upload(PNG, "me.png", "image/png").expect(200);
+    const url = res.body.url as string;
+    remember(url);
+
+    await as(request(app).patch(`/api/admin/students/${s!.id}`))
+      .send({ avatarUrl: url })
+      .expect(200);
+
+    const user = await prisma.user.findUnique({ where: { id: s!.userId } });
+    expect(user?.avatarUrl).toBe(url);
+  });
+
+  it("وصورةُ الأستاذ كذلك", async () => {
+    const res = await upload(JPEG, "prof.jpg", "image/jpeg").expect(200);
+    const url = res.body.url as string;
+    remember(url);
+
+    await as(request(app).patch(`/api/admin/professors/${f.professor.id}`))
+      .send({ avatarUrl: url })
+      .expect(200);
+
+    const user = await prisma.user.findUnique({
+      where: { id: f.profUser.id },
+    });
+    expect(user?.avatarUrl).toBe(url);
+  });
+
+  it("والعنوان المطلق القديم ما يزال مقبولاً، والإفراغ بـnull كذلك", async () => {
+    await as(request(app).patch(`/api/admin/professors/${f.professor.id}`))
+      .send({ avatarUrl: "https://cdn.example.com/a.png" })
+      .expect(200);
+    await as(request(app).patch(`/api/admin/professors/${f.professor.id}`))
+      .send({ avatarUrl: null })
+      .expect(200);
+  });
+
+  it.each([
+    ["javascript:", "javascript:alert(1)"],
+    ["data:", "data:image/png;base64,AAAA"],
+    ["خارج /uploads", "/api/admin/users"],
+    ["يصعد بـ..", "/uploads/../api/admin/users"],
+    ["نصٌّ بلا معنى", "not a url"],
+  ])("ويُردّ %s بـ400", async (_label, avatarUrl) => {
+    await as(request(app).patch(`/api/admin/professors/${f.professor.id}`))
+      .send({ avatarUrl })
+      .expect(400);
+  });
+});

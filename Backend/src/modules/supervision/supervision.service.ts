@@ -146,7 +146,7 @@ function assertMayAccess(
   if (isMember) return;
 
   throw new UnauthorizedException(
-    "لست من أعضاء مشروع هذا الموضوع",
+    "لست من أعضاء مذكرة هذا الموضوع",
     ErrorCodeEnum.ACCESS_UNAUTHORIZED,
   );
 }
@@ -163,7 +163,7 @@ function buildSnapshot(topic: TopicForDocument): SupervisionSnapshot {
 
   if (members.length === 0)
     throw new BadRequestException(
-      "لا مجموعة مشروعٍ لهذا الموضوع بعد، فلا وثيقة",
+      "لا مجموعة مذكرةٍ لهذا الموضوع بعد، فلا وثيقة",
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 

@@ -15,6 +15,7 @@ const AFFECTS_DASHBOARD = new Set([
   "topics",
   "group-requests",
   "projects",
+  "milestones",
   "defenses",
   "students",
   "professors",
@@ -34,6 +35,13 @@ export function realtimeBroadcast(
   next: NextFunction,
 ) {
   if (req.method === "GET" || req.method === "OPTIONS") return next();
+
+  // Messages announce themselves, to their own sender and recipients only.
+  // Broadcasting them from here told every connected user that a message id
+  // had just been read — and still reached none of the people it concerned.
+  if (req.originalUrl.startsWith("/api/messages")) return next();
+  // One person's own account concerns no one else's screen.
+  if (req.originalUrl.startsWith("/api/account")) return next();
 
   res.on("finish", () => {
     if (res.statusCode >= 400) return; // failed writes change nothing

@@ -76,7 +76,7 @@ let stranger: { id: string; userId: string; reg: string };
 
 beforeAll(async () => {
   await teardown();
-  f = await seed(40);
+  f = await seed(60);
   [me, mate, stranger] = f.nextStudents(3);
 
   tok.me = await login(me.reg);
@@ -201,6 +201,59 @@ describe("GET /api/student/students/lookup", () => {
     expect(body).not.toContain("password");
     expect(body).not.toContain("$2a$");
     expect(body).not.toContain("@test.local");
+    expect(res.body.student.isSelf).toBe(false);
+  });
+
+  /** رقمي أنا ⇒ يُعلَّم، فيُرفض في المقعد قبل أن يصل الإرسال. */
+  it("ورقمي أنا ⇒ isSelf", async () => {
+    const res = await as(
+      request(app).get("/api/student/students/lookup").query({ registration: me.reg }),
+      "me",
+    ).expect(200);
+    expect(res.body.student.isSelf).toBe(true);
+  });
+
+  /**
+   * زميلٌ في طلبٍ حيٍّ لفريقٍ آخر يُعلَّم، فيُرفض في مقعده قبل الإرسال.
+   * أمّا طلباتُ المرسِل نفسه على مواضيع أخرى فلا تُعدّ: الفريقُ نفسه.
+   */
+  it("وزميلٌ في مجموعةٍ أخرى ⇒ otherGroup: request، ولمرسِلها لا شيء", async () => {
+    const t = await topic("STU lookup-other-team", "open");
+    const [lead, member, outsider] = f.nextStudents(3);
+    await request(app)
+      .post("/api/student/group-requests")
+      .set("Authorization", `Bearer ${await login(lead!.reg)}`)
+      .send({ topicId: t.id, memberRegistrationNumbers: [member!.reg], priority: 1 })
+      .expect(201);
+
+    const look = async (asReg: string) =>
+      (
+        await request(app)
+          .get("/api/student/students/lookup")
+          .set("Authorization", `Bearer ${await login(asReg)}`)
+          .query({ registration: member!.reg })
+          .expect(200)
+      ).body.student;
+
+    expect((await look(outsider!.reg)).otherGroup).toBe("request");
+    expect((await look(lead!.reg)).otherGroup).toBeNull();
+  });
+
+  it("وطالبٌ له مشروع ⇒ otherGroup: project", async () => {
+    const t = await topic("STU lookup-project", "full");
+    const group = await prisma.projectGroup.create({ data: { topicId: t.id } });
+    const [placed] = f.nextStudents(1);
+    await prisma.projectMember.create({
+      data: { groupId: group.id, studentId: placed!.id, isLeader: true },
+    });
+
+    const res = await as(
+      request(app)
+        .get("/api/student/students/lookup")
+        .query({ registration: placed!.reg }),
+      "me",
+    ).expect(200);
+    expect(res.body.student.otherGroup).toBe("project");
   });
 
   it("ورقم غير موجود ⇒ 200 بنتيجة فارغة لا خطأ", async () => {
@@ -514,6 +567,91 @@ describe("POST /api/student/group-requests", () => {
     expect(res.status).toBe(400);
   });
 
+  /**
+   * المرسِل يُضاف تلقائيًا، فرقمُه في خانة زميلٍ خطأٌ أو تلاعب.
+   *
+   * وكان يُسقَط بصمتٍ عند توحيد الأعضاء فيمرّ الطلب. والردّ الآن صريح، ولا
+   * يُنشأ شيءٌ ولا يُحجز الموضوع.
+   */
+  it("ورقمُ المرسِل نفسه بين الزملاء ⇒ 400، ولا يُحجز الموضوع", async () => {
+    const t = await topic("STU request-self", "open");
+    const [x, y] = f.nextStudents(2);
+    const who = await login(x.reg);
+
+    const res = await request(app)
+      .post("/api/student/group-requests")
+      .set("Authorization", `Bearer ${who}`)
+      .send({
+        topicId: t.id,
+        memberRegistrationNumbers: [y.reg, ` ${x.reg} `],
+        priority: 1,
+      });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain("رقم تسجيلك");
+    expect(
+      await prisma.groupRequest.count({ where: { topicId: t.id } }),
+    ).toBe(0);
+  });
+
+  /**
+   * طالبٌ واحد في مجموعةٍ واحدة.
+   *
+   * كان المسار يقبل زميلاً هو في طلبٍ حيٍّ لفريقٍ آخر — فلو قُبل الطلبان
+   * لصار له مشروعان. والرفضُ يُحرّره: الطلبُ المرفوض انتهى ولا يحبس أحداً.
+   */
+  describe("زميلٌ في مجموعةٍ أخرى", () => {
+    const send = async (leaderReg: string, topicId: string, mates: string[], priority = 1) =>
+      request(app)
+        .post("/api/student/group-requests")
+        .set("Authorization", `Bearer ${await login(leaderReg)}`)
+        .send({ topicId, memberRegistrationNumbers: mates, priority });
+
+    it("في طلبٍ حيٍّ لفريقٍ آخر ⇒ 400، ويُقبل بعد رفض ذاك الطلب", async () => {
+      const first = await topic("STU busy-first", "open");
+      const second = await topic("STU busy-second", "open");
+      const [a, b, c] = f.nextStudents(3);
+
+      expect((await send(a!.reg, first.id, [b!.reg])).status).toBe(201);
+
+      const res = await send(c!.reg, second.id, [b!.reg]);
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).toContain("مجموعة أخرى");
+      expect(
+        await prisma.groupRequest.count({ where: { topicId: second.id } }),
+      ).toBe(0);
+
+      const live = await prisma.groupRequest.findFirstOrThrow({
+        where: { topicId: first.id, status: "pending" },
+      });
+      await rejectGroupRequestService(live.id, "اختبار");
+      expect((await send(c!.reg, second.id, [b!.reg])).status).toBe(201);
+    });
+
+    it("وله مشروع ⇒ 400", async () => {
+      const done = await topic("STU busy-project", "full");
+      const group = await prisma.projectGroup.create({ data: { topicId: done.id } });
+      const t = await topic("STU busy-project-next", "open");
+      const [a, placed] = f.nextStudents(2);
+      await prisma.projectMember.create({
+        data: { groupId: group.id, studentId: placed!.id, isLeader: true },
+      });
+
+      const res = await send(a!.reg, t.id, [placed!.reg]);
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).toContain("مذكرة تخرّج");
+    });
+
+    /** الأولويات: الفريقُ نفسه يطلب موضوعاً ثانياً بالزملاء أنفسهم. */
+    it("والفريقُ نفسه على موضوعٍ ثانٍ بأولويةٍ أخرى ⇒ 201", async () => {
+      const first = await topic("STU same-team-1", "open");
+      const second = await topic("STU same-team-2", "open");
+      const [a, b] = f.nextStudents(2);
+
+      expect((await send(a!.reg, first.id, [b!.reg], 1)).status).toBe(201);
+      expect((await send(a!.reg, second.id, [b!.reg], 2)).status).toBe(201);
+    });
+  });
+
   it("وجسم بلا موضوع ⇒ 400 لا 500", async () => {
     const res = await as(
       request(app).post("/api/student/group-requests").send({ priority: 1 }),
@@ -565,6 +703,42 @@ describe("GET /api/student/group-requests", () => {
       "stranger",
     ).expect(200);
     expect(JSON.stringify(other.body)).not.toContain("STU mine");
+  });
+
+  it("والعضوُ يرى طلب فريقه — ويُعرف أنّه ليس مرسِله", async () => {
+    const t = await topic("STU team", "open");
+    const [lead, member] = f.nextStudents(2);
+
+    await request(app)
+      .post("/api/student/group-requests")
+      .set("Authorization", `Bearer ${await login(lead.reg)}`)
+      .send({ topicId: t.id, memberRegistrationNumbers: [member.reg], priority: 1 })
+      .expect(201);
+
+    const read = async (reg: string) =>
+      rows(
+        (
+          await request(app)
+            .get("/api/student/group-requests")
+            .set("Authorization", `Bearer ${await login(reg)}`)
+            .expect(200)
+        ).body,
+      ).find((r) => (r.topic as { id: string }).id === t.id);
+
+    const asLeader = await read(lead.reg);
+    const asMember = await read(member.reg);
+
+    expect(asLeader?.isLeader).toBe(true);
+    expect(asMember?.isLeader).toBe(false);
+    expect(asMember?.id).toBe(asLeader?.id);
+
+    // المشرف والسنة يصلان مع الموضوع: الصفحة تسمّيهما.
+    const tp = asMember!.topic as {
+      professor: { id: string } | null;
+      academicYear: { id: string } | null;
+    };
+    expect(tp.professor?.id).toBe(f.professor.id);
+    expect(tp.academicYear?.id).toBe(f.academicYear.id);
   });
 });
 
@@ -670,5 +844,46 @@ describe("GET /api/student/my-project", () => {
       .expect(200);
 
     expect(JSON.stringify(res.body)).toContain("STU my-project");
+  });
+
+  it("ويحمل السنة والتخصّص، ولجنة المناقشة بأدوارها", async () => {
+    const t = await topic("STU project details", "full");
+    const group = await prisma.projectGroup.create({
+      data: { topicId: t.id },
+    });
+    const [member] = f.nextStudents(1);
+    await prisma.projectMember.create({
+      data: { groupId: group.id, studentId: member.id, isLeader: true },
+    });
+    await prisma.defense.create({
+      data: {
+        groupId: group.id,
+        date: new Date(Date.now() + 10 * 86_400_000),
+        room: "B2",
+        committee: {
+          create: [
+            { professorId: f.professor2.id, role: "president" },
+            { professorId: f.professor.id, role: "supervisor" },
+          ],
+        },
+      },
+    });
+
+    const { project } = (
+      await request(app)
+        .get("/api/student/my-project")
+        .set("Authorization", `Bearer ${await login(member.reg)}`)
+        .expect(200)
+    ).body;
+
+    expect(project.topic.academicYear.id).toBe(f.academicYear.id);
+    expect(project.topic.specialization.id).toBe(f.specialization.id);
+    expect(
+      project.defense.committee.map((c: { role: string }) => c.role).sort(),
+    ).toEqual(["president", "supervisor"]);
+    // من اللجنة الاسم والصورة لا البريد: الطالب يحتاج أن يعرف من سيناقشه.
+    expect(project.defense.committee[0].professor.user).not.toHaveProperty(
+      "email",
+    );
   });
 });

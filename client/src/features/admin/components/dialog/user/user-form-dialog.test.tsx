@@ -29,12 +29,22 @@ vi.mock("../../../hooks/admin-hook", () => ({
   useCreateStudent: () => noop,
   useCreateProfessor: () => noop,
   useUploadImage: () => noop,
+  // الاسم نفسه في مستويين — الحالة التي وُجد المستوى لأجلها.
   useSpecializations: () => ({
-    data: [{
-      id: "11111111-1111-4111-8111-111111111111",
-      name: "علم النفس العيادي",
-      filiereId: "fl-1",
-    }],
+    data: [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "علم النفس العيادي",
+        level: "master",
+        filiereId: "fl-1",
+      },
+      {
+        id: "33333333-3333-4333-8333-333333333333",
+        name: "علم النفس العيادي",
+        level: "licence",
+        filiereId: "fl-1",
+      },
+    ],
   }),
   useAcademicYears: () => ({ data: [{ id: "22222222-2222-4222-8222-222222222222", title: "2025/2026" }] }),
   useDepartments: () => ({ data: [] }),
@@ -386,10 +396,11 @@ describe("رأس بطاقة المراجعة", () => {
     await userEvent.click(boxes()[0]!);
     await userEvent.click(screen.getByRole("option", { name: "2025/2026" }));
 
+    // بلا مستوى مختار يُذكر المستوى مع الاسم: الاسمان متطابقان هنا.
     const specBox = boxes()[boxes().length - 1]!;
     await userEvent.click(specBox);
     await userEvent.click(
-      screen.getByRole("option", { name: "علم النفس العيادي" }),
+      screen.getByRole("option", { name: "علم النفس العيادي — admin.levelMaster" }),
     );
 
     await next();
@@ -398,5 +409,159 @@ describe("رأس بطاقة المراجعة", () => {
     const review = screen.getByRole("dialog");
     expect(review).toHaveTextContent("2025/2026");
     expect(review).toHaveTextContent("علم النفس العيادي");
+    expect(review).toHaveTextContent("admin.levelMaster");
+  });
+});
+
+/**
+ * الاسم باللاتينية: للطالب، اختياريّ، يُوحَّد عند مغادرة الحقل، ولا يُقبل
+ * فيه حرفٌ عربيّ — والخطأ يوقف الخطوة الشخصية لا الحفظ بعد خطوتين.
+ */
+describe("الاسم باللاتينية", () => {
+  beforeEach(() => noop.mutate.mockClear());
+
+  it("يظهر للطالب ولا يظهر للأستاذ", () => {
+    const { unmount } = open({ lockedRole: "student" });
+    expect(screen.getByTestId("first-name-latin")).toBeInTheDocument();
+    unmount();
+
+    open({ lockedRole: "professor" });
+    expect(screen.queryByTestId("first-name-latin")).not.toBeInTheDocument();
+  });
+
+  it("يُوحَّد عند مغادرة الحقل: Nour El Houda، BEN ALI", async () => {
+    open({ lockedRole: "student" });
+
+    await userEvent.type(screen.getByTestId("first-name-latin"), "nour el houda");
+    await userEvent.type(screen.getByTestId("last-name-latin"), "ben ali");
+    await userEvent.tab();
+
+    expect(screen.getByTestId("first-name-latin")).toHaveValue("Nour El Houda");
+    expect(screen.getByTestId("last-name-latin")).toHaveValue("BEN ALI");
+  });
+
+  it("وحرفٌ عربيّ فيه يوقف الخطوة الشخصية", async () => {
+    open({ lockedRole: "student" });
+
+    const latin = screen.getByTestId("first-name-latin");
+    await userEvent.type(latin, "يوسف");
+    await userEvent.type(screen.getByPlaceholderText("••••••••"), "secret123");
+    await next();
+
+    expect(currentStep()).toBe("step-personal");
+    // الرسالة تحت الحقل نفسه — ونصّها رهن i18next غير المهيّأة هنا (انظر أعلاه).
+    expect(latin.closest("label")!.querySelector("p")).not.toBeNull();
+  });
+
+  it("ويصل الخادمَ موحَّداً", async () => {
+    open({ lockedRole: "student" });
+    await userEvent.type(screen.getByTestId("first-name-latin"), "youcef");
+    await userEvent.type(screen.getByTestId("last-name-latin"), "hamadi");
+    await userEvent.type(screen.getByPlaceholderText("••••••••"), "secret123");
+    await next();
+
+    await userEvent.type(
+      document.querySelector<HTMLInputElement>('input[name="registrationNumber"]')!,
+      "202039012345",
+    );
+    const boxes = screen.getAllByRole("combobox");
+    await userEvent.click(boxes[0]!);
+    await userEvent.click(screen.getByRole("option", { name: "2025/2026" }));
+    await userEvent.click(boxes[boxes.length - 1]!);
+    await userEvent.click(
+      screen.getByRole("option", { name: "علم النفس العيادي — admin.levelMaster" }),
+    );
+    await next();
+
+    // والمراجعة تعرضه.
+    expect(screen.getByRole("dialog")).toHaveTextContent("Youcef HAMADI");
+
+    await userEvent.click(screen.getByRole("checkbox"));
+    await userEvent.click(screen.getByTestId("wizard-save"));
+
+    await waitFor(() => expect(noop.mutate).toHaveBeenCalledTimes(1));
+    const payload = noop.mutate.mock.calls[0]![0] as Record<string, unknown>;
+    expect(payload.firstNameLatin).toBe("Youcef");
+    expect(payload.lastNameLatin).toBe("HAMADI");
+  });
+});
+
+/**
+ * المستوى يضيّق التخصصات ولا يُحفظ: هو صفةٌ للتخصص، والطالب يُسجَّل في
+ * تخصصٍ لا في مستوى. فالسؤال: هل يضيّق فعلاً، ويتبع الاختيارَ في الاتجاهين،
+ * ولا يصل الخادم؟
+ */
+describe("مستوى التخصص", () => {
+  beforeEach(() => noop.mutate.mockClear());
+
+  async function toAcademic() {
+    open({ lockedRole: "student" });
+    await userEvent.type(screen.getByPlaceholderText("••••••••"), "secret123");
+    await next();
+  }
+  const specBox = () => {
+    const boxes = screen.getAllByRole("combobox");
+    return boxes[boxes.length - 1]!;
+  };
+
+  it("يعرض كلّ مستوى بعدد تخصصاته، ويُطفئ ما لا تخصص له", async () => {
+    await toAcademic();
+
+    expect(screen.getByTestId("level-licence")).toHaveTextContent("1");
+    expect(screen.getByTestId("level-master")).toHaveTextContent("1");
+    expect(screen.getByTestId("level-doctorate")).toBeDisabled();
+  });
+
+  it("ويضيّق القائمة إلى مستواه، والنقر ثانيةً يُعيدها كاملة", async () => {
+    await toAcademic();
+
+    await userEvent.click(screen.getByTestId("level-master"));
+    await userEvent.click(specBox());
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "admin.selectSpecialization",
+      "علم النفس العيادي",
+    ]);
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(screen.getByTestId("level-master"));
+    expect(screen.getByTestId("level-master")).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(specBox());
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+  });
+
+  it("واختيار التخصص يُظهر مستواه، وتغيير المستوى يُسقط تخصصاً من غيره", async () => {
+    await toAcademic();
+
+    await userEvent.click(specBox());
+    await userEvent.click(
+      screen.getByRole("option", { name: "علم النفس العيادي — admin.levelLicence" }),
+    );
+    expect(screen.getByTestId("level-licence")).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.click(screen.getByTestId("level-master"));
+    expect(specBox()).toHaveTextContent("admin.selectSpecialization");
+  });
+
+  it("ولا يصل المستوى إلى الخادم — التخصص وحده يُحفظ", async () => {
+    await toAcademic();
+    await userEvent.type(
+      document.querySelector<HTMLInputElement>('input[name="registrationNumber"]')!,
+      "202039012345",
+    );
+    const boxes = screen.getAllByRole("combobox");
+    await userEvent.click(boxes[0]!);
+    await userEvent.click(screen.getByRole("option", { name: "2025/2026" }));
+    await userEvent.click(screen.getByTestId("level-master"));
+    await userEvent.click(specBox());
+    await userEvent.click(screen.getByRole("option", { name: "علم النفس العيادي" }));
+    await next();
+
+    await userEvent.click(screen.getByRole("checkbox"));
+    await userEvent.click(screen.getByTestId("wizard-save"));
+
+    await waitFor(() => expect(noop.mutate).toHaveBeenCalledTimes(1));
+    const payload = noop.mutate.mock.calls[0]![0] as Record<string, unknown>;
+    expect(payload.specializationId).toBe("11111111-1111-4111-8111-111111111111");
+    expect(payload).not.toHaveProperty("level");
   });
 });

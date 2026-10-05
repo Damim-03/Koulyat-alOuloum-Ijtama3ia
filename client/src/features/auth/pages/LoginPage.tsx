@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useLanguage } from "../../../hooks/use-language";
-import { HelpCircle, GraduationCap, ArrowRight } from "lucide-react";
+import { HelpCircle, ArrowRight } from "lucide-react";
+import universityLogo from "../../../assets/university-logo.png";
 import type { LoginRole } from "../../../types/enums";
 import { PATHS } from "../../../routes/paths";
 import { ROLES } from "../../../config/roles.config";
@@ -10,6 +11,7 @@ import { StudentLoginForm } from "../components/form/student-login-form";
 import { ProfessorLoginForm } from "../components/form/professor-login-form";
 import { HelpDialog } from "../components/help-dialog";
 import { AuthHero } from "../components/auth-hero";
+import { useLoginTexts } from "../hooks/use-login-texts";
 import { AdminLoginForm } from "../components/form/admin-login-form";
 import { useTranslation } from "react-i18next";
 
@@ -26,6 +28,7 @@ export function LoginPage() {
   const { localePath } = useLanguage();
   const [role, setRole] = useState<LoginRole>("student");
   const [helpOpen, setHelpOpen] = useState(false);
+  const { texts, ready } = useLoginTexts();
   const cfg = ROLES[role];
   const ActiveForm = FORMS[role];
 
@@ -55,13 +58,14 @@ export function LoginPage() {
       <section className="flex items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-110 animate-[fadeUp_0.6s_0.12s_both]">
           {/* mobile mini-brand (hero is hidden on small) */}
-          <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <div className="grid size-10 place-items-center rounded-xl bg-linear-to-br from-gold-soft to-gold text-forest-deep">
-              <GraduationCap size={20} strokeWidth={2.2} />
+          <div className="mb-6 flex items-center gap-4 lg:hidden">
+            <div className="grid size-16 shrink-0 place-items-center rounded-2xl bg-[#fbf6ea] p-1.5 shadow-[0_12px_30px_-10px_rgba(26,49,45,0.35)] ring-1 ring-gold/60">
+              <img src={universityLogo} alt={t("hero.subtitle")} className="size-full object-contain" draggable={false} />
             </div>
-            <div>
-              <div className="text-[13px] font-bold text-forest">{t("auth.universityName")}</div>
-              <div className="text-[11px] text-clay">{t("auth.heroSystem")}</div>
+            {/* اسم الجامعة والمنصة كما في لوحة الترحيب — تكتبهما الإدارة. */}
+            <div className={ready ? "" : "invisible"}>
+              <div dir="auto" className="text-[15px] font-bold text-forest">{texts.university}</div>
+              <div dir="auto" className="mt-0.5 text-[12px] font-semibold text-gold">{texts.platform}</div>
             </div>
           </div>
 

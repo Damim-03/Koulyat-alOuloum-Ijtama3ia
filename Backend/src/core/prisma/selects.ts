@@ -18,6 +18,8 @@ export const publicUserSelect = {
   id: true,
   firstName: true,
   lastName: true,
+  firstNameLatin: true,
+  lastNameLatin: true,
   email: true,
   username: true,
   phone: true,
@@ -35,6 +37,8 @@ export const userBadgeSelect = {
   id: true,
   firstName: true,
   lastName: true,
+  firstNameLatin: true,
+  lastNameLatin: true,
   avatarUrl: true,
   gender: true,
 } as const;

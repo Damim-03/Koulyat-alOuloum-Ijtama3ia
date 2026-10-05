@@ -4,6 +4,7 @@ import {
   getPublicTopicController,
   listPublicSpecializationsController,
   listPublicDepartmentsController,
+  getPublicTopicFiltersController,
 } from "./public.controller";
 
 // ⚠️ تحقّق فقط من اسم ملفّ الميدل-وير: استورد authMiddleware من حيث يستورده
@@ -19,6 +20,7 @@ const publicRoutes = Router();
 publicRoutes.use(authMiddleware);
 
 publicRoutes.get("/topics", listPublicTopicsController);
+publicRoutes.get("/topic-filters", getPublicTopicFiltersController);
 publicRoutes.get("/topics/:id", getPublicTopicController);
 publicRoutes.get("/departments", listPublicDepartmentsController);
 publicRoutes.get("/specializations", listPublicSpecializationsController);

@@ -45,6 +45,13 @@ import { UserAvatar } from "../../../../../components/ui/user-avatar";
 import { inputCls, Panel, FieldBox } from "../../form/entity-form";
 import { None } from "../../../../../lib/none";
 import { Select } from "../../../../../components/ui/select";
+import { LevelPicker } from "../../ui/level-picker";
+import { LATIN_NAME, toLatinFirst, toLatinLast } from "../../../../../lib/latin-name";
+import {
+  countByLevel,
+  SPEC_LEVEL_KEY,
+  type SpecLevel,
+} from "../user/user-form-steps";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -57,6 +64,8 @@ interface Props {
 interface EditState {
   firstName: string;
   lastName: string;
+  firstNameLatin: string;
+  lastNameLatin: string;
   email: string;
   phone: string;
   gender: "male" | "female" | "";
@@ -64,6 +73,8 @@ interface EditState {
   facultyId: string;
   departmentId: string;
   filiereId: string;
+  /** فلترٌ لا يُحفظ — المستوى صفةٌ للتخصص. */
+  level: SpecLevel | "";
   specializationId: string;
   academicYearId: string;
   avatarUrl: string;
@@ -88,6 +99,8 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
   const [form, setForm] = useState<EditState>({
     firstName: "",
     lastName: "",
+    firstNameLatin: "",
+    lastNameLatin: "",
     email: "",
     phone: "",
     gender: "",
@@ -95,6 +108,7 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
     facultyId: "",
     departmentId: "",
     filiereId: "",
+    level: "",
     specializationId: "",
     academicYearId: "",
     avatarUrl: "",
@@ -114,6 +128,8 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
       setForm({
         firstName: student.user?.firstName ?? "",
         lastName: student.user?.lastName ?? "",
+        firstNameLatin: student.user?.firstNameLatin ?? "",
+        lastNameLatin: student.user?.lastNameLatin ?? "",
         email: student.user?.email ?? "",
         phone: student.user?.phone ?? "",
         gender: student.user?.gender ?? "",
@@ -121,6 +137,8 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
         facultyId: dept?.faculty?.id ?? dept?.facultyId ?? "",
         departmentId: dept?.id ?? "",
         filiereId: sp?.filiere?.id ?? sp?.filiereId ?? "",
+        // يفتح على مستوى تخصّصه الحالي، فتُرى القائمة التي هو منها.
+        level: sp?.level ?? "",
         specializationId: sp?.id ?? "",
         academicYearId: student.academicYear?.id ?? "",
         avatarUrl: student.user?.avatarUrl ?? "",
@@ -156,12 +174,17 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
       ),
     [filieres, form.departmentId],
   );
-  const specOptions = useMemo(
+  const specsInFiliere = useMemo(
     () =>
       ((specs ?? []) as any[]).filter(
         (s) => !form.filiereId || s.filiereId === form.filiereId,
       ),
     [specs, form.filiereId],
+  );
+  const levelCounts = useMemo(() => countByLevel(specsInFiliere), [specsInFiliere]);
+  const specOptions = useMemo(
+    () => specsInFiliere.filter((s) => !form.level || s.level === form.level),
+    [specsInFiliere, form.level],
   );
 
   useBodyScrollLock(open);
@@ -191,6 +214,19 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
   }
   function onFiliere(filiereId: string) {
     setForm((f) => ({ ...f, filiereId, specializationId: "" }));
+  }
+  /** تخصصٌ من مستوى آخر لا يبقى مختاراً تحت فلترٍ يُخفيه. */
+  function onLevel(level: SpecLevel | "") {
+    setForm((f) => {
+      const picked = specsInFiliere.find((s) => s.id === f.specializationId);
+      const keep = !level || !picked || picked.level === level;
+      return { ...f, level, specializationId: keep ? f.specializationId : "" };
+    });
+  }
+  /** والعكس: اختيار التخصص يُظهر مستواه في الأزرار. */
+  function onSpecialization(specializationId: string) {
+    const picked = specOptions.find((s) => s.id === specializationId);
+    setForm((f) => ({ ...f, specializationId, level: picked?.level ?? f.level }));
   }
 
   function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -229,6 +265,15 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
       setError(t("validation.passwordMinLong"));
       return;
     }
+    const latinFirst = toLatinFirst(form.firstNameLatin);
+    const latinLast = toLatinLast(form.lastNameLatin);
+    if (
+      (latinFirst && !LATIN_NAME.test(latinFirst)) ||
+      (latinLast && !LATIN_NAME.test(latinLast))
+    ) {
+      setError(t("validation.latinOnly"));
+      return;
+    }
 
     // أرسِل الحقول المملوءة فقط (كلها اختيارية في updateStudentSchema).
     const data: Record<string, unknown> = {};
@@ -246,6 +291,8 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
     clearable("phone", form.phone, student!.user?.phone ?? "");
     clearable("avatarUrl", form.avatarUrl, student!.user?.avatarUrl ?? "");
     clearable("gender", form.gender, student!.user?.gender ?? "");
+    clearable("firstNameLatin", latinFirst, student!.user?.firstNameLatin ?? "");
+    clearable("lastNameLatin", latinLast, student!.user?.lastNameLatin ?? "");
 
     if (form.registrationNumber.trim())
       data.registrationNumber = form.registrationNumber.trim();
@@ -394,7 +441,33 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
                 </FieldBox>
               </div>
 
-              <FieldBox label={t("admin.gender")} icon={Users}>
+              {/* الاسم باللاتينية — يُوحَّد عند مغادرة الحقل ليُرى ما سيُحفظ. */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <FieldBox label={t("admin.firstNameLatin")} icon={User}>
+                  <input
+                    value={form.firstNameLatin}
+                    onChange={(e) => set("firstNameLatin", e.target.value)}
+                    onBlur={(e) => set("firstNameLatin", toLatinFirst(e.target.value))}
+                    dir="ltr"
+                    autoComplete="off"
+                    placeholder="Youcef"
+                    className={inputCls}
+                  />
+                </FieldBox>
+                <FieldBox label={t("admin.lastNameLatin")} icon={User}>
+                  <input
+                    value={form.lastNameLatin}
+                    onChange={(e) => set("lastNameLatin", e.target.value)}
+                    onBlur={(e) => set("lastNameLatin", toLatinLast(e.target.value))}
+                    dir="ltr"
+                    autoComplete="off"
+                    placeholder="HAMADI"
+                    className={inputCls}
+                  />
+                </FieldBox>
+              </div>
+
+              <FieldBox label={t("admin.gender")} icon={Users} group>
                 <GenderSelect
                   value={form.gender || null}
                   onChange={(next) => set("gender", next ?? "")}
@@ -535,13 +608,23 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
                 />
               </FieldBox>
 
+              <FieldBox label={t("admin.specializationLevel")} icon={GraduationCap}>
+                <LevelPicker value={form.level} counts={levelCounts} onChange={onLevel} />
+              </FieldBox>
+
               <FieldBox label={t("admin.specializationLabelAlt")} icon={Layers} required>
                 <Select
                   value={form.specializationId}
-                  onChange={(v) => set("specializationId", v)}
+                  onChange={(v) => onSpecialization(v)}
                   options={[
                     { value: "", label: t("admin.chooseSpecialization") },
-                    ...specOptions.map((s) => ({ value: s.id, label: s.name })),
+                    // بلا مستوى مختار قد يتكرّر الاسم بين مستويين، فيُذكر.
+                    ...specOptions.map((s) => ({
+                      value: s.id,
+                      label: form.level
+                        ? s.name
+                        : `${s.name} — ${t(SPEC_LEVEL_KEY[s.level as SpecLevel])}`,
+                    })),
                   ]}
                 />
               </FieldBox>
@@ -556,6 +639,7 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
                     )?.name,
                     deptOptions.find((d) => d.id === form.departmentId)?.name,
                     filiereOptions.find((f) => f.id === form.filiereId)?.name,
+                    form.level ? t(SPEC_LEVEL_KEY[form.level]) : undefined,
                     specOptions.find((s) => s.id === form.specializationId)
                       ?.name,
                   ]

@@ -17,6 +17,7 @@
  */
 import request from "supertest";
 import app from "../../src/app";
+import ExcelJS from "exceljs";
 import { prisma } from "../../src/core/prisma/client";
 import {
   seed,
@@ -81,7 +82,7 @@ async function scheduled(title: string, body: Record<string, unknown> = {}) {
 
 beforeAll(async () => {
   await teardown();
-  f = await seed(30);
+  f = await seed(60);
 
   adminToken = (
     await request(app)
@@ -382,6 +383,112 @@ describe("اللجنة", () => {
 // ═══ التحديث والحذف ═══
 //
 
+describe("اللجنة — قواعدها تُقال بلسانها", () => {
+  it("رئيسان ⇒ 400 برسالةٍ تقول ذلك", async () => {
+    const { group } = await project("DEF two-presidents");
+    const res = await as(
+      request(app)
+        .post("/api/admin/defenses")
+        .send({
+          groupId: group.id,
+          date: soon(),
+          room: `${TAG}-P2`,
+          committee: [
+            { professorId: f.professor.id, role: "president" },
+            { professorId: f.professor2.id, role: "president" },
+          ],
+        }),
+    ).expect(400);
+    expect(JSON.stringify(res.body)).toContain("رئيس");
+  });
+
+  it("وأستاذٌ مكرّر ⇒ 400 يقول «مكرّر»", async () => {
+    const { group } = await project("DEF dup-message");
+    const res = await as(
+      request(app)
+        .post("/api/admin/defenses")
+        .send({
+          groupId: group.id,
+          date: soon(),
+          room: `${TAG}-P3`,
+          committee: [
+            { professorId: f.professor.id, role: "president" },
+            { professorId: f.professor.id, role: "examiner" },
+          ],
+        }),
+    ).expect(400);
+    expect(JSON.stringify(res.body)).toContain("مكرّر");
+  });
+
+  it("ولجنةٌ مرفوضة في التحديث لا تمحو اللجنة القائمة", async () => {
+    const { defense } = await scheduled("DEF atomic-committee", {
+      committee: [{ professorId: f.professor.id, role: "president" }],
+    });
+    await as(
+      request(app)
+        .patch(`/api/admin/defenses/${defense.id}`)
+        .send({
+          committee: [
+            { professorId: "00000000-0000-0000-0000-000000000000", role: "examiner" },
+          ],
+        }),
+    ).expect(400);
+    const seats = await prisma.defenseCommitteeMember.findMany({
+      where: { defenseId: defense.id },
+    });
+    expect(seats).toHaveLength(1);
+  });
+});
+
+describe("المناقشة تُعلم أهلها", () => {
+  it("الجدولة تصل الطالب والمشرف وعضو اللجنة، كلٌّ برابط فضائه", async () => {
+    const { group, member } = await project("DEF notify-create");
+    await as(
+      request(app)
+        .post("/api/admin/defenses")
+        .send({
+          groupId: group.id,
+          date: soon(),
+          room: `${TAG}-N1`,
+          committee: [{ professorId: f.professor2.id, role: "examiner" }],
+        }),
+    ).expect(201);
+
+    const studentUser = (await prisma.student.findUnique({ where: { id: member.id } }))!.userId;
+    const notes = await prisma.notification.findMany({
+      where: {
+        type: "defense_scheduled",
+        message: { contains: `${TAG}-N1` },
+      },
+    });
+    const byUser = new Map(notes.map((n) => [n.userId, n.link]));
+    expect(byUser.get(studentUser)).toBe("/student/project");
+    expect(byUser.get(f.professor.userId)).toBe(`/professor/groups/${group.id}`);
+    expect(byUser.get(f.professor2.userId)).toBe("/professor");
+  });
+
+  it("وتغيير القاعة يُعلَن، وتصحيح الملاحظة لا", async () => {
+    const { defense } = await scheduled("DEF notify-update");
+    const count = () =>
+      prisma.notification.count({ where: { title: "تغيّر موعد المناقشة", userId: f.professor.userId } });
+    const before = await count();
+
+    await as(request(app).patch(`/api/admin/defenses/${defense.id}`).send({ notes: "x" })).expect(200);
+    expect(await count()).toBe(before);
+
+    await as(
+      request(app).patch(`/api/admin/defenses/${defense.id}`).send({ room: `${TAG}-N2` }),
+    ).expect(200);
+    expect(await count()).toBe(before + 1);
+  });
+
+  it("والدرجة تُمحى بـ null", async () => {
+    const { defense } = await scheduled("DEF clear-grade", { grade: 14 });
+    await as(request(app).patch(`/api/admin/defenses/${defense.id}`).send({ grade: null })).expect(200);
+    expect((await prisma.defense.findUnique({ where: { id: defense.id } }))!.grade).toBeNull();
+  });
+});
+
 describe("PATCH /api/admin/defenses/:id", () => {
   it("يُغيّر الموعد والقاعة والحالة", async () => {
     const { defense } = await scheduled("DEF update");
@@ -527,5 +634,153 @@ describe("المناقشة تحمي المشروع من الفسخ", () => {
     );
 
     await as(request(app).delete(`/api/admin/projects/${group.id}`)).expect(200);
+  });
+});
+
+
+//
+// ═══ الجدول: البحث والتصفية والأرقام والتعارض والتصدير ═══
+//
+
+describe("GET /api/admin/defenses — التصفية والأرقام", () => {
+  it("البحث بعنوان الموضوع وبالقاعة يصل الخادم فعلاً", async () => {
+    const { group } = await scheduled("DEF search-needle", { room: `${TAG}-NEEDLE` });
+    const byTitle = await as(request(app).get("/api/admin/defenses").query({ search: "search-needle" })).expect(200);
+    expect(byTitle.body.items.map((d: any) => d.groupId)).toContain(group.id);
+    const byRoom = await as(request(app).get("/api/admin/defenses").query({ search: `${TAG}-NEEDLE` })).expect(200);
+    expect(byRoom.body.items.every((d: any) => d.room === `${TAG}-NEEDLE` || d.group.topic.title.includes("NEEDLE"))).toBe(true);
+    expect(byRoom.body.items.length).toBeGreaterThan(0);
+  });
+
+  it("«فات موعدها» = مبرمجة وتاريخها مضى، و«بلا لجنة» تُصفّى", async () => {
+    const { group } = await project("DEF stale");
+    await as(
+      request(app)
+        .post("/api/admin/defenses")
+        .send({ groupId: group.id, date: new Date(Date.now() - 2 * 86_400_000).toISOString(), room: `${TAG}-OLD` }),
+    ).expect(201);
+
+    const stale = await as(request(app).get("/api/admin/defenses").query({ when: "stale", limit: 100 })).expect(200);
+    expect(stale.body.items.map((d: any) => d.groupId)).toContain(group.id);
+    expect(stale.body.items.every((d: any) => d.status === "scheduled" && new Date(d.date) < new Date())).toBe(true);
+
+    const noJury = await as(request(app).get("/api/admin/defenses").query({ issue: "noCommittee", limit: 100 })).expect(200);
+    expect(noJury.body.items.map((d: any) => d.groupId)).toContain(group.id);
+    expect(noJury.body.items.every((d: any) => d.committee.length === 0)).toBe(true);
+  });
+
+  it("والأرقام من الجدول كلّه لا من الصفحة", async () => {
+    const res = await as(request(app).get("/api/admin/defenses").query({ limit: 1 })).expect(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.stats.total).toBe(await prisma.defense.count());
+    expect(res.body.stats.stale).toBeGreaterThanOrEqual(1);
+    expect(typeof res.body.stats.readyToSchedule).toBe("number");
+  });
+
+  it("والمدّة تُحفظ، ونهاية الجلسة تُحسب منها", async () => {
+    const { defense } = await scheduled("DEF duration", { durationMinutes: 90 });
+    expect(defense.durationMinutes).toBe(90);
+    const res = await as(request(app).get("/api/admin/defenses").query({ search: "DEF duration" })).expect(200);
+    const d = res.body.items[0];
+    expect(new Date(d.endsAt).getTime() - new Date(d.date).getTime()).toBe(90 * 60_000);
+  });
+});
+
+describe("التعارض: القاعة نفسها أو عضو اللجنة نفسه في وقتٍ متداخل", () => {
+  const at = new Date(Date.now() + 30 * 86_400_000);
+  at.setHours(9, 0, 0, 0);
+
+  it("يُكشف قبل الحفظ، ولا يتعارض الموعد مع نفسه", async () => {
+    const { defense } = await scheduled("DEF clash-a", {
+      date: at.toISOString(),
+      room: `${TAG}-CLASH`,
+      durationMinutes: 60,
+      committee: [{ professorId: f.professor2.id, role: "president" }],
+    });
+
+    // 09:30 في القاعة نفسها ⇒ تعارض قاعة
+    const half = new Date(at.getTime() + 30 * 60_000).toISOString();
+    const room = await as(request(app).get("/api/admin/defenses/conflicts").query({ date: half, room: `${TAG}-clash` })).expect(200);
+    expect(room.body.room.map((c: any) => c.id)).toContain(defense.id);
+
+    // قاعةٌ أخرى، لكن بعضو اللجنة نفسه ⇒ تعارض أستاذ
+    const prof = await as(
+      request(app).get("/api/admin/defenses/conflicts").query({ date: half, room: `${TAG}-OTHER`, professorIds: f.professor2.id }),
+    ).expect(200);
+    expect(prof.body.room).toHaveLength(0);
+    expect(prof.body.professors[0]).toMatchObject({ id: defense.id, professorId: f.professor2.id });
+
+    // 10:00 تماماً ⇒ تتلو الأولى ولا تتعارض معها
+    const after = new Date(at.getTime() + 60 * 60_000).toISOString();
+    const none = await as(request(app).get("/api/admin/defenses/conflicts").query({ date: after, room: `${TAG}-CLASH` })).expect(200);
+    expect(none.body.room).toHaveLength(0);
+
+    // وتعديل المناقشة نفسها لا يتعارض معها
+    const self = await as(
+      request(app).get("/api/admin/defenses/conflicts").query({ date: at.toISOString(), room: `${TAG}-CLASH`, excludeId: defense.id }),
+    ).expect(200);
+    expect(self.body.room).toHaveLength(0);
+  });
+
+  it("والقائمة تحمل التعارض على المناقشتين معاً", async () => {
+    const other = await scheduled("DEF clash-b", {
+      date: new Date(at.getTime() + 15 * 60_000).toISOString(),
+      room: `${TAG}-CLASH`,
+    });
+    const res = await as(request(app).get("/api/admin/defenses").query({ search: "DEF clash", limit: 100 })).expect(200);
+    const b = res.body.items.find((d: any) => d.id === other.defense.id);
+    expect(b.clashes.room.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("GET /api/admin/defenses/export", () => {
+  it("يُعيد ملف Excel بالجدول المُصفّى", async () => {
+    const res = await as(request(app).get("/api/admin/defenses/export").query({ search: "DEF" }))
+      .buffer(true)
+      .parse((r, cb) => {
+        const chunks: Buffer[] = [];
+        r.on("data", (c: Buffer) => chunks.push(c));
+        r.on("end", () => cb(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect(res.headers["content-type"]).toContain("spreadsheetml");
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(res.body as Buffer);
+    const ws = wb.getWorksheet("المناقشات")!;
+    expect(ws.getRow(1).getCell(6).value).toBe("الموضوع");
+    expect(ws.rowCount).toBeGreaterThan(1);
+  });
+
+  it("والتصدير والتعارض للإدارة وحدها", async () => {
+    await request(app).get("/api/admin/defenses/export").expect(401);
+  });
+});
+
+
+describe("GET /api/admin/defenses/:id — التفاصيل", () => {
+  it("تحمل الفريق واللجنة والتقدّم ويوم القاعة، بلا كلمات سرّ", async () => {
+    const at = new Date(Date.now() + 40 * 86_400_000);
+    at.setHours(10, 0, 0, 0);
+    const first = await scheduled("DEF detail-a", {
+      date: at.toISOString(),
+      room: `${TAG}-DAY`,
+      committee: [{ professorId: f.professor2.id, role: "president" }],
+    });
+    const later = await scheduled("DEF detail-b", {
+      date: new Date(at.getTime() + 2 * 60 * 60_000).toISOString(),
+      room: `${TAG}-DAY`,
+    });
+
+    const res = await as(request(app).get(`/api/admin/defenses/${first.defense.id}`)).expect(200);
+    const d = res.body.defense;
+    expect(d.group.topic.title).toContain("DEF detail-a");
+    expect(d.group.members[0].student.registrationNumber).toBeTruthy();
+    expect(d.committee[0].professor.user.firstName).toBeTruthy();
+    expect(d.progress).toEqual({ total: 0, completed: 0, late: 0, submissions: 0 });
+    expect(d.roomDay.map((r: any) => r.id)).toEqual([first.defense.id, later.defense.id]);
+    expect(d.roomDay[0].current).toBe(true);
+    expect(JSON.stringify(res.body)).not.toContain("password");
+
+    await as(request(app).get("/api/admin/defenses/00000000-0000-0000-0000-000000000000")).expect(404);
   });
 });

@@ -2,6 +2,7 @@ import { client } from "../../../lib/api/client";
 import type {
   Topic,
   ProjectGroup,
+  ProjectGroupListItem,
   Milestone,
   SpecializationLite,
   AcademicYearLite,
@@ -44,7 +45,7 @@ export const professorApi = {
 
   // ── Groups ──
   listGroups: () =>
-    client.get<{ groups: ProjectGroup[] }>(`${BASE}/groups`).then((r) => r.data.groups),
+    client.get<{ groups: ProjectGroupListItem[] }>(`${BASE}/groups`).then((r) => r.data.groups),
   getGroup: (groupId: string) =>
     client
       .get<{ group: ProjectGroup }>(`${BASE}/groups/${groupId}`)

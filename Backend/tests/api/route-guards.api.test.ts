@@ -34,6 +34,13 @@ const PUBLIC_ON_PURPOSE = new Set([
   "POST /api/auth/professor/login",
   "POST /api/auth/admin/login",
   "POST /api/auth/refresh",
+  // صور الصفحة الرئيسية: تُعرض للزائر قبل أن يسجّل دخوله.
+  "GET /api/site/home-slides",
+  // وأخبارها وكلمة رئيس القسم، للسبب نفسه.
+  "GET /api/site/news",
+  "GET /api/site/director-message",
+  "GET /api/site/about-page",
+  "GET /api/site/login-page",
 ]);
 
 /** الدور المتوقَّع لكل بادئة. `public` و`common` يقبلان أي مستخدم مصادَق. */
@@ -44,6 +51,7 @@ const OWNER_ROLE: Record<string, "admin" | "professor" | "student" | "any"> = {
   auth: "any",
   common: "any",
   public: "any",
+  site: "any",
   messages: "any",
 };
 

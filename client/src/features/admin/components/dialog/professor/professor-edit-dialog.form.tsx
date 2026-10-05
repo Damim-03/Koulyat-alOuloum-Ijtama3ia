@@ -389,7 +389,7 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
                 </FieldBox>
               </div>
 
-              <FieldBox label={t("admin.gender")} icon={Users}>
+              <FieldBox label={t("admin.gender")} icon={Users} group>
                 <GenderSelect
                   value={form.gender || null}
                   onChange={(next) => set("gender", next ?? "")}

@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowRight,
   Mail,
   Phone,
   AtSign,
@@ -14,7 +13,6 @@ import {
   Activity,
   BadgeCheck,
   ShieldQuestion,
-  KeyRound,
   Ban,
   CheckCircle2,
   Trash2,
@@ -26,8 +24,6 @@ import {
   Building2,
   Layers,
   Network,
-  ChevronLeft,
-  Sparkles,
   Pencil,
 } from "lucide-react";
 import {
@@ -55,9 +51,22 @@ import {
   toErrorInfo,
   type ErrorInfo,
 } from "../../../../components/dialog/error-dialog";
-import { isNone, noneText } from "../../../../lib/none-text";
+import { noneText } from "../../../../lib/none-text";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { DangerConfirm } from "../../../../components/dialog/danger-confirm";
+import { otherScriptName, personName } from "../../../../lib/person-name";
+import { HeaderTrail } from "../../components/ui/hierarchy-header";
+import {
+  AcademicPath,
+  Field,
+  FieldGrid,
+  HeroButton,
+  HeroChip,
+  HeroFact,
+  HeroStat,
+  ProfileHero,
+  RecordCard,
+} from "../../components/ui/profile-kit";
 
 // Keys, not copy: built once at import time.
 const ROLE_LABEL_KEY: Record<string, string> = {
@@ -67,7 +76,7 @@ const ROLE_LABEL_KEY: Record<string, string> = {
 };
 
 const fullName = (u: UserDetail) =>
-  [u.firstName, u.lastName].filter(Boolean).join(" ") ||
+  personName(u) ||
   u.username ||
   u.email ||
   "\u2014";
@@ -133,7 +142,7 @@ function completeness(u: UserDetail): number {
   return Math.round((filled / fields.length) * 100);
 }
 
-/* ── حلقة تقدّم دائرية (SVG خالص) ───────────────────────────── */
+/* ── حلقة تقدّم دائرية (SVG خالص) — على الواجهة الداكنة ─────── */
 function Ring({ value }: { value: number }) {
   const r = 17;
   const c = 2 * Math.PI * r;
@@ -148,7 +157,7 @@ function Ring({ value }: { value: number }) {
           r={r}
           fill="none"
           strokeWidth="4"
-          className="stroke-forest/10"
+          className="stroke-white/15"
         />
         <circle
           cx="22"
@@ -157,101 +166,12 @@ function Ring({ value }: { value: number }) {
           fill="none"
           strokeWidth="4"
           strokeLinecap="round"
-          className="stroke-gold transition-[stroke-dashoffset] duration-700"
+          className="stroke-gold-soft transition-[stroke-dashoffset] duration-700"
           strokeDasharray={c}
           strokeDashoffset={off}
         />
       </svg>
     </div>
-  );
-}
-
-/* ── دائرة أيقونة ملوّنة ─────────────────────────────────────── */
-function iconChip(Icon: typeof Mail, tint: string) {
-  return (
-    <div
-      className={`grid size-11 shrink-0 place-items-center rounded-full ${tint}`}
-    >
-      <Icon size={20} />
-    </div>
-  );
-}
-
-/* ── بطاقة إحصائية ──────────────────────────────────────────── */
-function StatTile({
-  leading,
-  value,
-  label,
-}: {
-  leading: React.ReactNode;
-  value: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-forest/10 bg-cream-card p-4 shadow-[0_4px_20px_rgba(38,66,61,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(38,66,61,0.10)]">
-      {leading}
-      <div className="min-w-0">
-        <div className="truncate font-serif text-lg font-bold text-forest">
-          {value}
-        </div>
-        <p className="text-[11px] text-clay">{label}</p>
-      </div>
-    </div>
-  );
-}
-
-/* ── labeled info row ─────────────────────────────────────── */
-function Info({
-  icon: Icon,
-  label,
-  value,
-  ltr,
-  valueClass,
-}: {
-  icon: typeof Mail;
-  label: string;
-  value?: string | null;
-  ltr?: boolean;
-  /** لونٌ للقيمة حين تكون حالةً لا نصّاً — كالتوثيق. */
-  valueClass?: string;
-}) {
-  // ويُقارَن بالنصّ أيضاً لا بالفراغ وحده: مُنسّقات التواريخ تُرجع
-  // «لا يوجد» جاهزةً، فتصل إلى هنا قيمةً غير فارغة.
-  const empty = isNone(value);
-
-  return (
-    <div className="flex items-start gap-3 rounded-xl bg-cream-2 px-4 py-3 transition hover:bg-forest/5">
-      <Icon size={16} className="mt-0.5 shrink-0 text-clay" />
-      <div className="min-w-0">
-        <p className="text-[11px] text-clay">{label}</p>
-        <p
-          className={`truncate text-sm ${
-            empty ? "text-clay/75" : `font-medium ${valueClass ?? "text-forest"}`
-          }`}
-          dir={ltr ? "ltr" : undefined}
-        >
-          {value || noneText()}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/* ── عنوان قسم بأيقونة داخل رقاقة ───────────────────────────── */
-function SectionTitle({
-  icon: Icon,
-  children,
-}: {
-  icon: typeof Mail;
-  children: React.ReactNode;
-}) {
-  return (
-    <h3 className="mb-4 flex items-center gap-2.5 font-serif text-base font-bold text-forest">
-      <span className="grid size-9 place-items-center rounded-xl bg-soft-sage/30 text-forest">
-        <Icon size={17} />
-      </span>
-      {children}
-    </h3>
   );
 }
 
@@ -261,18 +181,22 @@ const fieldCls =
 
 function Labeled({
   label,
+  group,
   children,
 }: {
   label: string;
+  /** Several controls (the gender's buttons): a `<label>` would click the first. */
+  group?: boolean;
   children: React.ReactNode;
 }) {
+  const Tag = group ? "div" : "label";
   return (
-    <label className="block">
+    <Tag className="block" role={group ? "group" : undefined} aria-label={group ? label : undefined}>
       <span className="mb-1 block text-[11px] font-medium text-clay">
         {label}
       </span>
       {children}
-    </label>
+    </Tag>
   );
 }
 
@@ -530,294 +454,155 @@ export function AdminUserDetailPage() {
     !updateUser.isPending &&
     !resetPassword.isPending;
 
-  // سلسلة المسار الأكاديمي (للطلبة) — تُعرض فقط عند توفّر أي مستوى.
-  const pathChain = [
-    faculty?.name,
-    dept?.name,
-    filiere?.name,
-    spec?.name,
-  ].filter(Boolean) as string[];
+  const none = translate("common.none");
+  const other = otherScriptName(user);
+  const roleLabel = t(ROLE_LABEL_KEY[user.role]) ?? user.role;
+  // An account with no academic path (an administrator) has a short right
+  // column; the activity moves there, so the two columns end together.
+  const hasPath = !!(faculty || dept || filiere || spec);
+  const activityCard = (
+    <RecordCard icon={Clock} title={t("admin.profile.activity")} className="flex-1">
+      <FieldGrid cols={1}>
+        <Field icon={Clock} label={t("admin.lastSignIn")} value={arDateTime(user.lastLoginAt)} />
+        <Field icon={CalendarDays} label={t("pro.createdAt")} value={arDate(user.createdAt)} />
+      </FieldGrid>
+    </RecordCard>
+  );
 
   return (
     <div className="font-body space-y-6">
-      {/* back */}
-      <button
-        onClick={() => navigate(usersPath)}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-clay transition hover:text-forest"
-      >
-        <ArrowRight size={16} className="ltr:rotate-180" />{t("admin.backToUsersList")}</button>
-
-      {/* ── HERO ── */}
-      <div className="relative overflow-hidden rounded-2xl bg-linear-to-l from-forest-deep to-forest p-6 text-cream shadow-[0_10px_40px_rgba(38,66,61,0.20)]">
-        {/* decorative glows */}
-        <div className="pointer-events-none absolute -right-12 -top-16 size-44 rounded-full bg-cream/5" />
-        <div className="pointer-events-none absolute -bottom-16 left-24 size-48 rounded-full bg-gold/10 blur-2xl" />
-        <Sparkles
-          size={18}
-          className="pointer-events-none absolute left-6 top-6 text-gold/60"
-        />
-
-        <div className="relative flex flex-wrap items-center gap-5">
-          {user.avatarUrl ? (
-            <img
-              src={user.avatarUrl}
-              alt={fullName(user)}
-              className="h-24 w-[4.67rem] rounded-xl object-cover ring-4 ring-cream/20"
-            />
-          ) : (
-            <div className="grid h-24 w-[4.67rem] place-items-center rounded-xl bg-cream/15 text-2xl font-bold text-cream ring-4 ring-cream/20">
-              {(user.firstName?.[0] ?? "") + (user.lastName?.[0] ?? "") ||
-                "\u061f"}
-            </div>
-          )}
-
-          <div className="min-w-0 flex-1">
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <h1 className="font-serif text-2xl font-bold">
-                {fullName(user)}
-              </h1>
-              {user.isVerified && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-100 ring-1 ring-emerald-300/30">
-                  <BadgeCheck size={12} />{t("admin.verified")}</span>
-              )}
-            </div>
-            {user.username && (
-              <p className="text-sm text-cream/70" dir="ltr">
-                @{user.username}
-              </p>
+      <ProfileHero
+        trail={
+          <HeaderTrail
+            crumbs={[{ label: t("dash.users"), to: "/admin/users" }, { label: fullName(user) }]}
+            backLabel={t("admin.backToUsersList")}
+            backTo="/admin/users"
+          />
+        }
+        avatar={<UserAvatar user={user} width={96} height={124} radius="rounded-2xl" tone="gold" className="shadow-xl ring-4 ring-[color:var(--t-brand)]" />}
+        active={isActive}
+        activeLabel={isActive ? t("admin.statusActive") : t("admin.statusSuspended")}
+        eyebrow={t(`admin.profile.eyebrow_${isBase ? "admin" : user.role}`)}
+        name={fullName(user)}
+        otherName={other || undefined}
+        chips={
+          <>
+            <HeroChip icon={Shield} tone="gold">
+              {roleLabel}
+            </HeroChip>
+            <HeroChip icon={isActive ? CheckCircle2 : Ban} tone={isActive ? "emerald" : "rose"}>
+              {isActive ? t("admin.statusActive") : t("admin.statusSuspended")}
+            </HeroChip>
+            {user.isVerified && (
+              <HeroChip icon={BadgeCheck} tone="sky">
+                {t("admin.verified")}
+              </HeroChip>
             )}
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-cream/15 px-3 py-1 text-xs font-semibold text-cream ring-1 ring-cream/20">
-                <Shield size={13} />
-                {t(ROLE_LABEL_KEY[user.role]) ?? user.role}
-              </span>
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
-                  isActive
-                    ? "bg-emerald-400/20 text-emerald-100 ring-emerald-300/30"
-                    : "bg-red-400/20 text-red-100 ring-red-300/30"
-                }`}
-              >
-                {isActive ? <CheckCircle2 size={13} /> : <Ban size={13} />}
-                {isActive ? t("admin.statusActive") : t("admin.statusSuspended")}
-              </span>
-              {user.email && (
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full bg-cream/10 px-3 py-1 text-xs text-cream/80"
-                  dir="ltr"
-                >
-                  <Mail size={13} /> {user.email}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── STATS STRIP ── */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile
-          leading={<Ring value={pct} />}
-          value={`${pct}%`}
-          label={t("admin.profileCompletion")}
-        />
-        <StatTile
-          leading={iconChip(CalendarClock, "bg-soft-sage/30 text-forest")}
-          value={t("admin.daysCount", { count: age })}
-          label={t("admin.memberSince")}
-        />
-        <StatTile
-          leading={iconChip(Activity, "bg-gold/15 text-gold")}
-          value={relLogin(user.lastLoginAt)}
-          label={t("admin.lastSignIn")}
-        />
-        <StatTile
-          leading={iconChip(
-            BadgeCheck,
-            user.isVerified
-              ? "bg-emerald-100 text-emerald-600"
-              : "bg-gray-100 text-gray-400",
-          )}
-          value={user.isVerified ? t("admin.verified") : t("admin.unverified")}
-          label={t("admin.verificationStatus")}
-        />
-      </div>
-
-      {/* ── INFO ── */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* contact */}
-        <div className="rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-          <SectionTitle icon={Mail}>{t("admin.contactInfo")}</SectionTitle>
-          <div className="space-y-2">
-            <Info
-              icon={Mail}
-              label={t("admin.email")}
-              value={user.email}
-              ltr
-            />
-            <Info icon={Phone} label={t("footer.phone")} value={user.phone} ltr />
-            <Info
-              icon={AtSign}
-              label={t("admin.username")}
-              value={user.username}
-              ltr
-            />
-          </div>
-        </div>
-
-        {/* account / academic */}
-        <div className="rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-          <SectionTitle icon={Shield}>{t("admin.accountInfo")}</SectionTitle>
-
-          {/* academic path chain (students) */}
-          {user.student && pathChain.length > 0 && (
-            <div className="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl bg-cream-2 px-4 py-3">
-              {pathChain.map((name, i) => (
-                <span key={i} className="flex items-center gap-1.5">
-                  <span
-                    className={`text-xs ${
-                      i === pathChain.length - 1
-                        ? "font-semibold text-sage"
-                        : "text-clay"
-                    }`}
-                  >
-                    {name}
-                  </span>
-                  {i < pathChain.length - 1 && (
-                    <ChevronLeft size={11} className="text-clay/40 ltr:rotate-180" />
-                  )}
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Info
-              icon={Shield}
-              label={t("admin.role")}
-              value={t(ROLE_LABEL_KEY[user.role]) ?? user.role}
-            />
-
-            {/*
-              التوثيق كان في «معلومات التواصل» وهو ليس وسيلة تواصل، وكان
-              الصفّ الوحيد بلا عنوانٍ فوقه بين صفوفٍ كلّها «عنوانٌ ثم قيمة»
-              — فبدا دخيلاً. وهو هنا حالةُ حسابٍ إلى جانب الدور.
-            */}
-            <Info
+            {user.username && (
+              <HeroChip icon={AtSign} ltr>
+                {user.username}
+              </HeroChip>
+            )}
+          </>
+        }
+        facts={
+          <>
+            {user.email && <HeroFact icon={Mail} value={user.email} ltr copy={user.email} />}
+            {user.phone && <HeroFact icon={Phone} value={user.phone} ltr copy={user.phone} />}
+          </>
+        }
+        actions={
+          <>
+            <HeroButton
+              icon={Pencil}
+              variant="primary"
+              onClick={isBase ? openEdit : () => setModal("edit")}
+              disabled={(isProfessor && !fullProfessor) || (isStudent && !fullStudent)}
+            >
+              {t("admin.editData")}
+            </HeroButton>
+            <HeroButton icon={user.isVerified ? ShieldQuestion : BadgeCheck} variant={user.isVerified ? "glass" : "positive"} onClick={() => setModal("verify")}>
+              {user.isVerified ? t("admin.unverifyAccount") : t("admin.verifyAccount")}
+            </HeroButton>
+            <HeroButton icon={isActive ? Ban : CheckCircle2} variant={isActive ? "danger" : "positive"} onClick={() => setModal("status")}>
+              {isActive ? t("admin.suspendAccount") : t("admin.activateAccount")}
+            </HeroButton>
+            <HeroButton icon={Trash2} variant="danger" onClick={() => setModal("delete")}>
+              {t("admin.deleteUser")}
+            </HeroButton>
+          </>
+        }
+        stats={
+          <>
+            <HeroStat icon={Activity} label={t("admin.profileCompletion")} value={`${pct}%`} leading={<Ring value={pct} />} />
+            <HeroStat icon={CalendarClock} label={t("admin.memberSince")} value={t("admin.daysCount", { count: age })} tone="sky" compact />
+            <HeroStat icon={Activity} label={t("admin.lastSignIn")} value={relLogin(user.lastLoginAt)} tone="gold" compact />
+            <HeroStat
               icon={BadgeCheck}
               label={t("admin.verificationStatus")}
-              value={
-                user.isVerified ? t("admin.verified") : t("admin.unverified")
-              }
-              valueClass={user.isVerified ? "text-emerald-600" : "text-clay"}
+              value={user.isVerified ? t("admin.verified") : t("admin.unverified")}
+              tone={user.isVerified ? "emerald" : "glass"}
+              compact
             />
+          </>
+        }
+      />
 
-            {user.student && (
-              <>
-                <Info
-                  icon={IdCardIcon}
-                  label={t("pro.regNumber")}
-                  value={user.student.registrationNumber}
-                  ltr
-                />
-                {spec && (
-                  <Info icon={Layers} label={t("admin.specializationLabelAlt")} value={spec.name} />
-                )}
-                {filiere && (
-                  <Info icon={Network} label={t("admin.filiere")} value={filiere.name} />
-                )}
-                {user.student.academicYear && (
-                  <Info
-                    icon={CalendarDays}
-                    label={t("pro.academicYear")}
-                    value={user.student.academicYear.title}
-                  />
-                )}
-              </>
-            )}
-
-            {user.professor && (
-              <>
-                <Info
-                  icon={Hash}
-                  label={t("admin.employeeNumber")}
-                  value={user.professor.employeeNumber}
-                  ltr
-                />
-                <Info
-                  icon={Mail}
-                  label={t("admin.searchByEmail")}
-                  value={user.professor.universityEmail}
-                  ltr
-                />
-              </>
-            )}
-
-            {dept && <Info icon={Building2} label={t("admin.department")} value={dept.name} />}
-            {faculty && (
-              <Info icon={GraduationCap} label={t("admin.facultyLabel")} value={faculty.name} />
-            )}
-
-            <Info
-              icon={Clock}
-              label={t("admin.lastSignIn")}
-              value={arDateTime(user.lastLoginAt)}
-            />
-            <Info
-              icon={CalendarDays}
-              label={t("pro.createdAt")}
-              value={arDate(user.createdAt)}
-            />
-          </div>
+      {/* ── the record ── */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="flex flex-col gap-6">
+          <RecordCard icon={Mail} title={t("admin.contactInfo")} className={hasPath ? undefined : "flex-1"}>
+            <FieldGrid cols={1}>
+              <Field icon={Mail} label={t("admin.email")} value={user.email || none} ltr copy />
+              <Field icon={Phone} label={t("footer.phone")} value={user.phone || none} ltr copy />
+              <Field icon={AtSign} label={t("admin.username")} value={user.username || none} ltr />
+            </FieldGrid>
+          </RecordCard>
+          {hasPath && activityCard}
         </div>
-      </div>
 
-      {/* ── ACTIONS ── */}
-      <div className="rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <SectionTitle icon={KeyRound}>{t("pro.actions")}</SectionTitle>
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={isBase ? openEdit : () => setModal("edit")}
-            disabled={
-              (isProfessor && !fullProfessor) || (isStudent && !fullStudent)
-            }
-            className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep disabled:opacity-50"
-          >
-            <Pencil size={16} />{t("admin.editData")}</button>
-          <button
-            onClick={() => setModal("verify")}
-            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-              user.isVerified
-                ? "border-forest/20 text-clay hover:bg-forest/5"
-                : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-            }`}
-          >
-            {user.isVerified ? (
-              <ShieldQuestion size={16} />
-            ) : (
-              <BadgeCheck size={16} />
-            )}
-            {user.isVerified
-              ? t("admin.unverifyAccount")
-              : t("admin.verifyAccount")}
-          </button>
-          <button
-            onClick={() => setModal("status")}
-            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-              isActive
-                ? "border-red-200 text-red-600 hover:bg-red-50"
-                : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-            }`}
-          >
-            {isActive ? <Ban size={16} /> : <CheckCircle2 size={16} />}
-            {isActive ? t("admin.suspendAccount") : t("admin.activateAccount")}
-          </button>
-          <button
-            onClick={() => setModal("delete")}
-            className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-600"
-          >
-            <Trash2 size={16} />{t("admin.deleteUser")}</button>
+        <div className="flex flex-col gap-6">
+          <RecordCard icon={Shield} title={t("admin.accountInfo")}>
+            <FieldGrid cols={1}>
+              <Field icon={Shield} label={t("admin.role")} value={roleLabel} />
+              {/*
+                التوثيق كان في «معلومات التواصل» وهو ليس وسيلة تواصل — وهو
+                هنا حالةُ حسابٍ إلى جانب الدور.
+              */}
+              <Field
+                icon={BadgeCheck}
+                label={t("admin.verificationStatus")}
+                value={user.isVerified ? t("admin.verified") : t("admin.unverified")}
+                valueClass={user.isVerified ? "text-emerald-600 dark:text-emerald-300" : "text-clay"}
+              />
+              {user.student && (
+                <>
+                  <Field icon={IdCardIcon} label={t("pro.regNumber")} value={user.student.registrationNumber || none} ltr copy />
+                  {user.student.academicYear && <Field icon={CalendarDays} label={t("pro.academicYear")} value={user.student.academicYear.title} ltr />}
+                </>
+              )}
+              {user.professor && (
+                <>
+                  <Field icon={Hash} label={t("admin.employeeNumber")} value={user.professor.employeeNumber || none} ltr copy />
+                  <Field icon={Mail} label={t("admin.searchByEmail")} value={user.professor.universityEmail || none} ltr copy />
+                </>
+              )}
+            </FieldGrid>
+          </RecordCard>
+
+          {hasPath && (
+            <RecordCard icon={Network} title={t(user.student ? "admin.profile.path" : "admin.profile.affiliation")} className="flex-1">
+              <AcademicPath
+                steps={[
+                  { icon: GraduationCap, label: t("admin.facultyLabel"), value: faculty?.name },
+                  { icon: Building2, label: t("admin.department"), value: dept?.name },
+                  { icon: Network, label: t("admin.filiere"), value: filiere?.name },
+                  { icon: Layers, label: t("admin.specializationLabelAlt"), value: spec?.name },
+                ]}
+              />
+            </RecordCard>
+          )}
+          {!hasPath && activityCard}
         </div>
       </div>
 
@@ -887,7 +672,7 @@ export function AdminUserDetailPage() {
               className={fieldCls}
             />
           </Labeled>
-          <Labeled label={t("admin.gender")}>
+          <Labeled label={t("admin.gender")} group>
             <GenderSelect
               value={form.gender || null}
               onChange={(next) =>

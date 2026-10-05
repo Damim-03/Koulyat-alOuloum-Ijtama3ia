@@ -59,6 +59,7 @@ import {
   deleteAcademicYearController,
   // topics
   listTopicsController,
+  topicTitlesListController,
   getTopicController,
   approveTopicController,
   rejectTopicController,
@@ -84,8 +85,17 @@ import {
   removeProjectMemberController,
   dissolveProjectController,
   setProjectLeaderController,
+  // archive
+  listArchiveYearsController,
+  yearRecordController,
+  yearReadinessController,
+  closeYearController,
+  reopenYearController,
   // defenses
   listDefensesController,
+  defenseConflictsController,
+  exportDefensesController,
+  getDefenseController,
   createDefenseController,
   updateDefenseController,
   deleteDefenseController,
@@ -106,7 +116,39 @@ import {
   removeGroupRequestMemberController,
   setGroupRequestLeaderController,
 } from "./admin.controller";
-import { cardImageUpload } from "../../core/middleware/upload.middleware";
+import {
+  cardImageUpload,
+  xlsxFileUpload,
+} from "../../core/middleware/upload.middleware";
+import { writeLimiter } from "../../core/middleware/rateLimit.middleware";
+import {
+  listHomeSlidesController,
+  createHomeSlideController,
+  createHomeSlidesBatchController,
+  updateHomeSlideController,
+  reorderHomeSlidesController,
+  deleteHomeSlideController,
+  listNewsController,
+  createNewsController,
+  updateNewsController,
+  deleteNewsController,
+  getDirectorMessageController,
+  saveDirectorMessageController,
+  getAboutPageController,
+  saveAboutPageController,
+  getLoginPageController,
+  saveLoginPageController,
+} from "../site/site.controller";
+import {
+  studentImportController,
+  studentImportPreviewController,
+  studentImportTemplateController,
+} from "./student-import/controller";
+import {
+  professorImportController,
+  professorImportPreviewController,
+  professorImportTemplateController,
+} from "./professor-import/controller";
 
 const adminRoutes = Router();
 
@@ -158,6 +200,20 @@ adminRoutes.delete("/users/:id", deleteUserController);
 // ─── STUDENTS ─────────────────────────────────────────────────
 //
 adminRoutes.get("/students", listStudentsController);
+// الاستيراد قبل `/students/:id`: وإلّا قُرئت «import» معرّفَ طالب.
+adminRoutes.get("/students/import/template", studentImportTemplateController);
+adminRoutes.post(
+  "/students/import/preview",
+  writeLimiter,
+  xlsxFileUpload,
+  studentImportPreviewController,
+);
+adminRoutes.post(
+  "/students/import",
+  writeLimiter,
+  xlsxFileUpload,
+  studentImportController,
+);
 adminRoutes.get("/students/:id", getStudentController);
 adminRoutes.post("/students", createStudentController);
 adminRoutes.patch("/students/:id", updateStudentController);
@@ -174,6 +230,20 @@ adminRoutes.post(
 );
 
 adminRoutes.get("/professors", listProfessorsController);
+// الاستيراد قبل `/professors/:id`: وإلّا قُرئت «import» معرّفَ أستاذ.
+adminRoutes.get("/professors/import/template", professorImportTemplateController);
+adminRoutes.post(
+  "/professors/import/preview",
+  writeLimiter,
+  xlsxFileUpload,
+  professorImportPreviewController,
+);
+adminRoutes.post(
+  "/professors/import",
+  writeLimiter,
+  xlsxFileUpload,
+  professorImportController,
+);
 adminRoutes.get("/professors/:id", getProfessorController);
 adminRoutes.post("/professors", createProfessorController);
 adminRoutes.patch("/professors/:id", updateProfessorController);
@@ -248,9 +318,20 @@ adminRoutes.patch(
 adminRoutes.delete("/academic-years/:id", deleteAcademicYearController);
 
 //
+// ─── THE ARCHIVE ──────────────────────────────────────────────
+//
+adminRoutes.get("/archive/years", listArchiveYearsController);
+adminRoutes.get("/archive/years/:id", yearRecordController);
+adminRoutes.get("/archive/years/:id/readiness", yearReadinessController);
+adminRoutes.post("/archive/years/:id/close", writeLimiter, closeYearController);
+adminRoutes.post("/archive/years/:id/reopen", writeLimiter, reopenYearController);
+
+//
 // ─── TOPICS ───────────────────────────────────────────────────
 //
 adminRoutes.get("/topics", listTopicsController);
+// Before `/topics/:id`, or "titles-list" would be read as an id.
+adminRoutes.get("/topics/titles-list", topicTitlesListController);
 adminRoutes.post("/topics", createTopicController);
 adminRoutes.post("/topics/assigned", createAssignedTopicController);
 adminRoutes.patch("/topics/:id/assignment", updateAssignedTopicController);
@@ -314,8 +395,46 @@ adminRoutes.delete("/projects/:id", dissolveProjectController);
 // ─── DEFENSES ─────────────────────────────────────────────────
 //
 adminRoutes.get("/defenses", listDefensesController);
+// قبل «/defenses/:id»: هل يتعارض موعدٌ مقترح مع قاعةٍ أو عضو لجنة؟ وتصدير الجدول.
+adminRoutes.get("/defenses/conflicts", defenseConflictsController);
+adminRoutes.get("/defenses/export", exportDefensesController);
+adminRoutes.get("/defenses/:id", getDefenseController);
 adminRoutes.post("/defenses", createDefenseController);
 adminRoutes.patch("/defenses/:id", updateDefenseController);
 adminRoutes.delete("/defenses/:id", deleteDefenseController);
+
+//
+// ─── HOME SLIDES (صور الصفحة الرئيسية) ─────────────────────────
+//
+// مساراتٌ كاملة لا موجّهٌ فرعيّ: البثّ الحيّ يقرأ المورد من أوّل مقطعٍ بعد
+// `/admin`، وموجّهٌ مركَّب عند `/home-slides` كان سيُقرئه المعرّفَ بدل اسمه.
+adminRoutes.get("/home-slides", listHomeSlidesController);
+adminRoutes.post("/home-slides", createHomeSlideController);
+// عدّة صورٍ دفعةً واحدة — ما تختاره الإدارة في نافذة الإضافة.
+adminRoutes.post("/home-slides/batch", createHomeSlidesBatchController);
+// قبل `/home-slides/:id`، وإلّا قُرئت «order» معرّفَ صورة.
+adminRoutes.patch("/home-slides/order", reorderHomeSlidesController);
+adminRoutes.patch("/home-slides/:id", updateHomeSlideController);
+adminRoutes.delete("/home-slides/:id", deleteHomeSlideController);
+
+//
+// ─── آخر الأخبار وكلمة رئيس القسم (واجهة الموقع) ──────────────
+//
+adminRoutes.get("/news", listNewsController);
+adminRoutes.post("/news", createNewsController);
+adminRoutes.patch("/news/:id", updateNewsController);
+adminRoutes.delete("/news/:id", deleteNewsController);
+
+adminRoutes.get("/director-message", getDirectorMessageController);
+adminRoutes.put("/director-message", saveDirectorMessageController);
+
+// صفحة «عن المنصة» — نصوصها؛ وصور معرضها من `/home-slides?placement=about`،
+// وخلفية رأسها من `placement=aboutHero`.
+adminRoutes.get("/about-page", getAboutPageController);
+adminRoutes.put("/about-page", saveAboutPageController);
+
+// لوحة الترحيب في صفحة الدخول — نصوصها؛ وخلفيتها من `/home-slides?placement=login`.
+adminRoutes.get("/login-page", getLoginPageController);
+adminRoutes.put("/login-page", saveLoginPageController);
 
 export default adminRoutes;

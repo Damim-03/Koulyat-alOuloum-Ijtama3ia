@@ -14,6 +14,7 @@ import app from "./app";
 import { config, isAllowedOrigin } from "./core/config/app.config";
 import { setRealtimeServer } from "./core/realtime/realtime";
 import { installSocketSecurity } from "./core/realtime/socket-auth";
+import { installMessageEvents } from "./modules/messages/messages.socket";
 
 const server = http.createServer(app);
 
@@ -37,6 +38,8 @@ setRealtimeServer(io);
 
 // Authenticates the handshake and assigns rooms server-side.
 installSocketSecurity(io);
+// "Typing…" between people who may write to each other.
+installMessageEvents(io);
 
 const PORT = config.PORT;
 

@@ -14,6 +14,7 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronUp,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   useProfessors,
@@ -23,12 +24,14 @@ import {
 } from "../../hooks/admin-hook";
 import type { Filiere } from "../../../../types/admin";
 import { UserFormDialog } from "../../components/dialog/user/user-form-dialog.form";
+import { ProfessorImportDialog } from "../../components/dialog/professor/professor-import-dialog";
 import { SearchField } from "../../components/ui/search-field";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
 import { Select as UiSelect } from "../../../../components/ui/select";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
+import { familyName, givenName } from "../../../../lib/person-name";
 
 const PAGE_SIZE = 10;
 
@@ -47,6 +50,7 @@ export function AdminProfessorsPage() {
   const [filiereId, setFiliereId] = useState("");
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const [filtersOpen, setFiltersOpen] = useState(true);
 
@@ -184,13 +188,25 @@ export function AdminProfessorsPage() {
             {t("admin.professorsSubtitle")}
           </p>
         </div>
-        <button
-          onClick={() => setDialogOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
-        >
-          <Plus size={18} />
-          {t("admin.addProfessor")}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* دفعةٌ كاملة من ملفّ واحد — بجانب الإضافة الفردية لا بدلاً منها. */}
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            data-testid="open-professor-import"
+            className="inline-flex items-center gap-2 rounded-xl border border-gold/50 bg-gold/10 px-4 py-2.5 text-sm font-semibold text-forest transition hover:bg-gold/20"
+          >
+            <FileSpreadsheet size={18} className="text-gold" />
+            {t("admin.import.button")}
+          </button>
+          <button
+            onClick={() => setDialogOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-forest-deep"
+          >
+            <Plus size={18} />
+            {t("admin.addProfessor")}
+          </button>
+        </div>
       </div>
 
       {/* Stat strip */}
@@ -447,10 +463,10 @@ export function AdminProfessorsPage() {
                     <UserAvatar user={p.user} size={36} />
                   </td>
                   <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                    {p.user?.firstName ?? <None />}
+                    {givenName(p.user) || <None />}
                   </td>
                   <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                    {p.user?.lastName ?? <None />}
+                    {familyName(p.user) || <None />}
                   </td>
                   <td className="px-4 py-3.5 text-sm text-clay" dir="ltr">
                     {p.employeeNumber}
@@ -523,6 +539,7 @@ export function AdminProfessorsPage() {
         onClose={() => setDialogOpen(false)}
         lockedRole="professor"
       />
+      <ProfessorImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }

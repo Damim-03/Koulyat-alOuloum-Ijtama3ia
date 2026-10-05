@@ -272,28 +272,54 @@ export async function teardown() {
   await prisma.notification.deleteMany({
     where: { user: { email: { startsWith: TAG } } },
   });
+  // وطلبةُ تخصّصات الاختبار أيّاً كان رقمهم: المستورَدون من ملفّ Excel أرقامُهم
+  // أرقامٌ صرفة لا تحمل الوسم، وبعضهم بلا بريد — فلا يجمعهم إلّا تخصّصهم.
+  const specStudents = await prisma.student.findMany({
+    where: { specialization: { name: { startsWith: TAG } } },
+    select: { id: true, userId: true },
+  });
   await prisma.student.deleteMany({
-    where: { registrationNumber: { startsWith: TAG } },
+    where: {
+      OR: [
+        { registrationNumber: { startsWith: TAG } },
+        { id: { in: specStudents.map((s) => s.id) } },
+      ],
+    },
+  });
+  // وأساتذةُ أقسام الاختبار أيّاً كان رقمهم: المستورَدون أرقامهم الوظيفية
+  // مولَّدة (EAN-13) لا تحمل الوسم — فلا يجمعهم إلّا قسمهم.
+  const deptProfessors = await prisma.professor.findMany({
+    where: { department: { code: { startsWith: TAG } } },
+    select: { id: true, userId: true },
   });
   await prisma.professor.deleteMany({
-    where: { employeeNumber: { startsWith: TAG } },
+    where: {
+      OR: [
+        { employeeNumber: { startsWith: TAG } },
+        { id: { in: deptProfessors.map((p) => p.id) } },
+      ],
+    },
   });
   /*
    * الجلسات المُبطَلة تُجمع بالمستخدم لا بالوسم: مفتاحها `sid` عشوائي، ولا
    * مفتاح أجنبي يربطها بالمستخدم — فحذفُه لا يجرّها معه، وتبقى صفوفاً
    * يتيمة لا يعرف أحدٌ لمن كانت.
    */
-  const taggedUserIds = (
-    await prisma.user.findMany({
-      where: { email: { startsWith: TAG } },
-      select: { id: true },
-    })
-  ).map((u) => u.id);
+  const taggedUserIds = [
+    ...(
+      await prisma.user.findMany({
+        where: { email: { startsWith: TAG } },
+        select: { id: true },
+      })
+    ).map((u) => u.id),
+    ...specStudents.map((s) => s.userId),
+    ...deptProfessors.map((p) => p.userId),
+  ];
   await prisma.revokedSession.deleteMany({
     where: { userId: { in: taggedUserIds } },
   });
 
-  await prisma.user.deleteMany({ where: { email: { startsWith: TAG } } });
+  await prisma.user.deleteMany({ where: { id: { in: taggedUserIds } } });
   await prisma.specialization.deleteMany({
     where: { name: { startsWith: TAG } },
   });

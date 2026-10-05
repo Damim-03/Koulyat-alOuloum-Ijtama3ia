@@ -1,42 +1,26 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
-import { useLangNavigate } from "../../../../hooks/useLangNavigate";
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  ChevronLeft,
-  Building2,
-  Layers,
-} from "lucide-react";
+import { BookOpen, Building2, GitBranch, GraduationCap, Layers, Network, Pencil, Plus, Trash2, UserCog, Users } from "lucide-react";
 import {
   useFaculties,
   useDepartments,
   useDeleteDepartment,
+  useDeleteFaculty,
+  useFilieres,
+  useSpecializations,
 } from "../../hooks/admin-hook";
 import type { Department } from "../../../../types/admin";
+import { useLangNavigate } from "../../../../hooks/useLangNavigate";
 import { DepartmentFormDialog } from "../../components/dialog/department/department-dialog.form";
-import { CoverBanner } from "../../components/ui/cover-banner";
-import {
-  HierarchyHeader,
-  HeaderBadge,
-} from "../../components/ui/hierarchy-header";
+import { FacultyFormDialog } from "../../components/dialog/faculty/faculty-dialog.form";
+import { HierarchyHeader, HeaderBadge } from "../../components/ui/hierarchy-header";
+import { DeleteNodeDialog, EmptyLevel, HeaderAction, NodeCard, NodeToolbar } from "../../components/ui/structure-kit";
 import { LoadingArea } from "../../../../components/ui/loading-area";
+import { buildReach, matchesQuery } from "../../lib/structure-stats";
+import i18n from "../../../../i18n/i18n";
 
-
-/** يقرأ معرّف الكلية من القسم سواء كان facultyId أو faculty.id */
-function getFacultyId(d: Department): string | undefined {
-  const x = d as unknown as { facultyId?: string; faculty?: { id?: string } };
-  return x.facultyId ?? x.faculty?.id;
-}
-
-/** يقرأ عدّاد علاقة فرعية من _count بأمان (يُرجع 0 إن لم تكن موجودة) */
-function countOf(d: Department, key: string): number {
-  const c = (d as unknown as { _count?: Record<string, number> })._count;
-  return c?.[key] ?? 0;
-}
-
+/** A faculty: its figures, its departments, and what each of them reaches. */
 export function FacultyDetailPage() {
   const { t } = useTranslation();
   const navigate = useLangNavigate();
@@ -44,48 +28,61 @@ export function FacultyDetailPage() {
 
   const { data: faculties } = useFaculties();
   const { data: departments, isLoading } = useDepartments();
+  const { data: filieres } = useFilieres();
+  const { data: specs } = useSpecializations();
   const deleteDepartment = useDeleteDepartment();
+  const deleteFaculty = useDeleteFaculty();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Department | null>(null);
+  const [editSelf, setEditSelf] = useState(false);
+  const [removing, setRemoving] = useState<Department | null>(null);
+  const [removeSelf, setRemoveSelf] = useState(false);
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState("name");
+  const [chip, setChip] = useState("all");
 
-  const faculty = useMemo(
-    () => (faculties ?? []).find((f) => f.id === facultyId),
-    [faculties, facultyId],
-  );
-
-  // نُصفّي الأقسام التابعة لهذه الكلية محلياً
+  const faculty = useMemo(() => (faculties ?? []).find((f) => f.id === facultyId), [faculties, facultyId]);
   const list = useMemo(
-    () => (departments ?? []).filter((d) => getFacultyId(d) === facultyId),
+    () => (departments ?? []).filter((d) => (d.facultyId ?? d.faculty?.id) === facultyId),
     [departments, facultyId],
   );
+  const reach = useMemo(() => buildReach(departments ?? [], filieres ?? [], specs ?? []), [departments, filieres, specs]);
+  const empty = (d: Department) => (d._count?.filieres ?? 0) === 0;
+
+  const visible = useMemo(
+    () =>
+      list
+        .filter((d) => matchesQuery(q, d.name, d.code))
+        .filter((d) => chip !== "gaps" || empty(d))
+        .sort((a, b) =>
+          sort === "students"
+            ? reach.department(b.id).students - reach.department(a.id).students
+            : sort === "specs"
+              ? reach.department(b.id).specializations - reach.department(a.id).specializations
+              : a.name.localeCompare(b.name, i18n.language),
+        ),
+    [list, q, chip, sort, reach],
+  );
+
+  const r = reach.faculty(facultyId);
+  const domains = list.reduce((n, d) => n + (d._count?.domains ?? 0), 0);
+  const fils = list.reduce((n, d) => n + (d._count?.filieres ?? 0), 0);
+  const gaps = list.filter(empty).length;
 
   function openCreate() {
     setEditing(null);
     setDialogOpen(true);
   }
-  function openEdit(d: Department) {
-    setEditing(d);
-    setDialogOpen(true);
-  }
-  function handleDelete(d: Department) {
-    if (confirm(t("admin.confirmDeleteDepartment", { name: d.name })))
-      deleteDepartment.mutate(d.id);
-  }
 
   return (
     <div className="font-body">
       {!faculty && faculties ? (
-        <div className="rounded-2xl border border-forest/10 bg-cream-card py-20 text-center text-sm text-clay">
-          {t("admin.facultyNotFound")}
-        </div>
+        <EmptyLevel icon={Building2} title={t("admin.facultyNotFound")} />
       ) : (
         <>
           <HierarchyHeader
-            crumbs={[
-              { label: t("admin.facultiesBreadcrumb"), to: "/admin/faculties" },
-              { label: faculty?.name },
-            ]}
+            crumbs={[{ label: t("admin.facultiesBreadcrumb"), to: "/admin/faculties" }, { label: faculty?.name }]}
             backLabel={t("admin.backToFaculties")}
             backTo="/admin/faculties"
             icon={Building2}
@@ -98,97 +95,126 @@ export function FacultyDetailPage() {
                 {list.length} {t("admin.departmentsShort")}
               </HeaderBadge>
             }
+            stats={[
+              { icon: Network, label: t("admin.statDepartments"), value: list.length },
+              { icon: Layers, label: t("admin.statDomains"), value: domains },
+              { icon: GitBranch, label: t("admin.statFilieres"), value: fils },
+              { icon: GraduationCap, label: t("admin.statSpecializations"), value: r.specializations, warn: list.length > 0 && r.specializations === 0 },
+              { icon: Users, label: t("admin.struct.students"), value: r.students },
+              { icon: UserCog, label: t("admin.struct.professors"), value: r.professors },
+            ]}
+            menu={
+              <>
+                <HeaderAction icon={Pencil} onClick={() => setEditSelf(true)}>
+                  {t("admin.edit")}
+                </HeaderAction>
+                {list.length === 0 && (
+                  <HeaderAction icon={Trash2} onClick={() => setRemoveSelf(true)}>
+                    {t("admin.delete")}
+                  </HeaderAction>
+                )}
+              </>
+            }
             action={
-              <button
-                onClick={openCreate}
-                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft active:scale-[0.98]"
-              >
-                <Plus size={18} />
+              <HeaderAction icon={Plus} onClick={openCreate} primary>
                 {t("admin.addDepartment")}
-              </button>
+              </HeaderAction>
             }
           />
 
-          {/* Departments */}
+          {list.length > 0 && (
+            <NodeToolbar
+              query={q}
+              onQuery={setQ}
+              placeholder={t("admin.struct.searchLevel.department")}
+              sort={sort}
+              onSort={setSort}
+              sortOptions={[
+                { value: "name", label: t("admin.sortNameAsc") },
+                { value: "specs", label: t("admin.struct.sortSpecs") },
+                { value: "students", label: t("admin.struct.sortStudents") },
+              ]}
+              chips={[
+                { value: "all", label: t("admin.struct.all"), count: list.length },
+                { value: "gaps", label: t("admin.struct.health.deptEmpty"), count: gaps, tone: "warn" },
+              ]}
+              chip={chip}
+              onChip={setChip}
+              shown={visible.length}
+              total={list.length}
+            />
+          )}
+
           {isLoading ? (
             <LoadingArea className="py-20" />
           ) : list.length === 0 ? (
-            <div className="rounded-2xl border border-forest/10 bg-cream-card py-20 text-center text-sm text-clay">
-              {t("admin.noDepartments")}
-            </div>
+            <EmptyLevel icon={Network} title={t("admin.noDepartments")} hint={t("admin.struct.emptyHint.department")} actionLabel={t("admin.addDepartment")} onAction={openCreate} />
+          ) : visible.length === 0 ? (
+            <EmptyLevel icon={Network} title={t("admin.noFilterResults")} />
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {list.map((d) => (
-                <div
-                  key={d.id}
-                  className="flex flex-col overflow-hidden rounded-2xl border border-forest/10 bg-cream-card p-5 shadow-[0_4px_20px_rgba(38,66,61,0.05)]"
-                >
-                  <CoverBanner src={d.coverUrl} />
-                  <div className="mb-3 flex items-start justify-between">
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleDelete(d)}
-                        className="grid size-7 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                      <button
-                        onClick={() => openEdit(d)}
-                        className="grid size-7 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                    </div>
-                    <span
-                      className="rounded-full bg-soft-sage/30 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forest"
-                      dir="ltr"
-                    >
-                      {d.code}
-                    </span>
-                  </div>
-
-                  <h3
-                    onClick={() =>
-                      navigate(
-                        `/admin/faculties/${facultyId}/departments/${d.id}`,
-                      )
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-5">
+              {visible.map((d) => {
+                const dr = reach.department(d.id);
+                const blockers = [
+                  (d._count?.domains ?? 0) > 0 && t("admin.struct.n.domains", { count: d._count?.domains }),
+                  (d._count?.filieres ?? 0) > 0 && t("admin.struct.n.filieres", { count: d._count?.filieres }),
+                  (d._count?.professors ?? 0) > 0 && t("admin.struct.n.professors", { count: d._count?.professors }),
+                ].filter(Boolean);
+                return (
+                  <NodeCard
+                    key={d.id}
+                    testId="department-card"
+                    to={`/admin/faculties/${facultyId}/departments/${d.id}`}
+                    icon={Network}
+                    coverUrl={d.coverUrl}
+                    code={d.code}
+                    title={d.name}
+                    stats={[
+                      { icon: Layers, label: t("admin.statDomains"), value: d._count?.domains ?? 0 },
+                      { icon: GitBranch, label: t("admin.statFilieres"), value: d._count?.filieres ?? 0 },
+                      { icon: GraduationCap, label: t("admin.statSpecializations"), value: dr.specializations },
+                    ]}
+                    people={[
+                      { icon: Users, label: t("admin.struct.students"), value: dr.students },
+                      { icon: UserCog, label: t("admin.struct.professors"), value: d._count?.professors ?? 0 },
+                      { icon: BookOpen, label: t("admin.struct.topics"), value: dr.topics },
+                    ]}
+                    health={
+                      empty(d)
+                        ? { tone: "warn", label: t("admin.struct.health.deptEmpty"), detail: t("admin.struct.health.deptEmptyHint") }
+                        : dr.specializations === 0
+                          ? { tone: "warn", label: t("admin.struct.health.noSpecs"), detail: t("admin.struct.health.noSpecsHint") }
+                          : null
                     }
-                    className="mb-2 cursor-pointer text-start font-serif text-base font-bold text-forest transition hover:text-sage"
-                  >
-                    {d.name}
-                  </h3>
-
-                  <div className="mb-4 flex items-center justify-end gap-1.5 text-clay">
-                    {/* ميادين — يتطلب علاقة domains في الـ backend، يظهر 0 حالياً */}
-                    <span className="text-xs">
-                      {countOf(d, "domains")} {t("admin.domainsShort")}
-                    </span>
-                    <Layers size={14} />
-                  </div>
-
-                  <button
-                    onClick={() =>
-                      navigate(
-                        `/admin/faculties/${facultyId}/departments/${d.id}`,
-                      )
-                    }
-                    className="mt-auto flex items-center justify-end gap-1 border-t border-forest/10 pt-3 text-xs text-sage transition hover:text-forest"
-                  >
-                    {t("admin.viewDetails")}
-                    <ChevronLeft size={14} className="ltr:rotate-180" />
-                  </button>
-                </div>
-              ))}
+                    onEdit={() => {
+                      setEditing(d);
+                      setDialogOpen(true);
+                    }}
+                    onDelete={() => setRemoving(d)}
+                    deleteBlocked={blockers.length ? t("admin.struct.blocked", { what: blockers.join("، ") }) : null}
+                  />
+                );
+              })}
             </div>
           )}
         </>
       )}
 
-      <DepartmentFormDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        department={editing}
-        facultyId={facultyId}
+      <DepartmentFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} department={editing} facultyId={facultyId} />
+      <FacultyFormDialog open={editSelf} onClose={() => setEditSelf(false)} faculty={faculty ?? null} />
+      <DeleteNodeDialog
+        target={removing}
+        title={t("admin.struct.deleteTitle.department")}
+        loading={deleteDepartment.isPending}
+        onConfirm={() => removing && deleteDepartment.mutate(removing.id, { onSuccess: () => setRemoving(null) })}
+        onClose={() => setRemoving(null)}
+      />
+      <DeleteNodeDialog
+        target={removeSelf && faculty ? faculty : null}
+        title={t("admin.struct.deleteTitle.faculty")}
+        loading={deleteFaculty.isPending}
+        onConfirm={() => deleteFaculty.mutate(facultyId, { onSuccess: () => navigate("/admin/faculties") })}
+        onClose={() => setRemoveSelf(false)}
       />
     </div>
   );

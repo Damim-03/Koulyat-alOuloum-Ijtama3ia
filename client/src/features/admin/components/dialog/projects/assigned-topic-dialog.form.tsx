@@ -35,6 +35,7 @@ import {
   type SeatStudent,
 } from "../../ui/student-seat";
 import { Select } from "../../../../../components/ui/select";
+import { personName } from "../../../../../lib/person-name";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -56,7 +57,7 @@ interface Props {
 }
 
 function fullName(u: any) {
-  return [u?.firstName, u?.lastName].filter(Boolean).join(" ");
+  return personName(u);
 }
 
 export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {

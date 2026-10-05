@@ -1,31 +1,18 @@
 import { client } from "../../../lib/api/client";
 import type {
-  BrowseTopic,
   GroupRequest,
   MyProject,
-  SpecializationLite,
-  AcademicYearLite,
   LookupStudent,
+  StudentDashboard,
 } from "../../../types/student.types";
 import type { CreateGroupRequestInput } from "../validation/student.schema";
 
 const BASE = "/student";
 
 export const studentApi = {
-  // ── Browse published topics ──
-  browseTopics: (params?: {
-    specializationId?: string;
-    academicYearId?: string;
-    search?: string;
-  }) =>
-    client
-      .get<{ topics: BrowseTopic[] }>(`${BASE}/topics`, { params })
-      .then((r) => r.data.topics ?? []),
-
-  getTopic: (id: string) =>
-    client
-      .get<{ topic: BrowseTopic }>(`${BASE}/topics/${id}`)
-      .then((r) => r.data.topic ?? null),
+  // ── Dashboard — one read for the whole first screen ──
+  getDashboard: () =>
+    client.get<StudentDashboard>(`${BASE}/dashboard`).then((r) => r.data),
 
   // ── Lookup a student by registration number (live search in the dialog) ──
   lookupStudent: (registration: string) =>
@@ -54,15 +41,4 @@ export const studentApi = {
     client
       .get<{ project: MyProject | null }>(`${BASE}/my-project`)
       .then((r) => r.data.project ?? null),
-
-  // ── Common lookups (shared module — for dropdowns/filters) ──
-  listSpecializations: () =>
-    client
-      .get<{ specializations: SpecializationLite[] }>(`/common/specializations`)
-      .then((r) => r.data.specializations ?? []),
-
-  listAcademicYears: () =>
-    client
-      .get<{ academicYears: AcademicYearLite[] }>(`/common/academic-years`)
-      .then((r) => r.data.academicYears ?? []),
 };

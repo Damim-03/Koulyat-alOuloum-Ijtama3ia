@@ -1,5 +1,15 @@
 import { z } from "zod";
 import { t } from "i18next";
+import { LATIN_NAME } from "../../../lib/latin-name";
+
+/** اختياريّ: الفارغ مقبول، والمكتوب حروفٌ لاتينية فقط. */
+const latinName = z
+  .string()
+  .trim()
+  .max(60)
+  .regex(LATIN_NAME, { error: () => t("validation.latinOnly") })
+  .optional()
+  .or(z.literal(""));
 
 //
 // ─── USERS ────────────────────────────────────────────────────
@@ -49,6 +59,8 @@ export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export const createStudentSchema = z.object({
   firstName: z.string().trim().min(1).optional().or(z.literal("")),
   lastName: z.string().trim().min(1).optional().or(z.literal("")),
+  firstNameLatin: latinName,
+  lastNameLatin: latinName,
   email: z.string().email({ error: () => t("validation.emailInvalid") }).optional().or(z.literal("")),
   password: z.string().min(6, { error: () => t("validation.passwordMin") }),
   gender,

@@ -19,6 +19,9 @@ export const ErrorCodeEnum = {
   VALIDATION_ERROR: "VALIDATION_ERROR",
   RESOURCE_NOT_FOUND: "RESOURCE_NOT_FOUND",
 
+  // موضوعٌ محجوز لفريقٍ آخر: الواجهة تعرض له شاشته الخاصّة لا خطأً عامّاً.
+  TOPIC_RESERVED: "TOPIC_RESERVED",
+
   // System Errors
   INTERNAL_SERVER_ERROR: "INTERNAL_SERVER_ERROR",
 } as const;

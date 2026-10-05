@@ -838,3 +838,138 @@ describe("تعديل المرحلة وحذفها", () => {
     ).not.toBeNull();
   });
 });
+
+//
+// ═══ اللوحة: الملفّ واللجان والتسليمات ═══
+//
+
+describe("لوحة الأستاذ — الملفّ ولجان المناقشة وآخر التسليمات", () => {
+  it("تحمل ملفّ الأستاذ: الرقم الوظيفي والبريد والقسم وكلّيته", async () => {
+    const d = (await dashboard()) as unknown as {
+      profile: {
+        employeeNumber: string;
+        universityEmail: string;
+        department: { id: string; faculty: { id: string } };
+      };
+    };
+
+    expect(d.profile.employeeNumber).toBe(f.professor.employeeNumber);
+    expect(d.profile.universityEmail).toBe(f.professor.universityEmail);
+    expect(d.profile.department.id).toBe(f.department.id);
+    expect(d.profile.department.faculty.id).toBe(f.faculty.id);
+  });
+
+  /**
+   * الأستاذ يُناقش مشاريع زملائه أيضاً، ولم يكن في لوحته ما يذكّره بذلك:
+   * جدولُ الأعمال لا يرى إلّا مشاريعه هو.
+   */
+  it("وتعرض المناقشات التي يجلس في لجنتها — مشروعَ زميلٍ كان أو مشروعه", async () => {
+    const theirs = await projectFor(f.professor2.id, 2);
+    const own = await projectFor(f.professor.id, 1);
+    const unrelated = await projectFor(f.professor2.id, 1);
+
+    const onTheirs = await prisma.defense.create({
+      data: {
+        groupId: theirs.group.id,
+        date: days(12),
+        room: "C3",
+        committee: {
+          create: [
+            { professorId: f.professor2.id, role: "supervisor" },
+            { professorId: f.professor.id, role: "examiner" },
+          ],
+        },
+      },
+    });
+    const onOwn = await prisma.defense.create({
+      data: {
+        groupId: own.group.id,
+        date: days(20),
+        room: "C4",
+        committee: {
+          create: [{ professorId: f.professor.id, role: "supervisor" }],
+        },
+      },
+    });
+    // مناقشةٌ لا مقعد له فيها: لا تظهر.
+    const notMine = await prisma.defense.create({
+      data: {
+        groupId: unrelated.group.id,
+        date: days(15),
+        room: "C5",
+        committee: {
+          create: [{ professorId: f.professor2.id, role: "president" }],
+        },
+      },
+    });
+
+    const d = (await dashboard()) as unknown as {
+      committee: {
+        id: string;
+        role: string;
+        ownProject: boolean;
+        membersCount: number;
+        topic: { id: string };
+      }[];
+    };
+    const byId = new Map(d.committee.map((c) => [c.id, c]));
+
+    expect(byId.get(onTheirs.id)).toEqual(
+      expect.objectContaining({
+        role: "examiner",
+        ownProject: false,
+        membersCount: 2,
+        topic: expect.objectContaining({ id: theirs.topic.id }),
+      }),
+    );
+    expect(byId.get(onOwn.id)).toEqual(
+      expect.objectContaining({ role: "supervisor", ownProject: true }),
+    );
+    expect(byId.has(notMine.id)).toBe(false);
+
+    // ولا يخرج ما ليس له إلى أستاذٍ آخر: الثاني يرى مقعده هو وحده.
+    const other2 = (await dashboard(other)) as unknown as {
+      committee: { id: string; role: string }[];
+    };
+    expect(other2.committee.find((c) => c.id === onTheirs.id)?.role).toBe(
+      "supervisor",
+    );
+    expect(other2.committee.some((c) => c.id === onOwn.id)).toBe(false);
+  });
+
+  it("وآخر التسليمات، الأحدث أوّلاً، أيّاً كانت حال مرحلتها", async () => {
+    const { group, students } = await projectFor(f.professor.id, 1);
+    const done = await milestone(group.id, days(-5), "completed", 1);
+    const open = await milestone(group.id, days(5), "in_progress", 2);
+
+    const older = await prisma.submission.create({
+      data: {
+        fileUrl: `${TAG}/older.pdf`,
+        fileName: `${TAG}-older.pdf`,
+        version: 1,
+        milestoneId: done.id,
+        uploadedById: students[0]!.userId,
+        createdAt: new Date(Date.now() - 60_000),
+      },
+    });
+    const newer = await prisma.submission.create({
+      data: {
+        fileUrl: `${TAG}/newer.pdf`,
+        fileName: `${TAG}-newer.pdf`,
+        version: 1,
+        milestoneId: open.id,
+        uploadedById: students[0]!.userId,
+      },
+    });
+
+    const d = (await dashboard()) as unknown as {
+      recentSubmissions: { id: string }[];
+    };
+    const ids = d.recentSubmissions.map((s) => s.id);
+
+    // المُنجزة مرحلتُه يظهر هنا وإن غاب عن «بانتظار المراجعة».
+    expect(ids).toContain(older.id);
+    expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(older.id));
+    expect(ids.length).toBeLessThanOrEqual(8);
+  });
+});

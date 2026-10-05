@@ -5,47 +5,20 @@ import type { CreateGroupRequestInput } from "../validation/student.schema";
 import { t } from "i18next";
 
 const KEYS = {
-  topics: (p?: object) => ["student", "topics", p ?? {}] as const,
-  topic: (id: string) => ["student", "topic", id] as const,
+  dashboard: ["student", "dashboard"] as const,
   lookup: (reg: string) => ["student", "lookup", reg] as const,
   requests: ["student", "group-requests"] as const,
   project: ["student", "my-project"] as const,
-  specializations: ["common", "specializations"] as const,
-  academicYears: ["common", "academic-years"] as const,
 };
 
-// ─── lookups (dropdowns/filters) ───────────────────────────────
-export function useSpecializations() {
+// ─── dashboard ─────────────────────────────────────────────────
+export function useStudentDashboard() {
   return useQuery({
-    queryKey: KEYS.specializations,
-    queryFn: studentApi.listSpecializations,
-    staleTime: 5 * 60 * 1000,
-  });
-}
-export function useAcademicYears() {
-  return useQuery({
-    queryKey: KEYS.academicYears,
-    queryFn: studentApi.listAcademicYears,
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-// ─── browse topics ─────────────────────────────────────────────
-export function useBrowseTopics(params?: {
-  specializationId?: string;
-  academicYearId?: string;
-  search?: string;
-}) {
-  return useQuery({
-    queryKey: KEYS.topics(params),
-    queryFn: () => studentApi.browseTopics(params),
-  });
-}
-export function useTopic(id: string | null) {
-  return useQuery({
-    queryKey: KEYS.topic(id as string),
-    queryFn: () => studentApi.getTopic(id as string),
-    enabled: !!id,
+    queryKey: KEYS.dashboard,
+    queryFn: studentApi.getDashboard,
+    // Deadlines are on this screen; a milestone ticked off elsewhere should
+    // not keep showing as due.
+    staleTime: 30 * 1000,
   });
 }
 
@@ -74,6 +47,7 @@ export function useCreateGroupRequest() {
       studentApi.createGroupRequest(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.requests });
+      qc.invalidateQueries({ queryKey: KEYS.dashboard });
       toast.success(t("toast.groupRequestSent"));
     },
     onError: (e: unknown) => {
@@ -89,6 +63,7 @@ export function useCancelGroupRequest() {
     mutationFn: (id: string) => studentApi.cancelGroupRequest(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.requests });
+      qc.invalidateQueries({ queryKey: KEYS.dashboard });
       toast.success(t("toast.requestCancelled"));
     },
     onError: () => toast.error(t("toast.requestCancelFailed")),

@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { SUPPORTED_LANGS, type LangCode } from "../../../../i18n/i18n";
 import {
   LogIn,
   LayoutDashboard,
@@ -16,6 +18,7 @@ import { LanguageSwitcher } from "../../../../i18n/locales/components/language-s
 import { ThemeToggle } from "../../../../components/theme-toggle";
 import { PATHS } from "../../../../routes/paths";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
+import { personName } from "../../../../lib/person-name";
 
 // ┌─────────────────────────────────────────────────────────┐
 // │  ضع صور اللوغو هنا:                                        │
@@ -170,7 +173,15 @@ export function Navbar() {
   const { t } = useTranslation();
   const { dir, isRTL } = useLanguage();
   const { isAuthenticated, user, role, logout } = useAuth();
-  const [active, setActive] = useState("home");
+  // الرابط النشط يُقرأ من المسار لا من نقرةٍ محفوظة: كان حالةً تبدأ بـ«الرئيسية»
+  // ولا تتغيّر إلّا بالنقر، فتعود إليها مع كلّ تحديثٍ للصفحة أو رجوعٍ أو رابطٍ
+  // من خارج الشريط. وصفحةُ موضوعٍ بعينه (/topics/:id) تُنسب إلى «المواضيع».
+  const { pathname } = useLocation();
+  const section = pathname
+    .split("/")
+    .filter(Boolean)
+    .filter((s, i) => !(i === 0 && SUPPORTED_LANGS.includes(s as LangCode)))[0];
+  const active = !section ? "home" : section;
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -203,7 +214,7 @@ export function Navbar() {
     return () => document.removeEventListener("mousedown", h);
   }, [menuOpen]);
 
-  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+  const fullName = personName(user);
   const displayName =
     fullName ||
     user?.registrationNumber ||
@@ -283,7 +294,6 @@ export function Navbar() {
           <nav className="hidden items-center gap-1 md:flex">
             <LocaleLink
               to={PATHS.home}
-              onClick={() => setActive("home")}
               className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
                 active === "home"
                   ? "text-cream"
@@ -302,7 +312,6 @@ export function Navbar() {
             </LocaleLink>
             <LocaleLink
               to={PATHS.topics}
-              onClick={() => setActive("topics")}
               className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
                 active === "topics"
                   ? "text-cream"
@@ -321,7 +330,6 @@ export function Navbar() {
             </LocaleLink>
             <LocaleLink
               to={PATHS.about}
-              onClick={() => setActive("about")}
               className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
                 active === "about"
                   ? "text-cream"
@@ -457,7 +465,6 @@ export function Navbar() {
             <LocaleLink
               to={PATHS.home}
               onClick={() => {
-                setActive("home");
                 setMobileOpen(false);
               }}
               className={`block rounded-lg border-l-2 px-3 py-2.5 text-sm transition ${
@@ -472,7 +479,6 @@ export function Navbar() {
             <LocaleLink
               to={PATHS.topics}
               onClick={() => {
-                setActive("topics");
                 setMobileOpen(false);
               }}
               className={`block rounded-lg border-l-2 px-3 py-2.5 text-sm transition ${
@@ -487,7 +493,6 @@ export function Navbar() {
             <LocaleLink
               to={PATHS.about}
               onClick={() => {
-                setActive("about");
                 setMobileOpen(false);
               }}
               className={`block rounded-lg border-l-2 px-3 py-2.5 text-sm transition ${

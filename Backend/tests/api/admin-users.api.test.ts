@@ -503,6 +503,34 @@ describe("الطلبة", () => {
     expect(rows(none.body)).toHaveLength(0);
   });
 
+  /**
+   * والمستوى يُرشّح عبر تخصص الطالب، ويجتمع مع الهرم لا يحلّ محلّه: كان كلّ
+   * فلترٍ يُسند شرط التخصص كاملاً، فلو أُسند المستوى وحده لمحا الشعبة.
+   */
+  it("وبالمستوى، مجتمعاً مع الشعبة لا بدلاً منها", async () => {
+    const list = (query: Record<string, string>) =>
+      as(request(app).get("/api/admin/students").query(query), "admin").expect(200);
+
+    // تخصص التجهيزة ماستر.
+    const master = await list({ filiereId: f.filiere.id, level: "master" });
+    expect(rows(master.body).length).toBeGreaterThan(0);
+
+    const doctorate = await list({ filiereId: f.filiere.id, level: "doctorate" });
+    expect(rows(doctorate.body)).toHaveLength(0);
+
+    // شعبةٌ لا وجود لها مع مستوى موجود ⇒ لا شيء: الشعبة لم تُمحَ.
+    const otherFiliere = await list({
+      filiereId: "00000000-0000-0000-0000-000000000000",
+      level: "master",
+    });
+    expect(rows(otherFiliere.body)).toHaveLength(0);
+
+    await as(
+      request(app).get("/api/admin/students").query({ level: "phd" }),
+      "admin",
+    ).expect(400);
+  });
+
   it("ورقم تسجيل مكرّر ⇒ يُرفض", async () => {
     const [existing] = f.nextStudents(1);
 
@@ -551,6 +579,78 @@ describe("الطلبة", () => {
 
     const created = await prisma.user.findUnique({ where: { email } });
     expect(created!.isVerified).toBe(true);
+  });
+
+  /**
+   * الاسم باللاتينية يُحفظ على عادة الوثائق الفرنسية أيّاً كان ما كُتب:
+   * اللقب بأحرفٍ كبيرة، والاسم بحرفٍ أوّلَ كبيرٍ لكلّ كلمة. ولا يُقبل فيه
+   * حرفٌ عربيّ، ويُمسح بـnull عند التعديل.
+   */
+  describe("الاسم باللاتينية", () => {
+    const post = (body: Record<string, unknown>) =>
+      as(
+        request(app)
+          .post("/api/admin/students")
+          .send({
+            firstName: TAG,
+            lastName: "Latin",
+            password: "A-strong-Passw0rd!",
+            registrationNumber: `${TAG}LT${Date.now()}${Math.random().toString().slice(2, 6)}`,
+            specializationId: f.specialization.id,
+            academicYearId: f.academicYear.id,
+            ...body,
+          }),
+        "admin",
+      );
+
+    it("يُحفظ موحَّداً: HAMADI، وNour El Houda، وMohamed-Amine", async () => {
+      const email = `${TAG}.latin@test.local`;
+      const res = await post({
+        email,
+        firstNameLatin: "  nour   el houda ",
+        lastNameLatin: "ben ali",
+      });
+      expect([200, 201]).toContain(res.status);
+
+      const u = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect(u.firstNameLatin).toBe("Nour El Houda");
+      expect(u.lastNameLatin).toBe("BEN ALI");
+
+      const email2 = `${TAG}.latin2@test.local`;
+      await post({ email: email2, firstNameLatin: "MOHAMED-AMINE", lastNameLatin: "hamadi" });
+      const u2 = await prisma.user.findUniqueOrThrow({ where: { email: email2 } });
+      expect(u2.firstNameLatin).toBe("Mohamed-Amine");
+      expect(u2.lastNameLatin).toBe("HAMADI");
+    });
+
+    it("والحروف العربية أو الأرقام فيه ⇒ 400", async () => {
+      expect((await post({ firstNameLatin: "يوسف" })).status).toBe(400);
+      expect((await post({ lastNameLatin: "Hamadi2" })).status).toBe(400);
+    });
+
+    it("ويُضاف بعد الإنشاء، ويُمسح بـnull", async () => {
+      const email = `${TAG}.latin3@test.local`;
+      await post({ email });
+      const u = await prisma.user.findUniqueOrThrow({
+        where: { email },
+        include: { student: true },
+      });
+      expect(u.firstNameLatin).toBeNull();
+
+      const patch = (body: Record<string, unknown>) =>
+        as(
+          request(app).patch(`/api/admin/students/${u.student!.id}`).send(body),
+          "admin",
+        ).expect(200);
+
+      await patch({ firstNameLatin: "youcef", lastNameLatin: "hamadi" });
+      let now = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect([now.firstNameLatin, now.lastNameLatin]).toEqual(["Youcef", "HAMADI"]);
+
+      await patch({ firstNameLatin: null, lastNameLatin: null });
+      now = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect([now.firstNameLatin, now.lastNameLatin]).toEqual([null, null]);
+    });
   });
 
   /**

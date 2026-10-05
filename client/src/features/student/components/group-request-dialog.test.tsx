@@ -40,14 +40,26 @@ const otherSpec = {
   specialization: { name: "علم النفس المدرسي" },
 };
 
+/** كلّ رقمٍ بُحث عنه — ليُثبَت أنّ رقم المرسِل لا يصل إلى الخادم أصلاً. */
+const lookedUp: string[] = [];
+/** جوابٌ لرقمٍ بعينه (`null` = لا طالب به)؛ وما سواه يأخذ `lookupResult`. */
+let lookupByTerm: Record<string, Record<string, unknown> | null> = {};
+
 vi.mock("../hooks/Student-hook", () => ({
   useCreateGroupRequest: () => createReq,
-  useStudentLookup: (term: string) => ({
-    data: term ? lookupResult : null,
-    isFetching: false,
-    isSuccess: !!term,
-    isError: false,
-  }),
+  useStudentLookup: (term: string) => {
+    if (term) lookedUp.push(term);
+    return {
+      data: !term
+        ? null
+        : term in lookupByTerm
+          ? lookupByTerm[term]
+          : lookupResult,
+      isFetching: false,
+      isSuccess: !!term,
+      isError: false,
+    };
+  },
 }));
 // بلا تأخير في الاختبار: الرقم يستقرّ فور كتابته.
 vi.mock("../../../hooks/use-debounced-value", () => ({
@@ -55,6 +67,10 @@ vi.mock("../../../hooks/use-debounced-value", () => ({
 }));
 
 const { GroupRequestDialog } = await import("./group-request-dialog");
+const { useAuthStore } = await import("../../../store/auth.store");
+
+/** المرسِل — الطالب المسجَّل دخوله. */
+const MY_REG = "202039012345";
 
 const topic = {
   id: "t-1",
@@ -69,12 +85,12 @@ const topic = {
   createdAt: new Date().toISOString(),
 };
 
-const open = () =>
+const open = (maxStudents = topic.maxStudents) =>
   render(
     <GroupRequestDialog
       open
       onClose={() => {}}
-      topic={topic as never}
+      topic={{ ...topic, maxStudents } as never}
     />,
   );
 
@@ -92,10 +108,23 @@ const fillSeat = async (seat: number, reg: string) => {
   await userEvent.type(box, reg);
 };
 
+/** زميلٌ ثانٍ باسمٍ آخر — ليُعرف في المراجعة من أيّ مقعدٍ جاء. */
+const SECOND_REG = "202039012347";
+const second = {
+  ...sameSpec,
+  registrationNumber: SECOND_REG,
+  user: { firstName: "سارة", lastName: "بوقرة" },
+};
+
 describe("معالج طلب المجموعة", () => {
   beforeEach(() => {
     createReq.mutate.mockClear();
     lookupResult = sameSpec;
+    lookupByTerm = { [SECOND_REG]: second };
+    lookedUp.length = 0;
+    useAuthStore.setState({
+      user: { id: "u-1", role: "student", registrationNumber: MY_REG },
+    });
   });
 
   it("يبدأ بالشروط، ويعرض ما كتبه الأستاذ", () => {
@@ -142,12 +171,14 @@ describe("معالج طلب المجموعة", () => {
     open();
     await next();
     await fillSeat(2, "202039012346");
+    await fillSeat(3, SECOND_REG);
     await next();
 
     expect(current()).toBe("step-review");
     const list = within(screen.getByTestId("review-members"));
     expect(list.getByText("stu.youAreLeader")).toBeInTheDocument();
     expect(list.getByText("يوسف حمادي")).toBeInTheDocument();
+    expect(list.getByText("سارة بوقرة")).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId("request-submit"));
 
@@ -157,7 +188,10 @@ describe("معالج طلب المجموعة", () => {
       memberRegistrationNumbers: string[];
     };
     expect(payload.topicId).toBe("t-1");
-    expect(payload.memberRegistrationNumbers).toEqual(["202039012346"]);
+    expect(payload.memberRegistrationNumbers).toEqual([
+      "202039012346",
+      SECOND_REG,
+    ]);
   });
 
   /**
@@ -169,11 +203,83 @@ describe("معالج طلب المجموعة", () => {
     open();
     await next();
     await fillSeat(2, "202039012346");
+    await fillSeat(3, SECOND_REG);
 
     expect(screen.getByText(/stu\.specMismatch/)).toBeInTheDocument();
     // ومع ذلك يتقدّم، ويصل الرقم كما هو.
     await next();
     expect(current()).toBe("step-review");
+  });
+
+  /**
+   * المجموعة تُرسَل كاملة: كلّ مقعدٍ بزميلٍ وُجد صاحبُ رقمه. والزرّ المطفأ
+   * يُرافقه سطرٌ يقول كم بقي — لا يُترك الطالب يضغط ولا يدري لماذا لا شيء.
+   */
+  describe("«التالي» لا يعمل حتى تكتمل المقاعد", () => {
+    it("مقعدان ⇒ ممنوعٌ فارغاً، وممنوعٌ بواحد، ويعمل باثنين", async () => {
+      open();
+      await next();
+
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+      expect(screen.getByTestId("seats-hint")).toHaveTextContent(
+        'stu.fillAllSeats:{"done":0,"total":2}',
+      );
+
+      await fillSeat(2, "202039012346");
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+      expect(screen.getByTestId("seats-hint")).toHaveTextContent(
+        '"done":1,"total":2',
+      );
+
+      // ولا Enter يلتفّ عليه.
+      await userEvent.type(
+        within(screen.getByTestId("seat-2")).getByRole("textbox"),
+        "{Enter}",
+      );
+      expect(current()).toBe("step-members");
+
+      await fillSeat(3, SECOND_REG);
+      expect(screen.getByTestId("request-next")).toBeEnabled();
+      expect(screen.queryByTestId("seats-hint")).not.toBeInTheDocument();
+    });
+
+    it("ومقعدٌ واحد ⇒ يعمل بزميلٍ واحد", async () => {
+      open(2);
+      await next();
+
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+      await fillSeat(2, "202039012346");
+      expect(screen.getByTestId("request-next")).toBeEnabled();
+    });
+
+    it("ورقمٌ لا طالب به لا يملأ مقعداً", async () => {
+      lookupByTerm = { [SECOND_REG]: null };
+      open();
+      await next();
+      await fillSeat(2, "202039012346");
+      await fillSeat(3, SECOND_REG);
+
+      expect(screen.getByText("stu.studentNotFound")).toBeInTheDocument();
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+    });
+
+    it("والرقمُ نفسه في مقعدين لا يملؤهما", async () => {
+      open();
+      await next();
+      await fillSeat(2, "202039012346");
+      await fillSeat(3, "202039012346");
+
+      expect(screen.getAllByText("stu.duplicateMember")).toHaveLength(2);
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+    });
+
+    it("وموضوعٌ لطالبٍ واحد ⇒ لا مقاعد، ويعمل فوراً", async () => {
+      open(1);
+      await next();
+
+      expect(screen.queryByTestId("seat-2")).not.toBeInTheDocument();
+      expect(screen.getByTestId("request-next")).toBeEnabled();
+    });
   });
 
   it("وتخصّصٌ مطابقٌ لا تنبيه فيه", async () => {
@@ -182,5 +288,124 @@ describe("معالج طلب المجموعة", () => {
     await fillSeat(2, "202039012346");
 
     expect(screen.queryByText(/stu\.specMismatch/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * المرسِل يُضاف تلقائيًا، فرقمُه في مقعد زميلٍ خطأٌ أو محاولةٌ لملء المقعد.
+   * يُكشف محلّياً مع آخر ضغطة، بلا بحثٍ ولا انتظار، ويوقف المعالج.
+   */
+  describe("رقم المرسِل نفسه في مقعد زميل", () => {
+    it("يُكشف فوراً: الحقل أحمر، والخطأ ظاهر، ولا بحث عنه", async () => {
+      open();
+      await next();
+      await fillSeat(2, MY_REG);
+
+      const seat = within(screen.getByTestId("seat-2"));
+      expect(seat.getByRole("alert")).toHaveTextContent("stu.selfAsMember");
+      expect(seat.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
+      expect(seat.getByRole("textbox").className).toContain("border-brick");
+      // لا بطاقة طالب، ولم يُرسَل رقمه إلى البحث.
+      expect(seat.queryByText("يوسف حمادي")).not.toBeInTheDocument();
+      expect(lookedUp).not.toContain(MY_REG);
+    });
+
+    // المقعد الآخر ممتلئٌ بزميلٍ صحيح في كلّ ما يلي: فلا يمنع إلّا ما يُختبر.
+    it("ويمنع «التالي» حتى يُصحَّح", async () => {
+      open();
+      await next();
+      await fillSeat(3, SECOND_REG);
+      await fillSeat(2, MY_REG);
+
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+      await next();
+      expect(current()).toBe("step-members");
+
+      // وتصحيحه يُعيد الباب.
+      const box = within(screen.getByTestId("seat-2")).getByRole("textbox");
+      await userEvent.clear(box);
+      await userEvent.type(box, "202039012346");
+      expect(screen.getByTestId("request-next")).toBeEnabled();
+      expect(screen.queryByTestId("seat-2-self")).not.toBeInTheDocument();
+    });
+
+    it("ويُكشف ولو كُتب بأرقامٍ عربية أو بمسافات", async () => {
+      open();
+      await next();
+      await fillSeat(3, SECOND_REG);
+      await fillSeat(2, "٢٠٢٠٣٩ ٠١٢٣٤٥");
+
+      expect(screen.getByTestId("seat-2-self")).toBeInTheDocument();
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+    });
+
+    /** ما يفلت من المقارنة المحلّية — جلسةٌ بلا رقم مثلاً — يُعلّمه الخادم. */
+    it("وما يُعلّمه الخادم بـisSelf يُرفض كذلك", async () => {
+      useAuthStore.setState({ user: { id: "u-1", role: "student" } });
+      lookupResult = { ...sameSpec, registrationNumber: MY_REG, isSelf: true };
+      open();
+      await next();
+      await fillSeat(3, SECOND_REG);
+      await fillSeat(2, MY_REG);
+
+      expect(screen.getByTestId("seat-2-self")).toBeInTheDocument();
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+    });
+  });
+
+  /**
+   * طالبٌ واحد في مجموعةٍ واحدة: من هو في مجموعةٍ أخرى — بطلبٍ حيٍّ أو
+   * بمشروعٍ قائم — يُرفض في مقعده، وتبقى بطاقتُه ليعرف القائد من كتب.
+   */
+  describe("زميلٌ في مجموعةٍ أخرى", () => {
+    it("في طلبٍ حيٍّ لفريقٍ آخر: الحقل أحمر، وبطاقته ظاهرة، و«التالي» ممنوع", async () => {
+      lookupResult = { ...sameSpec, otherGroup: "request" };
+      open();
+      await next();
+      await fillSeat(3, SECOND_REG);
+      await fillSeat(2, "202039012346");
+
+      const seat = within(screen.getByTestId("seat-2"));
+      expect(seat.getByRole("alert")).toHaveTextContent("stu.memberInOtherGroup");
+      expect(seat.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
+      expect(seat.getByRole("textbox").className).toContain("border-brick");
+      expect(seat.getByText("يوسف حمادي")).toBeInTheDocument();
+
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+      await next();
+      expect(current()).toBe("step-members");
+    });
+
+    it("وله مشروع ⇒ رسالته هو", async () => {
+      lookupResult = { ...sameSpec, otherGroup: "project" };
+      open();
+      await next();
+      await fillSeat(3, SECOND_REG);
+      await fillSeat(2, "202039012346");
+
+      expect(screen.getByTestId("seat-2-busy")).toHaveTextContent(
+        "stu.memberHasProject",
+      );
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+    });
+
+    it("واستبداله بزميلٍ حرّ يُعيد الباب", async () => {
+      lookupResult = { ...sameSpec, otherGroup: "request" };
+      lookupByTerm = {
+        ...lookupByTerm,
+        "202039012399": { ...sameSpec, registrationNumber: "202039012399" },
+      };
+      open();
+      await next();
+      await fillSeat(3, SECOND_REG);
+      await fillSeat(2, "202039012346");
+      expect(screen.getByTestId("request-next")).toBeDisabled();
+
+      const box = within(screen.getByTestId("seat-2")).getByRole("textbox");
+      await userEvent.clear(box);
+      await userEvent.type(box, "202039012399");
+
+      expect(screen.queryByTestId("seat-2-busy")).not.toBeInTheDocument();
+      expect(screen.getByTestId("request-next")).toBeEnabled();
+    });
   });
 });

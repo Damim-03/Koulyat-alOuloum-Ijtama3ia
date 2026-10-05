@@ -15,6 +15,24 @@
 
 export type Role = "student" | "professor" | "admin";
 
+export type SpecLevel = "licence" | "master" | "doctorate";
+
+/** بترتيب المسار الجامعيّ، لا بترتيب الحروف. */
+export const SPEC_LEVELS: SpecLevel[] = ["licence", "master", "doctorate"];
+
+export const SPEC_LEVEL_KEY: Record<SpecLevel, string> = {
+  licence: "admin.levelLicence",
+  master: "admin.levelMaster",
+  doctorate: "admin.levelDoctorate",
+};
+
+/** عدد تخصصات كلّ مستوى في قائمةٍ ما — لأزرار المستوى في الاستمارتين. */
+export function countByLevel(specs: { level: SpecLevel }[]) {
+  const counts: Record<SpecLevel, number> = { licence: 0, master: 0, doctorate: 0 };
+  for (const s of specs) counts[s.level] += 1;
+  return counts;
+}
+
 /**
  * استمارةٌ واحدةٌ واسعةٌ تغطّي كل حقلٍ ممكن؛ الدور النشط يقرّر أيّها يُعرض
  * وأيّ مخطّطٍ يُصدّق الإرسال.
@@ -23,6 +41,9 @@ export interface FormValues {
   role: Role;
   firstName?: string;
   lastName?: string;
+  /** الاسم باللاتينية — للطالب، اختياريّ. */
+  firstNameLatin?: string;
+  lastNameLatin?: string;
   gender?: "male" | "female" | "";
   email?: string;
   username?: string;
@@ -45,6 +66,11 @@ export interface FormValues {
   facultyId?: string; // helper (not persisted)
   departmentId?: string; // persisted for professors, a helper for students
   filiereId?: string; // helper (not persisted)
+  /**
+   * helper (not persisted): narrows the specializations to one level.
+   * The level belongs to the specialization, so it is never sent on its own.
+   */
+  level?: SpecLevel | "";
   grade?: string[];
   tags?: string[];
 }
@@ -72,7 +98,7 @@ export const isStaffRole = (role: Role) => role === "admin";
 export function personalFields(role: Role): FieldName[] {
   const fields: FieldName[] = ["firstName", "lastName", "gender", "password"];
   if (!isStaffRole(role)) fields.push("email");
-  if (role === "student") fields.push("phone");
+  if (role === "student") fields.push("phone", "firstNameLatin", "lastNameLatin");
   return fields;
 }
 

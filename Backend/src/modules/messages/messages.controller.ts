@@ -3,155 +3,137 @@ import { HTTPSTATUS } from "../../core/config/http/http.config";
 import { BadRequestException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import {
-    sendMessageSchema,
-    broadcastMessageSchema,
-    listMessagesSchema,
+  sendMessageSchema,
+  replyMessageSchema,
+  broadcastMessageSchema,
+  audienceSchema,
+  listMessagesSchema,
+  contactsSchema,
+  chatSchema,
+  presenceSchema,
 } from "./messages.validation";
 import * as svc from "./messages.service";
 
 /* Current user id — same tolerant extraction used elsewhere in the app. */
 function currentUserId(req: Request): string {
-    const id =
-        (req as any).user?.id ?? (req as any).user?.userId ?? (req as any).userId;
-    if (!id)
-        throw new BadRequestException(
-            "Unauthenticated",
-            ErrorCodeEnum.VALIDATION_ERROR,
-        );
-    return id as string;
+  const id =
+    (req as any).user?.id ?? (req as any).user?.userId ?? (req as any).userId;
+  if (!id)
+    throw new BadRequestException("Unauthenticated", ErrorCodeEnum.VALIDATION_ERROR);
+  return id as string;
 }
 
-/* ── send (direct) ─────────────────────────────────────────── */
-export const sendMessageController = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-) => {
-    try {
-        const dto = sendMessageSchema.parse(req.body);
-        const message = await svc.sendMessageService(currentUserId(req), dto);
-        return res.status(HTTPSTATUS.CREATED).json({ message });
-    } catch (e) {
-        next(e);
-    }
-};
+/** Validation failures read as a sentence, not as a zod dump. */
+function parse<T>(schema: { safeParse: (v: unknown) => any }, value: unknown): T {
+  const r = schema.safeParse(value);
+  if (!r.success) {
+    const first = r.error.issues[0];
+    throw new BadRequestException(
+      first?.message && !/^(Invalid|Expected|Required)/.test(first.message)
+        ? first.message
+        : `Validation error → ${r.error.issues
+            .map((i: any) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+            .join(" | ")}`,
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  }
+  return r.data as T;
+}
 
-/* ── broadcast (admin — guarded in routes) ─────────────────── */
-export const broadcastMessageController = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-) => {
+type Handler = (req: Request) => Promise<unknown>;
+const handle =
+  (fn: Handler, status: number = HTTPSTATUS.OK) =>
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const dto = broadcastMessageSchema.parse(req.body);
-        const result = await svc.broadcastMessageService(currentUserId(req), dto);
-        return res.status(HTTPSTATUS.CREATED).json(result);
+      return res.status(status).json(await fn(req));
     } catch (e) {
-        next(e);
+      next(e);
     }
-};
+  };
 
-/* ── inbox / sent ──────────────────────────────────────────── */
-export const listInboxController = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-) => {
-    try {
-        const q = listMessagesSchema.parse(req.query);
-        const result = await svc.listInboxService(currentUserId(req), q);
-        return res.status(HTTPSTATUS.OK).json(result);
-    } catch (e) {
-        next(e);
-    }
-};
+const idOf = (req: Request) => req.params.id as string;
 
-export const listSentController = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-) => {
-    try {
-        const q = listMessagesSchema.parse(req.query);
-        const result = await svc.listSentService(currentUserId(req), q);
-        return res.status(HTTPSTATUS.OK).json(result);
-    } catch (e) {
-        next(e);
-    }
-};
+/* ── send / reply / broadcast ──────────────────────────────── */
+export const sendMessageController = handle(
+  async (req) => ({
+    message: await svc.sendMessageService(currentUserId(req), parse(sendMessageSchema, req.body)),
+  }),
+  HTTPSTATUS.CREATED,
+);
 
-/* ── unread count / read / read-all ────────────────────────── */
-export const unreadCountController = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-) => {
-    try {
-        const result = await svc.unreadCountService(currentUserId(req));
-        return res.status(HTTPSTATUS.OK).json(result);
-    } catch (e) {
-        next(e);
-    }
-};
+export const replyMessageController = handle(
+  async (req) => ({
+    message: await svc.replyMessageService(
+      currentUserId(req),
+      idOf(req),
+      parse(replyMessageSchema, req.body),
+    ),
+  }),
+  HTTPSTATUS.CREATED,
+);
 
-export const markMessageReadController = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-) => {
-    try {
-        const result = await svc.markMessageReadService(
-            currentUserId(req),
-            req.params.id as string,
-        );
-        return res.status(HTTPSTATUS.OK).json(result);
-    } catch (e) {
-        next(e);
-    }
-};
+export const broadcastMessageController = handle(
+  (req) => svc.broadcastMessageService(currentUserId(req), parse(broadcastMessageSchema, req.body)),
+  HTTPSTATUS.CREATED,
+);
 
-export const markAllReadController = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-) => {
-    try {
-        const result = await svc.markAllReadService(currentUserId(req));
-        return res.status(HTTPSTATUS.OK).json(result);
-    } catch (e) {
-        next(e);
-    }
-};
+export const audiencePreviewController = handle((req) =>
+  svc.audiencePreviewService(currentUserId(req), parse(audienceSchema, req.query)),
+);
 
-/* ── single message / delete from inbox ────────────────────── */
-export const getMessageController = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-) => {
-    try {
-        const message = await svc.getMessageService(
-            currentUserId(req),
-            req.params.id as string,
-        );
-        return res.status(HTTPSTATUS.OK).json({ message });
-    } catch (e) {
-        next(e);
-    }
-};
+export const contactsController = handle((req) =>
+  svc.contactsService(currentUserId(req), parse(contactsSchema, req.query)),
+);
 
-export const deleteInboxMessageController = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-) => {
-    try {
-        const result = await svc.deleteInboxMessageService(
-            currentUserId(req),
-            req.params.id as string,
-        );
-        return res.status(HTTPSTATUS.OK).json(result);
-    } catch (e) {
-        next(e);
-    }
-};
+/* ── inbox / sent / counters ───────────────────────────────── */
+export const listInboxController = handle((req) =>
+  svc.listInboxService(currentUserId(req), parse(listMessagesSchema, req.query)),
+);
+
+export const listSentController = handle((req) =>
+  svc.listSentService(currentUserId(req), parse(listMessagesSchema, req.query)),
+);
+
+export const unreadCountController = handle((req) => svc.unreadCountService(currentUserId(req)));
+
+export const summaryController = handle((req) => svc.summaryService(currentUserId(req)));
+
+/* ── read state ────────────────────────────────────────────── */
+export const markMessageReadController = handle((req) =>
+  svc.markMessageReadService(currentUserId(req), idOf(req)),
+);
+
+export const markMessageUnreadController = handle((req) =>
+  svc.markMessageUnreadService(currentUserId(req), idOf(req)),
+);
+
+export const markAllReadController = handle((req) => svc.markAllReadService(currentUserId(req)));
+
+/* ── one message (with its conversation) / delete from inbox ── */
+export const getMessageController = handle((req) =>
+  svc.getMessageService(currentUserId(req), idOf(req)),
+);
+
+export const deleteInboxMessageController = handle((req) =>
+  svc.deleteInboxMessageService(currentUserId(req), idOf(req)),
+);
+
+/* ── chats ─────────────────────────────────────────────────── */
+export const conversationsController = handle((req) =>
+  svc.conversationsService(
+    currentUserId(req),
+    Math.min(100, Math.max(1, Number(req.query.limit) || 60)),
+  ),
+);
+
+export const chatController = handle((req) =>
+  svc.chatService(currentUserId(req), req.params.userId as string, parse(chatSchema, req.query)),
+);
+
+export const markChatReadController = handle((req) =>
+  svc.markChatReadService(currentUserId(req), req.params.userId as string),
+);
+
+export const presenceController = handle(async (req) =>
+  svc.presenceService(parse<{ ids: string[] }>(presenceSchema, req.query).ids),
+);
