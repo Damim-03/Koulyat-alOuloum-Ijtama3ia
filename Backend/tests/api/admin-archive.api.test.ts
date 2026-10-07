@@ -269,6 +269,8 @@ describe("a closed year takes nothing new", () => {
       request(app).post("/api/admin/students").send({
         firstName: TAG,
         lastName: "Late",
+        firstNameLatin: "Late",
+        lastNameLatin: "STUDENT",
         email: `${TAG}.late@test.local`,
         password: TEST_PASSWORD,
         registrationNumber: `${TAG}-LATE`,

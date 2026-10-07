@@ -92,6 +92,8 @@ export async function socketAuthMiddleware(
     if ((decoded.tokenVersion ?? 0) !== user.tokenVersion || sessionRevoked) {
       return next(new Error("UNAUTHORIZED"));
     }
+    // Remembered so signing this session out can cut this connection too.
+    (socket.data as { sid?: string }).sid = decoded.sid;
 
     socket.user = {
       userId: user.id,

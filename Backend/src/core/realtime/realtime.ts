@@ -108,3 +108,21 @@ export const isOnline = (userId: string) =>
 
 /** The realtime server, for modules that listen to client events. */
 export const realtimeServer = () => io;
+
+/**
+ * Cuts live connections: every one of an account's, or only those of the
+ * given sessions. A socket is authenticated once, at its handshake, so without
+ * this a signed-out or suspended session kept hearing change events until the
+ * tab closed.
+ */
+export const disconnectSessions = async (userId: string, sids?: (string | undefined)[]) => {
+  if (!io) return;
+  try {
+    const sockets = await io.in(room.user(userId)).fetchSockets();
+    for (const s of sockets) {
+      if (!sids || sids.includes((s.data as { sid?: string }).sid)) s.disconnect(true);
+    }
+  } catch {
+    // A failed disconnect must never fail the sign-out that asked for it.
+  }
+};

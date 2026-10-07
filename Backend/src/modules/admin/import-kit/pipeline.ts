@@ -25,8 +25,14 @@ export function generatePassword(length = 12): string {
   return out;
 }
 
-export const fullName = (u: { firstName: string | null; lastName: string | null }) =>
-  [u.firstName, u.lastName].filter(Boolean).join(" ");
+export const fullName = (u: {
+  firstName: string | null;
+  lastName: string | null;
+  firstNameLatin?: string | null;
+  lastNameLatin?: string | null;
+}) =>
+  [u.firstName, u.lastName].filter(Boolean).join(" ") ||
+  [u.firstNameLatin, u.lastNameLatin].filter(Boolean).join(" ");
 
 /** بريدٌ شخصيّ مستعمَلٌ في المنصّة ← صاحبه — بنداءٍ واحد للملف كلّه. */
 export async function loadTakenMails(mails: string[]): Promise<Map<string, { role: string; name: string }>> {

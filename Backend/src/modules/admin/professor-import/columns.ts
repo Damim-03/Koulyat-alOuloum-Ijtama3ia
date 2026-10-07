@@ -26,10 +26,11 @@ export type ProfessorKey =
   | "tags";
 
 export const PROFESSOR_COLUMNS: ImportColumn<ProfessorKey>[] = [
-  { key: "firstName", header: "الاسم", kind: "req", width: 14, group: "personal", note: "الاسم الأوّل." },
-  { key: "lastName", header: "اللقب", kind: "req", width: 13, group: "personal", note: "اللقب." },
-  { key: "firstNameLatin", header: "الاسم باللاتينية", kind: "opt", width: 17, group: "personal", note: "اختياري. حروف لاتينية فقط، مثل Youcef." },
-  { key: "lastNameLatin", header: "اللقب باللاتينية", kind: "opt", width: 17, group: "personal", note: "اختياري. حروف لاتينية فقط، مثل HAMADI." },
+  // الاسم واللقب باللاتينية إلزاميان ويسبقان العربيّين — كما في الطلبة.
+  { key: "firstNameLatin", header: "الاسم باللاتينية", kind: "req", width: 17, group: "personal", note: "حروف لاتينية فقط، مثل Youcef." },
+  { key: "lastNameLatin", header: "اللقب باللاتينية", kind: "req", width: 17, group: "personal", note: "حروف لاتينية فقط، مثل HAMADI." },
+  { key: "firstName", header: "الاسم", kind: "opt", width: 14, group: "personal", note: "اختياري. الاسم الأوّل بالعربية." },
+  { key: "lastName", header: "اللقب", kind: "opt", width: 13, group: "personal", note: "اختياري. اللقب بالعربية." },
   { key: "gender", header: "الجنس", kind: "opt", width: 9, group: "personal", note: "ذكر أو أنثى — من القائمة." },
   { key: "verified", header: "حالة التوثيق", kind: "opt", width: 13, group: "personal", note: "موثّق أو غير موثّق — الفارغ يُعدّ غير موثّق." },
   { key: "email", header: "البريد الشخصي", kind: "opt", width: 27, group: "personal", note: "اختياري، ولا يتكرّر." },

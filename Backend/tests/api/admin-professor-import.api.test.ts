@@ -38,6 +38,16 @@ const uniqueLast = () => {
   return `بلقاسم ${s}`;
 };
 const mail = () => `${TAG}.p${Date.now().toString(36)}${++seq}@${DOMAIN}`;
+/** لقبٌ لاتينيّ لا يتكرّر بين التشغيلات — التكرار يُقارَن باللاتيني. */
+const uniqueLatinLast = () => {
+  let n = ++seq + (Date.now() % 100000);
+  let s = "";
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26);
+  } while (n > 0);
+  return `BELKACEM ${s}`;
+};
 
 type Row = Partial<Record<(typeof PROFESSOR_COLUMNS)[number]["header"], ExcelJS.CellValue>>;
 
@@ -50,6 +60,8 @@ async function xlsx(rows: Row[], headers: string[] = PROFESSOR_COLUMNS.map((c) =
 }
 
 const valid = (over: Row = {}): Row => ({
+  "الاسم باللاتينية": "Karim",
+  "اللقب باللاتينية": uniqueLatinLast(),
   "الاسم": "كريم",
   "اللقب": uniqueLast(),
   "البريد الجامعي": mail(),
@@ -271,5 +283,21 @@ describe("استيراد الأساتذة", () => {
     expect(
       await prisma.professor.count({ where: { universityEmail: (good["البريد الجامعي"] as string).toLowerCase() } }),
     ).toBe(0);
+  });
+});
+
+describe("الاسم واللقب باللاتينية", () => {
+  it("إلزاميان، والعربيّان اختياريان", async () => {
+    const res = await upload(
+      "/preview",
+      await xlsx([
+        valid({ "اللقب باللاتينية": null }), // 2
+        valid({ "الاسم": null, "اللقب": null }), // 3 — العربيّ اختياريّ
+      ]),
+    ).expect(200);
+
+    expect(errorKeys(rowOf(res, 2))).toEqual(["lastNameLatin"]);
+    expect(said(rowOf(res, 2).cells.lastNameLatin!)).toContain("إلزامي");
+    expect(errorKeys(rowOf(res, 3))).toEqual([]);
   });
 });

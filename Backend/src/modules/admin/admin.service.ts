@@ -13,6 +13,11 @@ import {
   CAP_ATTEMPTS,
 } from "../../core/topic/topic-status";
 import bcrypt from "bcryptjs";
+import { revokeAllSessions } from "../../core/auth/sessions";
+import { closeUserSessions } from "../../core/auth/refresh-sessions";
+import { clearFailures, throttleKey } from "../../core/auth/login-throttle";
+import { disconnectSessions } from "../../core/realtime/realtime";
+import { studentAcademicWhere } from "./student-filters";
 import { config } from "../../core/config/app.config";
 import {
   NotFoundException,
@@ -899,9 +904,12 @@ const nameSearchFilter = (
   if (words.length === 0) return null;
   return {
     AND: words.map((word) => ({
+      // باللاتينية أيضاً: هي الاسم الذي لا يغيب عن طالب.
       OR: [
         wrap({ firstName: { contains: word } }),
         wrap({ lastName: { contains: word } }),
+        wrap({ firstNameLatin: { contains: word } }),
+        wrap({ lastNameLatin: { contains: word } }),
       ],
     })),
   };
@@ -1067,6 +1075,8 @@ export const updateUserStatusService = async (
     data: { status: data.status },
     select: userSelect,
   });
+  // Requests are refused from the next one on; a live socket is cut now.
+  if (data.status !== "active") void disconnectSessions(id);
   return user;
 };
 
@@ -1083,13 +1093,38 @@ export const updateUserVerificationService = async (
   return user;
 };
 
+/**
+ * A password the administration sets ends every session on the account
+ * (whoever was inside, was inside with the old password) and lifts a lock left
+ * by failed attempts.
+ */
 export const resetUserPasswordService = async (
   id: string,
   data: ResetPasswordDTO,
 ) => {
-  await getUserByIdService(id);
+  const user = await getUserByIdService(id);
   const hashed = await bcrypt.hash(data.password, SALT_ROUNDS);
   await prisma.user.update({ where: { id }, data: { password: hashed } });
+
+  await revokeAllSessions(id);
+  await closeUserSessions(id);
+  void disconnectSessions(id);
+
+  const ids = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      email: true,
+      student: { select: { registrationNumber: true } },
+      professor: { select: { universityEmail: true } },
+    },
+  });
+  await clearFailures(
+    ...[
+      ids?.student && throttleKey("student", ids.student.registrationNumber),
+      ids?.professor && throttleKey("professor", ids.professor.universityEmail),
+      user.role === "admin" && ids?.email && throttleKey("admin", ids.email),
+    ].filter((k): k is string => !!k),
+  );
   return { message: "Password reset" };
 };
 
@@ -1118,10 +1153,8 @@ export const deleteUserService = async (id: string) => {
 // ════════════════════════════════════════════════════════════
 
 export const listStudentsService = async (q: ListStudentsDTO) => {
-  const where: Record<string, unknown> = {};
-
-  if (q.specializationId) where.specializationId = q.specializationId;
-  if (q.academicYearId) where.academicYearId = q.academicYearId;
+  // السنة والهرم والمستوى والتخصص — الشرط نفسه الذي يقرؤه التصدير.
+  const where: Record<string, unknown> = studentAcademicWhere(q);
 
   if (q.unassigned === "true") {
     // «لم يختر موضوعاً» = لا مشروع نهائي ولا طلب مجموعة نشط (يقوده أو عضو فيه).
@@ -1133,23 +1166,6 @@ export const listStudentsService = async (q: ListStudentsDTO) => {
       none: { request: { status: { in: ["pending", "accepted"] } } },
     };
   }
-
-  // Hierarchical filters resolved through the specialization → filiere chain.
-  // (Prisma lets us filter on nested relations.)
-  //
-  // والمستوى في الشرط نفسه على التخصص: كان كلّ فلترٍ هنا يُسنِد
-  // `where.specialization` كاملاً، فلو أُسند المستوى وحده لمحا الشعبة أو
-  // القسم المختار قبله. فيُبنى الشرط قطعةً قطعة ثم يُسنَد مرّة.
-  const spec: Record<string, unknown> = {};
-  if (q.filiereId) {
-    spec.filiereId = q.filiereId;
-  } else if (q.departmentId) {
-    spec.filiere = { departmentId: q.departmentId };
-  } else if (q.facultyId) {
-    spec.filiere = { department: { facultyId: q.facultyId } };
-  }
-  if (q.level) spec.level = q.level;
-  if (Object.keys(spec).length > 0) where.specialization = spec;
 
   // Filters are combined with AND: each one narrows what the others left.
   const and: Record<string, unknown>[] = [];
@@ -1853,6 +1869,8 @@ export const createProfessorService = async (data: CreateProfessorDTO) => {
         create: {
           firstName: data.firstName,
           lastName: data.lastName,
+          firstNameLatin: data.firstNameLatin,
+          lastNameLatin: data.lastNameLatin,
           email: data.email,
           gender: data.gender,
           password: hashed,
@@ -1886,6 +1904,8 @@ export const updateProfessorService = async (
   const userUpdate: Record<string, unknown> = {};
   if (data.firstName !== undefined) userUpdate.firstName = data.firstName;
   if (data.lastName !== undefined) userUpdate.lastName = data.lastName;
+  if (data.firstNameLatin !== undefined) userUpdate.firstNameLatin = data.firstNameLatin;
+  if (data.lastNameLatin !== undefined) userUpdate.lastNameLatin = data.lastNameLatin;
   if (data.email !== undefined) userUpdate.email = data.email;
   if (data.phone !== undefined) userUpdate.phone = data.phone;
   if (data.avatarUrl !== undefined) userUpdate.avatarUrl = data.avatarUrl;

@@ -161,12 +161,30 @@ export const listStudentsSchema = listQuerySchema.extend({
 });
 export type ListStudentsDTO = z.infer<typeof listStudentsSchema>;
 
+/**
+ * تصدير قوائم الطلبة: فلاتر صفحة الطلبة نفسها (بلا البحث بالاسم)، وشكل
+ * الملف — ورقةٌ لكلّ تخصص، أو ورقةٌ واحدة.
+ */
+export const exportStudentsSchema = z.object({
+  academicYearId: entityId.optional(),
+  facultyId: entityId.optional(),
+  departmentId: entityId.optional(),
+  filiereId: entityId.optional(),
+  level: LevelEnum.optional(),
+  specializationId: entityId.optional(),
+  layout: z.enum(["bySpecialization", "single"]).default("bySpecialization"),
+  // «لا يوجد» في الخانة الفارغة، أو تبقى فارغة لتعمل التعبئة السريعة.
+  empty: z.enum(["none", "blank"]).default("none"),
+});
+export type ExportStudentsDTO = z.infer<typeof exportStudentsSchema>;
+
 export const createStudentSchema = z.object({
-  // user side
+  // user side — the Latin name is required, the Arabic one optional: every
+  // student's documents carry the Latin name, not every record the Arabic.
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
-  firstNameLatin: latinFirstName.optional(),
-  lastNameLatin: latinLastName.optional(),
+  firstNameLatin: latinFirstName,
+  lastNameLatin: latinLastName,
   email: z.string().email().optional(),
   phone: z.string().trim().min(1).optional(),
   avatarUrl: imageUrl.optional(),
@@ -186,11 +204,12 @@ export type CreateStudentDTO = z.infer<typeof createStudentSchema>;
 
 // Full edit: every editable field on the student + their user account.
 export const updateStudentSchema = z.object({
-  firstName: z.string().trim().min(1).optional(),
-  lastName: z.string().trim().min(1).optional(),
-  // null = امسح الاسم اللاتيني، كما في البريد والهاتف أدناه.
-  firstNameLatin: latinFirstName.nullable().optional(),
-  lastNameLatin: latinLastName.nullable().optional(),
+  // null = امسح الاسم العربي — اختياريّ للطالب. واللاتينيّ إلزاميّ: يُغيَّر
+  // ولا يُمسح.
+  firstName: z.string().trim().min(1).nullable().optional(),
+  lastName: z.string().trim().min(1).nullable().optional(),
+  firstNameLatin: latinFirstName.optional(),
+  lastNameLatin: latinLastName.optional(),
   // null = امسح القيمة (مثل حذف الصورة). كما في updateProfessorSchema.
   email: z.string().email().nullable().optional(),
   phone: z.string().trim().min(1).nullable().optional(),
@@ -296,6 +315,9 @@ export const listProfessorsSchema = listQuerySchema.extend({
 export type ListProfessorsDTO = z.infer<typeof listProfessorsSchema>;
 
 export const createProfessorSchema = z.object({
+  // كالطالب: الاسم باللاتينية إلزاميّ، والعربيّ اختياريّ.
+  firstNameLatin: latinFirstName,
+  lastNameLatin: latinLastName,
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
   email: z.string().email().optional(),
@@ -319,8 +341,11 @@ export const createProfessorSchema = z.object({
 export type CreateProfessorDTO = z.infer<typeof createProfessorSchema>;
 
 export const updateProfessorSchema = z.object({
-  firstName: z.string().trim().min(1).optional(),
-  lastName: z.string().trim().min(1).optional(),
+  // اللاتينيّ إلزاميّ: يُغيَّر ولا يُمسح. والعربيّ يُمسح بـnull.
+  firstNameLatin: latinFirstName.optional(),
+  lastNameLatin: latinLastName.optional(),
+  firstName: z.string().trim().min(1).nullable().optional(),
+  lastName: z.string().trim().min(1).nullable().optional(),
   email: z.string().email().nullable().optional(), // ← جديد
   phone: z.string().trim().min(1).nullable().optional(), // ← جديد
   avatarUrl: imageUrl.nullable().optional(), // ← جديد

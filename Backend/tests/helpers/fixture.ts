@@ -318,6 +318,15 @@ export async function teardown() {
   await prisma.revokedSession.deleteMany({
     where: { userId: { in: taggedUserIds } },
   });
+  // والجلسات وعدّاد المحاولات الفاشلة كذلك بلا مفتاحٍ أجنبيّ. والعدّاد مفتاحه
+  // المعرِّف المكتوب لا الحساب — وكلّ معرِّفٍ في الاختبارات يحمل الوسم — فلولا
+  // حذفه لتراكمت الإخفاقات بين الملفّات والتشغيلات حتى يُقفل حسابٌ للاختبار.
+  await prisma.authSession.deleteMany({
+    where: { userId: { in: taggedUserIds } },
+  });
+  await prisma.loginThrottle.deleteMany({
+    where: { key: { contains: TAG.toLowerCase() } },
+  });
 
   await prisma.user.deleteMany({ where: { id: { in: taggedUserIds } } });
   await prisma.specialization.deleteMany({

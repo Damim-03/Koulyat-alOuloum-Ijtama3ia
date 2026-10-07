@@ -8,10 +8,10 @@ import type { ImportColumn, ImportColumnKey } from "../../../../../types/admin";
  */
 export const PROFESSOR_GUIDE: Omit<ImportColumn, "letter">[] = (
   [
-    ["firstName", "الاسم", "req", "personal"],
-    ["lastName", "اللقب", "req", "personal"],
-    ["firstNameLatin", "الاسم باللاتينية", "opt", "personal"],
-    ["lastNameLatin", "اللقب باللاتينية", "opt", "personal"],
+    ["firstNameLatin", "الاسم باللاتينية", "req", "personal"],
+    ["lastNameLatin", "اللقب باللاتينية", "req", "personal"],
+    ["firstName", "الاسم", "opt", "personal"],
+    ["lastName", "اللقب", "opt", "personal"],
     ["gender", "الجنس", "opt", "personal"],
     ["verified", "حالة التوثيق", "opt", "personal"],
     ["email", "البريد الشخصي", "opt", "personal"],

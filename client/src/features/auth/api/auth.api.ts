@@ -6,6 +6,9 @@ import type {
   AdminLoginDTO,
 } from "../validation/auth.schema";
 
+const bearer = (token?: string | null) =>
+  token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+
 export const authApi = {
   studentLogin: (data: StudentLoginDTO) =>
     client.post<LoginResponse>("/auth/student/login", data).then((r) => r.data),
@@ -18,18 +21,22 @@ export const authApi = {
   adminLogin: (data: AdminLoginDTO) =>
     client.post<LoginResponse>("/auth/admin/login", data).then((r) => r.data),
 
-  refresh: (refreshToken: string) =>
-    client
-      .post<{ accessToken: string }>("/auth/refresh", { refreshToken })
-      .then((r) => r.data),
-
   me: () => client.get<MeResponse>("/auth/me").then((r) => r.data),
 
-  /** Revokes this session only — other devices stay signed in. */
-  logout: () =>
-    client.post<{ message: string }>("/auth/logout").then((r) => r.data),
+  /**
+   * Revokes this session only — other devices stay signed in. The token is
+   * passed in, read before the store is cleared: interceptors run after the
+   * caller's synchronous code, by which time the store is already empty.
+   * The refresh cookie names the session too, and is cleared by the answer.
+   */
+  logout: (accessToken?: string | null) =>
+    client
+      .post<{ message: string }>("/auth/logout", {}, bearer(accessToken))
+      .then((r) => r.data),
 
   /** Revokes every session on the account. For a lost device or a stolen token. */
-  logoutAll: () =>
-    client.post<{ message: string }>("/auth/logout-all").then((r) => r.data),
+  logoutAll: (accessToken?: string | null) =>
+    client
+      .post<{ message: string }>("/auth/logout-all", {}, bearer(accessToken))
+      .then((r) => r.data),
 };

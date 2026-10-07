@@ -67,8 +67,17 @@ const endOf = (d: { date: Date; durationMinutes: number }) => new Date(d.date.ge
 const overlaps = (a: { start: Date; end: Date }, b: { start: Date; end: Date }) => a.start < b.end && b.start < a.end;
 const sameRoom = (a?: string | null, b?: string | null) =>
   !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
-const nameOf = (u?: { firstName: string | null; lastName: string | null } | null) =>
-  [u?.firstName, u?.lastName].filter(Boolean).join(" ");
+/** بالعربية، وباللاتينية لمن لا اسم عربيّ له. */
+const nameOf = (
+  u?: {
+    firstName: string | null;
+    lastName: string | null;
+    firstNameLatin?: string | null;
+    lastNameLatin?: string | null;
+  } | null,
+) =>
+  [u?.firstName, u?.lastName].filter(Boolean).join(" ") ||
+  [u?.firstNameLatin, u?.lastNameLatin].filter(Boolean).join(" ");
 
 function dayBounds(now = new Date()) {
   const start = new Date(now);

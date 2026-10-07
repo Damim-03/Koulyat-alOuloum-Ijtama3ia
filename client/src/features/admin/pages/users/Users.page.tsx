@@ -22,7 +22,7 @@ import { None } from "../../../../lib/none";
 import { Select as UiSelect } from "../../../../components/ui/select";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
-import { familyName, givenName } from "../../../../lib/person-name";
+import { NameCell } from "../../components/ui/name-cell";
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "bg-forest/10 text-forest",
@@ -429,10 +429,10 @@ export function AdminUsersPage() {
                     <UserAvatar user={u} size={36} />
                   </td>
                   <td className="px-5 py-3.5 text-sm font-medium text-forest">
-                    {givenName(u) || <None />}
+                    <NameCell latin={u.firstNameLatin} arabic={u.firstName} />
                   </td>
                   <td className="px-5 py-3.5 text-sm font-medium text-forest">
-                    {familyName(u) || <None />}
+                    <NameCell latin={u.lastNameLatin} arabic={u.lastName} />
                   </td>
                   <td className="px-5 py-3.5 text-sm text-clay" dir="ltr">
                     {u.username ? `@${u.username}` : <None />}

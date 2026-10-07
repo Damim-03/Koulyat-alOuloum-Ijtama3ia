@@ -31,7 +31,7 @@ import { None } from "../../../../lib/none";
 import { Select as UiSelect } from "../../../../components/ui/select";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
-import { familyName, givenName } from "../../../../lib/person-name";
+import { NameCell } from "../../components/ui/name-cell";
 
 const PAGE_SIZE = 10;
 
@@ -463,10 +463,10 @@ export function AdminProfessorsPage() {
                     <UserAvatar user={p.user} size={36} />
                   </td>
                   <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                    {givenName(p.user) || <None />}
+                    <NameCell latin={p.user?.firstNameLatin} arabic={p.user?.firstName} />
                   </td>
                   <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                    {familyName(p.user) || <None />}
+                    <NameCell latin={p.user?.lastNameLatin} arabic={p.user?.lastName} />
                   </td>
                   <td className="px-4 py-3.5 text-sm text-clay" dir="ltr">
                     {p.employeeNumber}

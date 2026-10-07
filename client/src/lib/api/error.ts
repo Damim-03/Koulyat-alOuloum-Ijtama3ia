@@ -44,11 +44,25 @@ export function serverMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Too many failures. The account lock says for how long (the server writes the
+ * minutes into its message); the per-address limiter does not.
+ */
+function tooMany(code: string, data: unknown): string {
+  if (code === "AUTH_TOO_MANY_ATTEMPTS") {
+    const text = (data as { message?: string } | undefined)?.message ?? "";
+    const minutes = Number(/(\d+)\s*minute/i.exec(text)?.[1]);
+    if (minutes > 0) return t("apiError.accountLocked", { count: minutes });
+  }
+  return t("apiError.tooManyRequests");
+}
+
 export function normalizeError(error: unknown): AppError {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status ?? 0;
     const data = error.response?.data;
     const code = readCode(data);
+    if (status === 429) return { status, code, message: tooMany(code, data) };
     const fallback =
       (data as { message?: string } | undefined)?.message ??
       t("apiError.unexpected");

@@ -19,7 +19,8 @@ export interface AuthUser {
 
 export interface AuthTokens {
   accessToken: string;
-  refreshToken: string;
+  /** Sent for non-browser clients; the web app relies on the httpOnly cookie. */
+  refreshToken?: string;
 }
 
 // Shape returned by /auth/{student|professor|admin}/login

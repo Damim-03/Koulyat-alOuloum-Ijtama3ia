@@ -46,9 +46,12 @@ export async function buildProfessorTemplate(): Promise<Buffer> {
 async function loadTaken(parsed: ParsedFile<ProfessorKey>): Promise<Taken> {
   const uni = [...new Set(columnTexts(parsed, "universityEmail").map((m) => m.toLowerCase()))];
   const emp = [...new Set(columnTexts(parsed, "employeeNumber").map(compactDigits))];
-  const lastNames = [...new Set(columnTexts(parsed, "lastName").map((s) => s.replace(/\s+/g, " ")))];
+  // من سبقه إلى المنصّة بالاسم نفسه — باللاتيني، وهو المطلوب في كلّ صف.
+  const lastNames = [...new Set(columnTexts(parsed, "lastNameLatin").map((s) => s.replace(/\s+/g, " ")))];
 
-  const who = { user: { select: { firstName: true, lastName: true } } } as const;
+  const who = {
+    user: { select: { firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true } },
+  } as const;
   const [byUni, byEmp, mails, namesakes] = await Promise.all([
     uni.length
       ? prisma.professor.findMany({ where: { universityEmail: { in: uni } }, select: { universityEmail: true, ...who } })
@@ -59,16 +62,16 @@ async function loadTaken(parsed: ParsedFile<ProfessorKey>): Promise<Taken> {
     loadTakenMails(columnTexts(parsed, "email")),
     lastNames.length
       ? prisma.user.findMany({
-          where: { role: "professor", lastName: { in: lastNames } },
-          select: { firstName: true, lastName: true, professor: { select: { universityEmail: true } } },
+          where: { role: "professor", lastNameLatin: { in: lastNames } },
+          select: { firstNameLatin: true, lastNameLatin: true, professor: { select: { universityEmail: true } } },
         })
       : [],
   ]);
 
   const names = new Map<string, string[]>();
   for (const u of namesakes) {
-    if (!u.firstName || !u.lastName || !u.professor) continue;
-    const k = fullNameKey(u.firstName, u.lastName);
+    if (!u.firstNameLatin || !u.lastNameLatin || !u.professor) continue;
+    const k = fullNameKey(u.firstNameLatin, u.lastNameLatin);
     names.set(k, [...(names.get(k) ?? []), u.professor.universityEmail]);
   }
   return {
@@ -131,8 +134,10 @@ async function freshEmployeeNumbers(count: number, reserved: Set<string>): Promi
 export interface ImportedProfessor {
   employeeNumber: string;
   universityEmail: string;
-  firstName: string;
-  lastName: string;
+  firstName: string | null;
+  lastName: string | null;
+  firstNameLatin: string | null;
+  lastNameLatin: string | null;
   /** المولَّدة وحدها — ما كُتب في الملف عند المسؤول أصلاً. */
   password: string | null;
 }
@@ -166,8 +171,9 @@ export async function importProfessors(buffer: Buffer): Promise<ProfessorImportO
           department: { connect: { id: p.departmentId } },
           user: {
             create: {
-              firstName: p.firstName,
-              lastName: p.lastName,
+              // العربيّ اختياريّ: الفارغ لا يُحفظ نصّاً فارغاً.
+              firstName: p.firstName || null,
+              lastName: p.lastName || null,
               firstNameLatin: p.firstNameLatin,
               lastNameLatin: p.lastNameLatin,
               email: p.email,
@@ -187,19 +193,31 @@ export async function importProfessors(buffer: Buffer): Promise<ProfessorImportO
   const accounts = ready.map((p, i) => ({
     employeeNumber: numbers[i]!,
     universityEmail: p.universityEmail,
-    firstName: p.firstName,
-    lastName: p.lastName,
+    firstName: p.firstName || null,
+    lastName: p.lastName || null,
+    firstNameLatin: p.firstNameLatin ?? null,
+    lastNameLatin: p.lastNameLatin ?? null,
     password: p.password ? null : passwords[i]!,
   }));
   const file = await buildAccountsFile(
     [
       { header: "الرقم الوظيفي", width: 18 },
       { header: "البريد الجامعي (للدخول)", width: 32 },
-      { header: "الاسم", width: 18 },
-      { header: "اللقب", width: 18 },
+      { header: "الاسم باللاتينية", width: 18 },
+      { header: "اللقب باللاتينية", width: 18 },
+      { header: "الاسم", width: 16 },
+      { header: "اللقب", width: 16 },
       { header: "كلمة المرور الأوّلية", width: 22 },
     ],
-    accounts.map((a) => [a.employeeNumber, a.universityEmail, a.firstName, a.lastName, a.password]),
+    accounts.map((a) => [
+      a.employeeNumber,
+      a.universityEmail,
+      a.firstNameLatin,
+      a.lastNameLatin,
+      a.firstName,
+      a.lastName,
+      a.password,
+    ]),
   );
   return { ok: true, created: ready.length, accounts, accountsFile: file.toString("base64") };
 }

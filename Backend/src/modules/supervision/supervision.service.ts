@@ -30,8 +30,15 @@ export interface SupervisionSnapshot {
   issuedAt: string;
 }
 
-const fullName = (u?: { firstName?: string | null; lastName?: string | null }) =>
-  [u?.firstName, u?.lastName].filter(Boolean).join(" ").trim();
+/** بالعربية، وباللاتينية لمن لا اسم عربيّ له. */
+const fullName = (u?: {
+  firstName?: string | null;
+  lastName?: string | null;
+  firstNameLatin?: string | null;
+  lastNameLatin?: string | null;
+}) =>
+  [u?.firstName, u?.lastName].filter(Boolean).join(" ").trim() ||
+  [u?.firstNameLatin, u?.lastNameLatin].filter(Boolean).join(" ").trim();
 
 /**
  * رمزُ التحقّق.
@@ -327,8 +334,16 @@ export const getSupervisionDocumentService = async (
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
+  // A document whose topic is gone has no professor or group left to entitle
+  // anyone: the administration alone may still open it. (It used to skip the
+  // check altogether — open to every signed-in account that knew the id.)
   const topic = await topicForDocument(document.topicId);
   if (topic) assertMayAccess(topic, actor);
+  else if (actor.role !== "admin")
+    throw new NotFoundException(
+      "Document not found",
+      ErrorCodeEnum.RESOURCE_NOT_FOUND,
+    );
 
   return withBarcode(document);
 };

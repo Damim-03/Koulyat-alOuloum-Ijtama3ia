@@ -13,7 +13,10 @@ export type JwtUser = {
   role: RoleType;
   /** Profile id: Student.id | Professor.id | User.id for admins. */
   refId: string;
+  /** The session (`sid`) this request's token belongs to. */
+  sid?: string;
 };
+
 
 export interface AuthenticatedRequest extends Request {
   user?: JwtUser;
@@ -119,6 +122,7 @@ export const authMiddleware = async (
       userId: user.id,
       role: user.role as RoleType,
       refId: user.student?.id ?? user.professor?.id ?? user.id,
+      sid: decoded.sid,
     };
 
     return next();

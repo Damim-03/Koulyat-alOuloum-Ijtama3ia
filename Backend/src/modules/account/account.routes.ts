@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { authMiddleware } from "../../core/middleware/auth.middleware";
 import { authLimiter, writeLimiter } from "../../core/middleware/rateLimit.middleware";
 import { cardImageUpload } from "../../core/middleware/upload.middleware";
+import { setRefreshCookie } from "../../core/auth/refresh-cookie";
 import { BadRequestException, HttpException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { HTTPSTATUS } from "../../core/config/http/http.config";
@@ -65,7 +66,12 @@ accountRoutes.post(
 accountRoutes.post(
   "/password",
   authLimiter,
-  wrap(async (req, res) => res.status(HTTPSTATUS.OK).json(await svc.changePasswordService(me(req), parse(changePasswordSchema, req.body)))),
+  wrap(async (req, res) => {
+    const result = await svc.changePasswordService(me(req), parse(changePasswordSchema, req.body));
+    // The new session's refresh token, where the web client keeps it.
+    setRefreshCookie(res, result.refreshToken);
+    return res.status(HTTPSTATUS.OK).json(result);
+  }),
 );
 
 export default accountRoutes;

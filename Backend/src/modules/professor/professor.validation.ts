@@ -1,9 +1,18 @@
 import { z } from "zod";
 
 // A single helpful reference for students: a title + a valid URL.
+//
+// `http`/`https` only. `.url()` alone accepts any scheme the URL parser does —
+// `javascript:` and `data:` included — and these links are rendered as anchors
+// for students and staff to click.
 const referenceSchema = z.object({
   title: z.string().trim().min(1, "عنوان المرجع مطلوب"),
-  url: z.string().trim().url("رابط غير صحيح"),
+  url: z
+    .string()
+    .trim()
+    .max(2048)
+    .url("رابط غير صحيح")
+    .refine((u) => /^https?:\/\//i.test(u), "الرابط يبدأ بـ http:// أو https://"),
 });
 
 // ─── TOPICS ────────────────────────────────────────────────────

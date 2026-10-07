@@ -108,6 +108,13 @@ describe("الخطوة الشخصية", () => {
 
   it("والهاتف للطالب وحده", () => {
     expect(personalFields("student")).toContain("phone");
+    // الاسم واللقب باللاتينية إلزاميان للطالب ويسبقان العربيّين.
+    expect(personalFields("student").slice(0, 4)).toEqual([
+      "firstNameLatin",
+      "lastNameLatin",
+      "firstName",
+      "lastName",
+    ]);
     expect(personalFields("professor")).not.toContain("phone");
   });
 

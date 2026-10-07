@@ -23,7 +23,8 @@ export const accountApi = {
   changeEmail: (data: { email: string; currentPassword: string }) =>
     client.post<{ account: MyAccount }>("/account/email", data).then((r) => r.data.account),
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
-    client.post<{ accessToken: string; refreshToken: string }>("/account/password", data).then((r) => r.data),
+    // The new refresh token arrives as an httpOnly cookie; only the access token is kept.
+    client.post<{ accessToken: string }>("/account/password", data).then((r) => r.data),
 };
 
 const KEY = ["account", "me"] as const;

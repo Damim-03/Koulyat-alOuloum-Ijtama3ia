@@ -14,8 +14,8 @@ export const STUDENT_IMPORT_CONFIG: ImportDialogConfig = {
   guide: IMPORT_GUIDE,
   mock: [
     ["رقم التسجيل", "req"],
-    ["الاسم", "req"],
-    ["البريد", "opt"],
+    ["الاسم باللاتينية", "req"],
+    ["الاسم", "opt"],
     ["الكلية", "auto"],
   ],
   accounts: [{ key: "registrationNumber", labelKey: "accReg" }],

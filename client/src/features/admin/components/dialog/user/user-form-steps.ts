@@ -96,9 +96,13 @@ export const isStaffRole = (role: Role) => role === "admin";
  * خطوة الحساب — كما هي الاستمارة اليوم.
  */
 export function personalFields(role: Role): FieldName[] {
-  const fields: FieldName[] = ["firstName", "lastName", "gender", "password"];
+  // الطالب والأستاذ: الاسم واللقب باللاتينية أوّلاً — إلزاميّان، فإليهما يذهب
+  // التركيز أوّلاً إن نقصا. والإداريّ بالعربيّ وحده.
+  const fields: FieldName[] = isStaffRole(role)
+    ? ["firstName", "lastName", "gender", "password"]
+    : ["firstNameLatin", "lastNameLatin", "firstName", "lastName", "gender", "password"];
   if (!isStaffRole(role)) fields.push("email");
-  if (role === "student") fields.push("phone", "firstNameLatin", "lastNameLatin");
+  if (role === "student") fields.push("phone");
   return fields;
 }
 

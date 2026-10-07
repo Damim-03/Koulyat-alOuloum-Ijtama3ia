@@ -73,7 +73,8 @@ export async function buildStudentImportTemplate(): Promise<Buffer> {
 /** ما سبق إلى المنصّة ممّا في الملف — بثلاثة نداءاتٍ لا بنداءٍ لكلّ صف. */
 async function loadTaken(parsed: ParsedFile<ColumnKey>): Promise<Taken> {
   const regs = [...new Set(columnTexts(parsed, "registrationNumber").map(regDigits))];
-  const lastNames = [...new Set(columnTexts(parsed, "lastName").map((s) => s.replace(/\s+/g, " ")))];
+  // من سبقه إلى المنصّة بالاسم نفسه — باللاتيني، وهو المطلوب في كلّ صف.
+  const lastNames = [...new Set(columnTexts(parsed, "lastNameLatin").map((s) => s.replace(/\s+/g, " ")))];
 
   const [students, mails, namesakes] = await Promise.all([
     regs.length
@@ -81,7 +82,7 @@ async function loadTaken(parsed: ParsedFile<ColumnKey>): Promise<Taken> {
           where: { registrationNumber: { in: regs } },
           select: {
             registrationNumber: true,
-            user: { select: { firstName: true, lastName: true } },
+            user: { select: { firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true } },
             specialization: { select: { name: true } },
           },
         })
@@ -89,10 +90,10 @@ async function loadTaken(parsed: ParsedFile<ColumnKey>): Promise<Taken> {
     loadTakenMails(columnTexts(parsed, "email")),
     lastNames.length
       ? prisma.user.findMany({
-          where: { role: "student", lastName: { in: lastNames } },
+          where: { role: "student", lastNameLatin: { in: lastNames } },
           select: {
-            firstName: true,
-            lastName: true,
+            firstNameLatin: true,
+            lastNameLatin: true,
             student: { select: { registrationNumber: true } },
           },
         })
@@ -101,8 +102,8 @@ async function loadTaken(parsed: ParsedFile<ColumnKey>): Promise<Taken> {
 
   const names = new Map<string, { registrationNumber: string }[]>();
   for (const u of namesakes) {
-    if (!u.firstName || !u.lastName || !u.student) continue;
-    const k = fullNameKey(u.firstName, u.lastName);
+    if (!u.firstNameLatin || !u.lastNameLatin || !u.student) continue;
+    const k = fullNameKey(u.firstNameLatin, u.lastNameLatin);
     names.set(k, [...(names.get(k) ?? []), { registrationNumber: u.student.registrationNumber }]);
   }
   return {
@@ -145,8 +146,10 @@ export async function validateStudentImport(
 
 export interface ImportedAccount {
   registrationNumber: string;
-  firstName: string;
-  lastName: string;
+  firstName: string | null;
+  lastName: string | null;
+  firstNameLatin: string | null;
+  lastNameLatin: string | null;
   /** المولَّدة وحدها — ما كُتب في الملف عند المسؤول أصلاً. */
   password: string | null;
 }
@@ -175,8 +178,9 @@ export async function importStudents(buffer: Buffer): Promise<ImportOutcome> {
           academicYear: { connect: { id: s.academicYearId } },
           user: {
             create: {
-              firstName: s.firstName,
-              lastName: s.lastName,
+              // العربيّ اختياريّ: الفارغ لا يُحفظ نصّاً فارغاً.
+              firstName: s.firstName || null,
+              lastName: s.lastName || null,
               firstNameLatin: s.firstNameLatin,
               lastNameLatin: s.lastNameLatin,
               email: s.email,
@@ -195,18 +199,22 @@ export async function importStudents(buffer: Buffer): Promise<ImportOutcome> {
 
   const accounts = ready.map((s, i) => ({
     registrationNumber: s.registrationNumber,
-    firstName: s.firstName,
-    lastName: s.lastName,
+    firstName: s.firstName || null,
+    lastName: s.lastName || null,
+    firstNameLatin: s.firstNameLatin ?? null,
+    lastNameLatin: s.lastNameLatin ?? null,
     password: s.password ? null : passwords[i]!,
   }));
   const file = await buildAccountsFile(
     [
       { header: "رقم التسجيل", width: 18 },
-      { header: "الاسم", width: 18 },
-      { header: "اللقب", width: 18 },
+      { header: "الاسم باللاتينية", width: 18 },
+      { header: "اللقب باللاتينية", width: 18 },
+      { header: "الاسم", width: 16 },
+      { header: "اللقب", width: 16 },
       { header: "كلمة المرور الأوّلية", width: 22 },
     ],
-    accounts.map((a) => [a.registrationNumber, a.firstName, a.lastName, a.password]),
+    accounts.map((a) => [a.registrationNumber, a.firstNameLatin, a.lastNameLatin, a.firstName, a.lastName, a.password]),
   );
   return { ok: true, created: ready.length, accounts, accountsFile: file.toString("base64") };
 }

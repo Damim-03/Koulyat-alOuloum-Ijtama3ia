@@ -45,6 +45,7 @@ import { UserAvatar } from "../../../../../components/ui/user-avatar";
 import { inputCls, Panel, FieldBox } from "../../form/entity-form";
 import { None } from "../../../../../lib/none";
 import { Select } from "../../../../../components/ui/select";
+import { LATIN_NAME, toLatinFirst, toLatinLast } from "../../../../../lib/latin-name";
 
 interface Props {
   open: boolean;
@@ -55,6 +56,8 @@ interface Props {
 interface EditState {
   firstName: string;
   lastName: string;
+  firstNameLatin: string;
+  lastNameLatin: string;
   email: string;
   phone: string;
   gender: "male" | "female" | "";
@@ -104,6 +107,8 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
   const [form, setForm] = useState<EditState>({
     firstName: "",
     lastName: "",
+    firstNameLatin: "",
+    lastNameLatin: "",
     email: "",
     phone: "",
     gender: "",
@@ -131,6 +136,8 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
       setForm({
         firstName: professor.user?.firstName ?? "",
         lastName: professor.user?.lastName ?? "",
+        firstNameLatin: professor.user?.firstNameLatin ?? "",
+        lastNameLatin: professor.user?.lastNameLatin ?? "",
         email: professor.user?.email ?? "",
         phone: professor.user?.phone ?? "",
         gender: professor.user?.gender ?? "",
@@ -155,6 +162,8 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
   const previewUser = {
     firstName: form.firstName,
     lastName: form.lastName,
+    firstNameLatin: form.firstNameLatin,
+    lastNameLatin: form.lastNameLatin,
     gender: form.gender || undefined,
     avatarUrl: form.avatarUrl || undefined,
   };
@@ -232,6 +241,17 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
       setError(t("validation.passwordMinLong"));
       return;
     }
+    // الاسم واللقب باللاتينية إلزاميان؛ والعربيّان اختياريان.
+    const latinFirst = toLatinFirst(form.firstNameLatin);
+    const latinLast = toLatinLast(form.lastNameLatin);
+    if (!latinFirst.trim() || !latinLast.trim()) {
+      setError(t("validation.latinNameRequired"));
+      return;
+    }
+    if (!LATIN_NAME.test(latinFirst) || !LATIN_NAME.test(latinLast)) {
+      setError(t("validation.latinOnly"));
+      return;
+    }
 
     const statusChanged = form.status !== professor!.user?.status;
     const userId = professor!.userId;
@@ -240,8 +260,11 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
       {
         id: professor!.id,
         data: {
-          firstName: form.firstName || undefined,
-          lastName: form.lastName || undefined,
+          firstNameLatin: latinFirst,
+          lastNameLatin: latinLast,
+          // null = امسح الاسم العربي — اختياريّ.
+          firstName: form.firstName.trim() || null,
+          lastName: form.lastName.trim() || null,
           // null = امسح القيمة (زرّ «إزالة» يفرّغ الحقل).
           email: form.email || null,
           phone: form.phone || null,
@@ -312,6 +335,7 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
             <div className="min-w-0 flex-1">
               <h3 className="truncate font-serif text-lg font-bold">
                 {`${form.firstName} ${form.lastName}`.trim() ||
+                  `${form.firstNameLatin} ${form.lastNameLatin}`.trim() ||
                   t("admin.editProfessorTitle")}
               </h3>
               <p className="flex items-center gap-2 text-[11px] text-cream/70">
@@ -370,6 +394,33 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
                   onChange={onPickFile}
                   className="hidden"
                 />
+              </div>
+
+              {/* الاسم واللقب باللاتينية أوّلاً، وهما الإلزاميان — يُوحَّدان عند
+                  مغادرة الحقل ليُرى ما سيُحفظ. والعربيّان بعدهما، اختياريان. */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <FieldBox label={t("admin.firstNameLatin")} icon={User} required>
+                  <input
+                    value={form.firstNameLatin}
+                    onChange={(e) => set("firstNameLatin", e.target.value)}
+                    onBlur={(e) => set("firstNameLatin", toLatinFirst(e.target.value))}
+                    dir="ltr"
+                    autoComplete="off"
+                    placeholder="Youcef"
+                    className={inputCls}
+                  />
+                </FieldBox>
+                <FieldBox label={t("admin.lastNameLatin")} icon={User} required>
+                  <input
+                    value={form.lastNameLatin}
+                    onChange={(e) => set("lastNameLatin", e.target.value)}
+                    onBlur={(e) => set("lastNameLatin", toLatinLast(e.target.value))}
+                    dir="ltr"
+                    autoComplete="off"
+                    placeholder="HAMADI"
+                    className={inputCls}
+                  />
+                </FieldBox>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
@@ -478,8 +529,9 @@ export function ProfessorEditDialog({ open, professor, onClose }: Props) {
                 <UniversityEmailInput
                   value={form.universityEmail}
                   onChange={(next) => set("universityEmail", next)}
-                  firstName={form.firstName}
-                  lastName={form.lastName}
+                  // اللاتينيّ أولى من نقل العربيّ حرفاً حرفاً.
+                  firstName={form.firstNameLatin || form.firstName}
+                  lastName={form.lastNameLatin || form.lastName}
                 />
               </FieldBox>
 

@@ -49,6 +49,10 @@ vi.mock("../../../hooks/admin-hook", () => ({
   useAcademicYears: () => ({ data: [{ id: "22222222-2222-4222-8222-222222222222", title: "2025/2026" }] }),
   useDepartments: () => ({ data: [] }),
   useFaculties: () => ({ data: [] }),
+  // خطوة الأستاذ الجامعية: حقل البريد الجامعيّ يقرأ النطاقات.
+  useUniversityDomains: () => ({ data: [], isLoading: false }),
+  useCreateUniversityDomain: () => noop,
+  useDeleteUniversityDomain: () => noop,
   useFilieres: () => ({ data: [] }),
 }));
 
@@ -56,6 +60,12 @@ const { UserFormDialog } = await import("./user-form-dialog.form");
 
 const open = (props: Partial<Parameters<typeof UserFormDialog>[0]> = {}) =>
   render(<UserFormDialog open onClose={() => {}} {...props} />);
+
+/** الطالب: الاسم واللقب باللاتينية إلزاميان قبل «التالي». */
+const typeLatinNames = async () => {
+  await userEvent.type(screen.getByTestId("first-name-latin"), "Youcef");
+  await userEvent.type(screen.getByTestId("last-name-latin"), "HAMADI");
+};
 
 /** مفتاح الخطوة التي يقف عليها الشريط الآن. */
 const currentStep = () =>
@@ -145,12 +155,15 @@ describe("الحراسة عند الانتقال", () => {
    * ممّا يراه، ويظنّ الزرّ معطّلاً. فنقلُ التركيز هو ما يدلّه على موضع
    * المشكلة — والمتصفّح يُمرّر إليه من تلقاء نفسه.
    */
-  it("وينتقل التركيز إلى أوّل حقلٍ ناقص", async () => {
+  it("وينتقل التركيز إلى أوّل حقلٍ ناقص — والاسم باللاتينية أوّلها للطالب", async () => {
     open({ lockedRole: "student" });
     const password = screen.getByPlaceholderText("••••••••");
 
     await next();
+    expect(screen.getByTestId("first-name-latin")).toHaveFocus();
 
+    await typeLatinNames();
+    await next();
     expect(password).toHaveFocus();
   });
 
@@ -172,9 +185,10 @@ describe("الحراسة عند الانتقال", () => {
     expect(box.querySelector("p")).not.toBeNull();
   });
 
-  it("وحين يصحّ الحقل يتقدّم، والشريط يتبع", async () => {
+  it("وحين يصحّ الحقل يتقدّم، والشريط يتبع — والاسم العربيّ اختياريّ", async () => {
     open({ lockedRole: "student" });
 
+    await typeLatinNames();
     await userEvent.type(screen.getByPlaceholderText("••••••••"), "secret123");
     await next();
 
@@ -191,6 +205,7 @@ describe("الحراسة عند الانتقال", () => {
     open({ lockedRole: "student" });
     const password = screen.getByPlaceholderText("••••••••");
 
+    await typeLatinNames();
     await userEvent.type(password, "secret123");
     await next();
     await userEvent.click(screen.getByTestId("wizard-back"));
@@ -382,6 +397,7 @@ describe("رأس بطاقة المراجعة", () => {
   it("واختيارٌ من قائمةٍ يصل إلى الاستمارة", async () => {
     open({ lockedRole: "student" });
 
+    await typeLatinNames();
     await userEvent.type(screen.getByPlaceholderText("••••••••"), "secret123");
     await next();
     expect(currentStep()).toBe("step-academic");
@@ -414,19 +430,35 @@ describe("رأس بطاقة المراجعة", () => {
 });
 
 /**
- * الاسم باللاتينية: للطالب، اختياريّ، يُوحَّد عند مغادرة الحقل، ولا يُقبل
- * فيه حرفٌ عربيّ — والخطأ يوقف الخطوة الشخصية لا الحفظ بعد خطوتين.
+ * الاسم باللاتينية: للطالب والأستاذ، إلزاميّ، يُوحَّد عند مغادرة الحقل، ولا
+ * يُقبل فيه حرفٌ عربيّ — والخطأ يوقف الخطوة الشخصية لا الحفظ بعد خطوتين.
  */
 describe("الاسم باللاتينية", () => {
   beforeEach(() => noop.mutate.mockClear());
 
-  it("يظهر للطالب ولا يظهر للأستاذ", () => {
-    const { unmount } = open({ lockedRole: "student" });
+  it("يظهر للطالب وللأستاذ، ولا يظهر للإداريّ", () => {
+    const student = open({ lockedRole: "student" });
     expect(screen.getByTestId("first-name-latin")).toBeInTheDocument();
-    unmount();
+    student.unmount();
 
-    open({ lockedRole: "professor" });
+    const professor = open({ lockedRole: "professor" });
+    expect(screen.getByTestId("first-name-latin")).toBeInTheDocument();
+    professor.unmount();
+
+    open({ lockedRole: "admin" });
     expect(screen.queryByTestId("first-name-latin")).not.toBeInTheDocument();
+  });
+
+  it("وهو إلزاميّ للأستاذ: بلا اسمٍ لاتينيّ لا تتقدّم الخطوة", async () => {
+    open({ lockedRole: "professor" });
+    await userEvent.type(screen.getByPlaceholderText("••••••••"), "secret123");
+    await next();
+    expect(currentStep()).toBe("step-personal");
+    expect(screen.getByTestId("first-name-latin")).toHaveFocus();
+
+    await typeLatinNames();
+    await next();
+    expect(currentStep()).toBe("step-academic");
   });
 
   it("يُوحَّد عند مغادرة الحقل: Nour El Houda، BEN ALI", async () => {
@@ -496,6 +528,7 @@ describe("مستوى التخصص", () => {
 
   async function toAcademic() {
     open({ lockedRole: "student" });
+    await typeLatinNames();
     await userEvent.type(screen.getByPlaceholderText("••••••••"), "secret123");
     await next();
   }

@@ -18,8 +18,9 @@ export const adminLoginSchema = z.object({
   password: z.string().min(1, "Password is required").max(200),
 });
 
+/** In the body for non-browser clients; the web client sends the cookie instead. */
 export const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(1, "Refresh token is required"),
+  refreshToken: z.string().min(1).max(4096).optional(),
 });
 
 export type RefreshTokenDTO = z.infer<typeof refreshTokenSchema>;
