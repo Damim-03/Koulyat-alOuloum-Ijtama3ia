@@ -10,7 +10,13 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (!isAuthenticated) {
-    return <Navigate to={localePath(PATHS.login)} replace state={{ from: location }} />;
+    return (
+      <Navigate
+        to={localePath(PATHS.login)}
+        replace
+        state={{ from: location }}
+      />
+    );
   }
   return <>{children}</>;
 }

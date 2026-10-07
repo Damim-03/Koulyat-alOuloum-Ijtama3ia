@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronUp,
   FileSpreadsheet,
+  FileDown,
 } from "lucide-react";
 import {
   useStudents,
@@ -27,6 +28,7 @@ import {
 } from "../../hooks/admin-hook";
 import { UserFormDialog } from "../../components/dialog/user/user-form-dialog.form";
 import { StudentImportDialog } from "../../components/dialog/student/student-import-dialog";
+import { StudentExportDialog } from "../../components/dialog/student/student-export-dialog";
 import { SearchField } from "../../components/ui/search-field";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
@@ -38,7 +40,7 @@ import {
   SPEC_LEVELS,
   type SpecLevel,
 } from "../../components/dialog/user/user-form-steps";
-import { familyName, givenName } from "../../../../lib/person-name";
+import { NameCell } from "../../components/ui/name-cell";
 
 /** لونٌ لكلّ مستوى: يُقرأ العمود بنظرة دون قراءة كلماته. */
 const LEVEL_TONE: Record<SpecLevel, string> = {
@@ -83,6 +85,7 @@ export function AdminStudentsPage() {
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [tab, setTab] = useState<"all" | "unassigned">("all");
 
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -184,17 +187,21 @@ export function AdminStudentsPage() {
         // المستوى يضيّق قائمة التخصصات كما يضيّقها الهرم.
         if (level && sp.level !== level) return false;
         if (filiereId && sp.filiereId !== filiereId) return false;
-        if (departmentId && !filiereId && sp.departmentId !== departmentId)
+        // القسم من شعبة التخصص: `sp.departmentId` بقيّةٌ قديمة لا تُملأ، فكان
+        // اختيار القسم وحده يُفرغ قائمة التخصصات.
+        const spDept =
+          sp.departmentId ??
+          sp.filiere?.departmentId ??
+          (filieres ?? []).find((f: any) => f.id === sp.filiereId)?.departmentId;
+        if (departmentId && !filiereId && spDept !== departmentId)
           return false;
         if (facultyId && !departmentId && !filiereId) {
-          const d = (departments ?? []).find(
-            (dd: any) => dd.id === sp.departmentId,
-          );
+          const d = (departments ?? []).find((dd: any) => dd.id === spDept);
           if (d && d.facultyId !== facultyId) return false;
         }
         return true;
       }),
-    [specs, level, filiereId, departmentId, facultyId, departments],
+    [specs, level, filiereId, departmentId, facultyId, departments, filieres],
   );
 
   // clear children when a parent becomes incompatible
@@ -258,6 +265,16 @@ export function AdminStudentsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+        {/* القوائم بالفلاتر — تبدأ من فلاتر الصفحة الحالية. */}
+        <button
+          type="button"
+          onClick={() => setExportOpen(true)}
+          data-testid="open-student-export"
+          className="inline-flex items-center gap-2 rounded-xl border border-forest/15 bg-cream-card px-4 py-2.5 text-sm font-semibold text-forest transition hover:border-gold/50 hover:bg-gold/5"
+        >
+          <FileDown size={18} className="text-gold" />
+          {t("admin.export.button")}
+        </button>
         {/* دفعةٌ كاملة من ملفّ واحد — بجانب الإضافة الفردية لا بدلاً منها. */}
         <button
           type="button"
@@ -611,10 +628,10 @@ export function AdminStudentsPage() {
                       <UserAvatar user={s.user} size={36} />
                     </td>
                     <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                      {givenName(s.user) || <None />}
+                      <NameCell latin={s.user?.firstNameLatin} arabic={s.user?.firstName} />
                     </td>
                     <td className="px-4 py-3.5 text-sm font-medium text-forest">
-                      {familyName(s.user) || <None />}
+                      <NameCell latin={s.user?.lastNameLatin} arabic={s.user?.lastName} />
                     </td>
                     <td className="px-4 py-3.5 text-sm text-clay" dir="ltr">
                       {s.registrationNumber}
@@ -692,6 +709,11 @@ export function AdminStudentsPage() {
         lockedRole="student"
       />
       <StudentImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
+      <StudentExportDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        initial={{ facultyId, departmentId, filiereId, level, specializationId }}
+      />
     </div>
   );
 }

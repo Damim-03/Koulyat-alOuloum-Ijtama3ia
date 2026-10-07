@@ -808,6 +808,44 @@ model UniversityDomain {
 /// A denylist rather than a session table: only a logout writes here, rows are
 /// pruned once the token they revoke would have expired anyway, so the table
 /// stays proportional to recent logouts rather than to active users.
+/// جلسة دخولٍ واحدة ورمز تحديثها الحاليّ. رمز التحديث يتبدّل مع كلّ استعمال
+/// (`refreshJti`)، فإن عاد رمزٌ قديمٌ بعد تبديله فقد سُرق أحدهما: تُلغى الجلسة.
+/// و`prevJti` يُقبل لحظاتٍ بعد التبديل — تبويبان يجدّدان معاً ليسا سرقة.
+model AuthSession {
+  /// الـ`sid` في رمزَي الجلسة.
+  id String @id
+
+  userId String
+
+  refreshJti String  @db.VarChar(64)
+  prevJti    String? @db.VarChar(64)
+  rotatedAt  DateTime @default(now())
+
+  /// انتهاء آخر رمز تحديث صدر لها — وما بعده يُحذف.
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// محاولات الدخول الفاشلة لكلّ مُعرِّف (رقم تسجيل، بريد) — لا لكلّ عنوان IP.
+/// يُحسب للمعرِّف وإن لم يكن له حساب، فلا يكشف القفلُ أيّ الحسابات موجود.
+model LoginThrottle {
+  /// `student:<رقم>` · `professor:<بريد>` · `admin:<بريد>`
+  key String @id @db.VarChar(191)
+
+  failures  Int       @default(0)
+  /// كم مرّةً قُفل — كلّ قفلٍ ضعفُ الذي قبله، حتى سقفٍ يوميّ.
+  lockCount Int       @default(0)
+  lockedUntil DateTime?
+
+  lastFailureAt DateTime @default(now())
+
+  @@index([lastFailureAt])
+}
+
 model RevokedSession {
   /// The `sid` claim carried by the revoked token pair.
   id String @id

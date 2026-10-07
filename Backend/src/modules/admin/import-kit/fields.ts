@@ -103,6 +103,8 @@ export interface PersonContext {
   mailRows: Map<string, RawRow[]>;
   phoneRows: Map<string, RawRow[]>;
   nameRows: Map<string, RawRow[]>;
+  /** والاسم واللقب باللاتينية — حيث هو المطلوب (الطلبة). */
+  latinNameRows: Map<string, RawRow[]>;
   /** بريدٌ شخصيّ مستعمَلٌ في المنصّة ← صاحبه. */
   takenMails: Map<string, { role: string; name: string }>;
 }
@@ -114,6 +116,11 @@ export function personContext(rows: RawRow[]): Omit<PersonContext, "takenMails">
     phoneRows: groupBy(rows, (r) => latinDigits(text(r, "phone")).replace(/\D/g, "")),
     nameRows: groupBy(rows, (r) =>
       text(r, "firstName") && text(r, "lastName") ? fullNameKey(text(r, "firstName"), text(r, "lastName")) : "",
+    ),
+    latinNameRows: groupBy(rows, (r) =>
+      text(r, "firstNameLatin") && text(r, "lastNameLatin")
+        ? fullNameKey(text(r, "firstNameLatin"), text(r, "lastNameLatin"))
+        : "",
     ),
   };
 }
@@ -130,6 +137,7 @@ type PersonKey =
   | "password";
 
 export interface PersonFields {
+  /** "" حين لا يُطلب العربيّ ويُترك فارغاً. */
   firstName: string;
   lastName: string;
   firstNameLatin?: string;
@@ -147,6 +155,10 @@ export interface PersonFields {
  * `namesakes(key)` مَن في المنصّة بالاسم واللقب نفسيهما (معرّفاتهم)، و`noun`
  * و`pair` للرسائل («طالبٌ…» / «طالبان أم تكرار؟»)، و`identifier` ما لا تكون
  * كلمة المرور مثله (رقم التسجيل، الرقم الوظيفي).
+ *
+ * و`required` أيّ الخطّين لا بدّ منه: العربيّ للأساتذة، واللاتينيّ للطلبة —
+ * والآخر اختياريّ. ومقارنة الأسماء (التكرار في الملف، ومن سبق إلى المنصّة)
+ * بالخطّ المطلوب، فهو الموجود في كلّ صفّ.
  */
 export function checkPerson<K extends string>(
   r: RowCheck<K | PersonKey>,
@@ -157,16 +169,37 @@ export function checkPerson<K extends string>(
     noun: string;
     pair: string;
     identifier?: { value: string; label: string };
+    required?: "arabic" | "latin";
   },
 ): PersonFields {
   const row = r.raw.row;
+  const arabicRequired = (opts.required ?? "arabic") === "arabic";
+
+  /** الاسم واللقب نفسهما في صفٍّ آخر من الملف، أو لشخصٍ في المنصّة. */
+  const compareNames = (
+    first: string,
+    last: string,
+    rows: Map<string, RawRow[]>,
+    at: { first: K | PersonKey; last: K | PersonKey },
+  ) => {
+    if (loose(first) === loose(last)) r.warn(at.last, "مطابقٌ للاسم — تأكّد منهما.");
+    const key = fullNameKey(first, last);
+    const dup = others(rows.get(key), row);
+    if (dup.length) r.warn(at.first, `الاسم واللقب نفسهما في الصفّ ${dup.join("، ")} — ${opts.pair} أم تكرار؟`);
+    const same = opts.namesakes(key);
+    if (same.length)
+      r.warn(
+        at.first,
+        `في المنصّة ${opts.noun} بالاسم واللقب نفسيهما (${same.join("، ")}) — تأكّد أنّه ليس هو.`,
+      );
+  };
 
   // ── الاسم واللقب ──
   const checkName = (k: "firstName" | "lastName", latinCol: string) => {
     if (r.blocked(k)) return "";
     const v = r.value(k).replace(/\s+/g, " ");
     if (!v) {
-      r.error(k, REQUIRED);
+      if (arabicRequired) r.error(k, REQUIRED);
       return "";
     }
     const odd = oddChars(v, NAME_CHAR);
@@ -181,23 +214,22 @@ export function checkPerson<K extends string>(
   };
   const firstName = checkName("firstName", opts.headers.firstNameLatin);
   const lastName = checkName("lastName", opts.headers.lastNameLatin);
-  if (firstName && lastName) {
-    if (loose(firstName) === loose(lastName)) r.warn("lastName", "مطابقٌ للاسم — تأكّد منهما.");
-    const key = fullNameKey(firstName, lastName);
-    const dup = others(ctx.nameRows.get(key), row);
-    if (dup.length) r.warn("firstName", `الاسم واللقب نفسهما في الصفّ ${dup.join("، ")} — ${opts.pair} أم تكرار؟`);
-    const same = opts.namesakes(key);
-    if (same.length)
-      r.warn(
-        "firstName",
-        `في المنصّة ${opts.noun} بالاسم واللقب نفسيهما (${same.join("، ")}) — تأكّد أنّه ليس هو.`,
-      );
+  if (arabicRequired && firstName && lastName)
+    compareNames(firstName, lastName, ctx.nameRows, { first: "firstName", last: "lastName" });
+  // اختياريّان: لكن أحدهما دون الآخر نصفُ اسم.
+  if (!arabicRequired) {
+    if (r.value("firstName") && !r.value("lastName") && !r.blocked("firstName")) r.warn("lastName", "فارغ، و«الاسم» مملوء.");
+    if (r.value("lastName") && !r.value("firstName") && !r.blocked("lastName")) r.warn("firstName", "فارغ، و«اللقب» مملوء.");
   }
 
   // ── الاسم واللقب باللاتينية — القاعدة نفسها في نافذة الإضافة ──
   const checkLatin = (k: "firstNameLatin" | "lastNameLatin", schema: typeof latinFirstName, example: string) => {
     const v = r.value(k);
-    if (r.blocked(k) || !v) return undefined;
+    if (r.blocked(k)) return undefined;
+    if (!v) {
+      if (!arabicRequired) r.error(k, REQUIRED);
+      return undefined;
+    }
     const p = schema.safeParse(v);
     if (p.success) {
       r.save(k, p.data);
@@ -211,10 +243,14 @@ export function checkPerson<K extends string>(
   };
   const firstNameLatin = checkLatin("firstNameLatin", latinFirstName, "Youcef");
   const lastNameLatin = checkLatin("lastNameLatin", latinLastName, "HAMADI");
-  if (r.value("firstNameLatin") && !r.value("lastNameLatin") && !r.blocked("firstNameLatin"))
-    r.warn("lastNameLatin", `فارغ، و«${opts.headers.firstNameLatin}» مملوء.`);
-  if (r.value("lastNameLatin") && !r.value("firstNameLatin") && !r.blocked("lastNameLatin"))
-    r.warn("firstNameLatin", `فارغ، و«${opts.headers.lastNameLatin}» مملوء.`);
+  if (arabicRequired) {
+    if (r.value("firstNameLatin") && !r.value("lastNameLatin") && !r.blocked("firstNameLatin"))
+      r.warn("lastNameLatin", `فارغ، و«${opts.headers.firstNameLatin}» مملوء.`);
+    if (r.value("lastNameLatin") && !r.value("firstNameLatin") && !r.blocked("lastNameLatin"))
+      r.warn("firstNameLatin", `فارغ، و«${opts.headers.lastNameLatin}» مملوء.`);
+  } else if (firstNameLatin && lastNameLatin) {
+    compareNames(firstNameLatin, lastNameLatin, ctx.latinNameRows, { first: "firstNameLatin", last: "lastNameLatin" });
+  }
 
   // ── الجنس والتوثيق ──
   let gender: "male" | "female" | undefined;

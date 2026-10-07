@@ -175,6 +175,8 @@ export function personalValidations<K extends string>(
   L: (k: K | PersonKey) => string,
   lists: { gender: string; verified: string },
   headers: Record<"firstNameLatin" | "lastNameLatin", string>,
+  /** الطلبة والأساتذة: اللاتينيّ إلزاميّ. */
+  latinRequired = false,
 ): void {
   for (const [k, example] of [["firstNameLatin", "Youcef"], ["lastNameLatin", "HAMADI"]] as const) {
     // الطول وحده قاعدةٌ مانعة؛ الحروف اللاتينية تلوينٌ لا منع (أدناه)،
@@ -186,7 +188,7 @@ export function personalValidations<K extends string>(
       errorTitle: "اسمٌ طويل",
       error: "60 حرفاً على الأكثر.",
       promptTitle: headers[k],
-      prompt: `اختياري. بالحروف اللاتينية، مثل ${example}. الحرف العربي يُلوّن الخانة بالأحمر.`,
+      prompt: `${latinRequired ? "إلزامي" : "اختياري"}. بالحروف اللاتينية، مثل ${example}. الحرف العربي يُلوّن الخانة بالأحمر.`,
     });
   }
   dv("gender", {

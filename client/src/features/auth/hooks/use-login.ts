@@ -18,10 +18,9 @@ export function useLogin(role: LoginRole) {
     mutationFn: (data) =>
       (services[role] as (d: LoginDTO) => Promise<LoginResponse>)(data),
     onSuccess: (res) => {
-      login(res.user, {
-        accessToken: res.accessToken,
-        refreshToken: res.refreshToken,
-      });
+      // The refresh token stays in its httpOnly cookie; only the short-lived
+      // access token is kept, in memory.
+      login(res.user, { accessToken: res.accessToken });
     },
   });
 }

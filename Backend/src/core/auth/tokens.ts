@@ -34,6 +34,12 @@ export interface AppTokenPayload {
   tokenVersion: number;
   /** One id per sign-in, so a single session can be signed out on its own. */
   sid?: string;
+  /**
+   * Refresh tokens only: this token's own id. Each refresh replaces it, and
+   * the session remembers the current one — an older id coming back means a
+   * copy is in someone else's hands (see core/auth/refresh-sessions).
+   */
+  jti?: string;
   typ: TokenType;
   /** Standard claim, present on verified tokens. */
   exp?: number;
@@ -68,6 +74,7 @@ export function signAccessToken(claims: ClaimsInput): string {
 }
 
 export function signRefreshToken(claims: ClaimsInput): string {
+  // `jti` travels in the payload; jsonwebtoken checks it only when told to.
   return jwt.sign(
     { ...claims, typ: "refresh" satisfies TokenType },
     config.JWT_REFRESH_SECRET,
@@ -76,9 +83,11 @@ export function signRefreshToken(claims: ClaimsInput): string {
 }
 
 export function signTokenPair(claims: ClaimsInput) {
+  // The access token has no use for the refresh token's id.
+  const { jti, ...access } = claims;
   return {
-    accessToken: signAccessToken(claims),
-    refreshToken: signRefreshToken(claims),
+    accessToken: signAccessToken(access),
+    refreshToken: signRefreshToken({ ...access, jti }),
   };
 }
 

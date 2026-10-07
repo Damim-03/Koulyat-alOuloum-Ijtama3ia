@@ -13,6 +13,8 @@
 import "dotenv/config";
 import express, { Request, Response } from "express";
 import path from "node:path";
+import fs from "node:fs";
+import crypto from "node:crypto";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
@@ -191,17 +193,57 @@ app.use("/api", mainRoute);
    ============================================================ */
 if (config.IS_PRODUCTION) {
   const frontendPath = path.join(__dirname, "../../client/dist");
+  const spaCsp = spaContentSecurityPolicy(path.join(frontendPath, "index.html"));
 
   app.use(express.static(frontendPath, { dotfiles: "deny", index: false }));
 
   // Only non-API GETs fall through to the SPA shell; an unknown /api path
   // must return JSON 404, not index.html.
   app.get(/^\/(?!api\/).*/, (_req: Request, res: Response) => {
+    // The API's own policy (`script-src 'none'`) would stop the app's scripts
+    // from running at all; the shell gets the policy written for it.
+    res.setHeader("Content-Security-Policy", spaCsp);
     res.sendFile(path.join(frontendPath, "index.html"));
   });
 }
 
 // Last, so it sees errors thrown by everything above it.
 app.use(errorHandler);
+
+/**
+ * The SPA shell's policy. Its scripts come from this origin only, plus the
+ * one inline script in `index.html` (the theme bootstrap), allowed by its
+ * hash — read from the built file, so the policy follows whatever was built.
+ * Fonts come from Google Fonts; the default photo of the head of department
+ * from Unsplash. Everything else — the API, uploads, the socket — is this
+ * origin.
+ */
+function spaContentSecurityPolicy(indexPath: string): string {
+  let hashes: string[] = [];
+  try {
+    const html = fs.readFileSync(indexPath, "utf8");
+    hashes = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(
+      (m) => `'sha256-${crypto.createHash("sha256").update(m[1]!).digest("base64")}'`,
+    );
+  } catch {
+    // No build yet: the fallback route will 404 on its own.
+  }
+  return [
+    "default-src 'self'",
+    `script-src 'self' ${hashes.join(" ")}`.trim(),
+    // React writes style attributes; Google Fonts serves a stylesheet.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data: blob: https://images.unsplash.com",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    // No `upgrade-insecure-requests`: a deployment on plain HTTP (an intranet
+    // without TLS) would have every asset rewritten to an https:// that is
+    // not there. HTTPS deployments already get HSTS.
+  ].join("; ");
+}
 
 export default app;

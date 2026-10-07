@@ -267,6 +267,10 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
     }
     const latinFirst = toLatinFirst(form.firstNameLatin);
     const latinLast = toLatinLast(form.lastNameLatin);
+    if (!latinFirst.trim() || !latinLast.trim()) {
+      setError(t("validation.latinNameRequired"));
+      return;
+    }
     if (
       (latinFirst && !LATIN_NAME.test(latinFirst)) ||
       (latinLast && !LATIN_NAME.test(latinLast))
@@ -275,10 +279,8 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
       return;
     }
 
-    // أرسِل الحقول المملوءة فقط (كلها اختيارية في updateStudentSchema).
+    // أرسِل ما تغيّر فقط (كلها اختيارية في updateStudentSchema).
     const data: Record<string, unknown> = {};
-    if (form.firstName.trim()) data.firstName = form.firstName.trim();
-    if (form.lastName.trim()) data.lastName = form.lastName.trim();
 
     // Optional fields must be sent as null when emptied. Omitting them means
     // "leave unchanged", so removing a photo (or clearing a phone) would look
@@ -291,8 +293,11 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
     clearable("phone", form.phone, student!.user?.phone ?? "");
     clearable("avatarUrl", form.avatarUrl, student!.user?.avatarUrl ?? "");
     clearable("gender", form.gender, student!.user?.gender ?? "");
-    clearable("firstNameLatin", latinFirst, student!.user?.firstNameLatin ?? "");
-    clearable("lastNameLatin", latinLast, student!.user?.lastNameLatin ?? "");
+    // اللاتينيّ إلزاميّ فلا يُمسح؛ والعربيّ اختياريّ: يُمسح بـnull.
+    if (latinFirst !== (student!.user?.firstNameLatin ?? "")) data.firstNameLatin = latinFirst;
+    if (latinLast !== (student!.user?.lastNameLatin ?? "")) data.lastNameLatin = latinLast;
+    clearable("firstName", form.firstName, student!.user?.firstName ?? "");
+    clearable("lastName", form.lastName, student!.user?.lastName ?? "");
 
     if (form.registrationNumber.trim())
       data.registrationNumber = form.registrationNumber.trim();
@@ -363,6 +368,7 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
             <div className="min-w-0 flex-1">
               <h3 className="truncate font-serif text-lg font-bold">
                 {`${form.firstName} ${form.lastName}`.trim() ||
+                  `${form.firstNameLatin} ${form.lastNameLatin}`.trim() ||
                   t("admin.editStudentTitle")}
               </h3>
               <p className="flex items-center gap-2 text-[11px] text-cream/70">
@@ -424,6 +430,33 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
                 />
               </div>
 
+              {/* الاسم واللقب باللاتينية أوّلاً، وهما الإلزاميان — يُوحَّدان عند
+                  مغادرة الحقل ليُرى ما سيُحفظ. والعربيّان بعدهما، اختياريان. */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <FieldBox label={t("admin.firstNameLatin")} icon={User} required>
+                  <input
+                    value={form.firstNameLatin}
+                    onChange={(e) => set("firstNameLatin", e.target.value)}
+                    onBlur={(e) => set("firstNameLatin", toLatinFirst(e.target.value))}
+                    dir="ltr"
+                    autoComplete="off"
+                    placeholder="Youcef"
+                    className={inputCls}
+                  />
+                </FieldBox>
+                <FieldBox label={t("admin.lastNameLatin")} icon={User} required>
+                  <input
+                    value={form.lastNameLatin}
+                    onChange={(e) => set("lastNameLatin", e.target.value)}
+                    onBlur={(e) => set("lastNameLatin", toLatinLast(e.target.value))}
+                    dir="ltr"
+                    autoComplete="off"
+                    placeholder="HAMADI"
+                    className={inputCls}
+                  />
+                </FieldBox>
+              </div>
+
               <div className="grid grid-cols-2 gap-2.5">
                 <FieldBox label={t("admin.name")} icon={User}>
                   <input
@@ -441,31 +474,6 @@ export function StudentEditDialog({ open, student, onClose }: Props) {
                 </FieldBox>
               </div>
 
-              {/* الاسم باللاتينية — يُوحَّد عند مغادرة الحقل ليُرى ما سيُحفظ. */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <FieldBox label={t("admin.firstNameLatin")} icon={User}>
-                  <input
-                    value={form.firstNameLatin}
-                    onChange={(e) => set("firstNameLatin", e.target.value)}
-                    onBlur={(e) => set("firstNameLatin", toLatinFirst(e.target.value))}
-                    dir="ltr"
-                    autoComplete="off"
-                    placeholder="Youcef"
-                    className={inputCls}
-                  />
-                </FieldBox>
-                <FieldBox label={t("admin.lastNameLatin")} icon={User}>
-                  <input
-                    value={form.lastNameLatin}
-                    onChange={(e) => set("lastNameLatin", e.target.value)}
-                    onBlur={(e) => set("lastNameLatin", toLatinLast(e.target.value))}
-                    dir="ltr"
-                    autoComplete="off"
-                    placeholder="HAMADI"
-                    className={inputCls}
-                  />
-                </FieldBox>
-              </div>
 
               <FieldBox label={t("admin.gender")} icon={Users} group>
                 <GenderSelect

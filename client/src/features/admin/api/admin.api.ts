@@ -131,6 +131,11 @@ export const adminApi = {
   // ── Professors ──
 
   // ── استيراد الطلبة من Excel ──
+  /** قوائم الطلبة بفلاتر الصفحة — ملفّ Excel (ورقةٌ لكلّ تخصص أو ورقةٌ واحدة). */
+  exportStudents: (params: Record<string, string | undefined>) =>
+    client
+      .get<Blob>(`${BASE}/students/export`, { params, responseType: "blob" })
+      .then((r) => r.data),
   studentImportTemplate: () =>
     client
       .get<Blob>(`${BASE}/students/import/template`, { responseType: "blob" })

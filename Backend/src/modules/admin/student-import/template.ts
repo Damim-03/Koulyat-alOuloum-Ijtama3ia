@@ -256,6 +256,7 @@ export async function buildImportTemplate(input: {
       verified: `${LISTS}!$${COL.verified}$2:$${COL.verified}$3`,
     },
     { firstNameLatin: "الاسم باللاتينية", lastNameLatin: "اللقب باللاتينية" },
+    true,
   );
   dv("academicYear", {
     type: "list",

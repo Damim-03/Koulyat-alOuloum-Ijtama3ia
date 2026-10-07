@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { HTTPSTATUS } from "../../core/config/http/http.config";
 import { verifyUploadedImage } from "../../core/middleware/upload.middleware";
+import { exportStudentsService } from "./student-export.service";
+import { exportStudentsSchema, type ExportStudentsDTO } from "./admin.validation";
 import { BadRequestException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import {
@@ -1704,6 +1706,27 @@ export const deleteGroupMilestoneController = async (
       req.params.id as string,
     );
     return res.status(HTTPSTATUS.OK).json(result);
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** قوائم الطلبة بفلاتر الصفحة — ملفّ Excel، ورقةٌ لكلّ تخصص أو ورقةٌ واحدة. */
+export const exportStudentsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const q = parseBody<ExportStudentsDTO>(exportStudentsSchema, req.query);
+    const buf = await exportStudentsService(q);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", 'attachment; filename="students.xlsx"');
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(HTTPSTATUS.OK).send(buf);
   } catch (e) {
     next(e);
   }

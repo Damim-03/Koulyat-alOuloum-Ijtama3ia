@@ -34,6 +34,7 @@ import type {
 import { ImportPreview } from "./import-preview";
 import type { PreviewProfile } from "./import-preview.utils";
 import { KindPill, LetterBadge } from "./import-ui";
+import { personName } from "../../../../../lib/person-name";
 
 type Step = "upload" | "preview" | "done";
 const STEPS: Step[] = ["upload", "preview", "done"];
@@ -536,7 +537,7 @@ export function ImportDialog({
                                 {a[c.key]}
                               </td>
                             ))}
-                            <td className="px-4 py-2.5 text-forest">{`${a.firstName} ${a.lastName}`}</td>
+                            <td className="px-4 py-2.5 text-forest">{personName(a) || "—"}</td>
                             <td className="px-4 py-2.5">
                               {a.password ? (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-gold/15 px-2.5 py-0.5 text-[11px] font-bold text-forest ring-1 ring-gold/40">

@@ -5,8 +5,9 @@ import { config } from "../../core/config/app.config";
 import { BadRequestException, HttpException, NotFoundException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { HTTPSTATUS } from "../../core/config/http/http.config";
-import { newSessionId, revokeAllSessions } from "../../core/auth/sessions";
-import { signTokenPair } from "../../core/auth/tokens";
+import { revokeAllSessions } from "../../core/auth/sessions";
+import { closeUserSessions, openSession } from "../../core/auth/refresh-sessions";
+import { disconnectSessions } from "../../core/realtime/realtime";
 import { verifyUploadedImage } from "../../core/middleware/upload.middleware";
 import type { RoleType } from "../../core/enums/role.enum";
 import {
@@ -158,16 +159,26 @@ export const changePasswordService = async (userId: string, dto: ChangePasswordD
   const user = await load(userId);
   await assertPassword(dto.currentPassword, user.password);
   if (await bcrypt.compare(dto.newPassword, user.password)) throw bad("كلمة المرور الجديدة هي نفسها الحالية — اختر غيرها");
+  // The password an account is handed may be a birth date; the one its owner
+  // chooses may not be a date or a number either — nor the registration number.
+  if (/^[\d\s/.\-]+$/.test(dto.newPassword))
+    throw bad("كلمة المرور لا تكون أرقاماً أو تاريخاً فقط — أضف إليها حروفاً");
+  const reg = user.student?.registrationNumber;
+  if (reg && dto.newPassword.toLowerCase().includes(reg.toLowerCase()))
+    throw bad("لا تضع رقم تسجيلك في كلمة المرور");
 
   const hashed = await bcrypt.hash(dto.newPassword, config.BCRYPT_ROUNDS);
   await prisma.user.update({ where: { id: userId }, data: { password: hashed } });
 
-  // Every other device signs out; this one carries on with a fresh pair,
-  // carrying the same role and profile id a sign-in would give it.
+  // Every other device signs out — sessions, refresh tokens, live sockets; this
+  // one carries on with a fresh session, carrying the same role and profile id
+  // a sign-in would give it.
   await revokeAllSessions(userId);
+  await closeUserSessions(userId);
+  void disconnectSessions(userId);
   const { tokenVersion } = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { tokenVersion: true } });
   const role = user.role as RoleType;
   const refId = user.student?.id ?? user.professor?.id ?? userId;
-  const tokens = signTokenPair({ userId, role, refId, tokenVersion, sid: newSessionId() });
+  const tokens = await openSession({ userId, role, refId, tokenVersion });
   return { message: "Password changed", ...tokens };
 };

@@ -63,7 +63,7 @@ export interface Reference {
 export interface Taken {
   regs: Map<string, { name: string; specialization: string }>;
   mails: Map<string, { role: string; name: string }>;
-  /** طلبةٌ مسجَّلون، بالصورة المجرّدة لاسمهم ولقبهم. */
+  /** طلبةٌ مسجَّلون، بالصورة المجرّدة لاسمهم ولقبهم باللاتينية. */
   names: Map<string, { registrationNumber: string }[]>;
 }
 
@@ -227,6 +227,7 @@ export function checkRow(
     noun: "طالبٌ",
     pair: "طالبان",
     identifier: { value: reg, label: "رقم التسجيل" },
+    required: "latin",
   });
 
   // ── السنة الجامعية ──

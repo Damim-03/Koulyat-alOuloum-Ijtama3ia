@@ -144,6 +144,7 @@ import {
   studentImportPreviewController,
   studentImportTemplateController,
 } from "./student-import/controller";
+import { exportStudentsController } from "./admin.controller";
 import {
   professorImportController,
   professorImportPreviewController,
@@ -200,7 +201,9 @@ adminRoutes.delete("/users/:id", deleteUserController);
 // ─── STUDENTS ─────────────────────────────────────────────────
 //
 adminRoutes.get("/students", listStudentsController);
-// الاستيراد قبل `/students/:id`: وإلّا قُرئت «import» معرّفَ طالب.
+// التصدير والاستيراد قبل `/students/:id`: وإلّا قُرئت «export» و«import»
+// معرّفَ طالب.
+adminRoutes.get("/students/export", exportStudentsController);
 adminRoutes.get("/students/import/template", studentImportTemplateController);
 adminRoutes.post(
   "/students/import/preview",

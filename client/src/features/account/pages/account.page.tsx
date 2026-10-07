@@ -371,6 +371,8 @@ function PersonalWing({ a }: { a: MyAccount }) {
   const { t } = useTranslation();
   const update = useUpdateMyAccount();
   const canUsername = a.can.edit.includes("username");
+  // الأستاذ كالطالب: الاسم باللاتينية إلزاميّ، والعربيّ اختياريّ.
+  const latinFirstRole = a.role === "professor";
   const initial: Form = {
     firstName: a.firstName ?? "",
     lastName: a.lastName ?? "",
@@ -386,14 +388,17 @@ function PersonalWing({ a }: { a: MyAccount }) {
   const errors = useMemo(() => {
     const e: Partial<Record<keyof Form, string>> = {};
     const squash = (s: string) => s.trim().replace(/\s+/g, " ");
-    if (!f.firstName.trim()) e.firstName = t("admin.account.err.required");
-    if (!f.lastName.trim()) e.lastName = t("admin.account.err.required");
+    const arabicRequired = !latinFirstRole;
+    if (arabicRequired && !f.firstName.trim()) e.firstName = t("admin.account.err.required");
+    if (arabicRequired && !f.lastName.trim()) e.lastName = t("admin.account.err.required");
+    if (latinFirstRole && !f.firstNameLatin.trim()) e.firstNameLatin = t("admin.account.err.required");
+    if (latinFirstRole && !f.lastNameLatin.trim()) e.lastNameLatin = t("admin.account.err.required");
     if (f.firstNameLatin.trim() && !LATIN_NAME.test(squash(f.firstNameLatin))) e.firstNameLatin = t("admin.account.err.latin");
     if (f.lastNameLatin.trim() && !LATIN_NAME.test(squash(f.lastNameLatin))) e.lastNameLatin = t("admin.account.err.latin");
     if (canUsername && f.username.trim() && !USERNAME.test(f.username.trim())) e.username = t("admin.account.err.username");
     if (f.phone.trim() && !PHONE.test(f.phone.trim())) e.phone = t("admin.account.err.phone");
     return e;
-  }, [f, t, canUsername]);
+  }, [f, t, canUsername, latinFirstRole]);
 
   const latinFirst = f.firstNameLatin.trim() && !errors.firstNameLatin ? toLatinFirst(f.firstNameLatin) : "";
   const latinLast = f.lastNameLatin.trim() && !errors.lastNameLatin ? toLatinLast(f.lastNameLatin) : "";
@@ -401,8 +406,10 @@ function PersonalWing({ a }: { a: MyAccount }) {
   const patch = useMemo(() => {
     const p: MyAccountPatch = {};
     const val = (s: string) => (s.trim() ? s.trim() : null);
-    if (f.firstName.trim() !== (a.firstName ?? "")) p.firstName = f.firstName.trim();
-    if (f.lastName.trim() !== (a.lastName ?? "")) p.lastName = f.lastName.trim();
+    // العربيّ يُمسح (null) حيث هو اختياريّ.
+    const arabic = (s: string) => (latinFirstRole ? val(s) : s.trim());
+    if (f.firstName.trim() !== (a.firstName ?? "")) p.firstName = arabic(f.firstName);
+    if (f.lastName.trim() !== (a.lastName ?? "")) p.lastName = arabic(f.lastName);
     const fl = f.firstNameLatin.trim() ? toLatinFirst(f.firstNameLatin) : "";
     const ll = f.lastNameLatin.trim() ? toLatinLast(f.lastNameLatin) : "";
     if (fl !== (a.firstNameLatin ?? "")) p.firstNameLatin = val(fl);
@@ -411,43 +418,51 @@ function PersonalWing({ a }: { a: MyAccount }) {
     if (f.phone.trim() !== (a.phone ?? "")) p.phone = val(f.phone);
     if (f.gender !== a.gender) p.gender = f.gender;
     return p;
-  }, [f, a, canUsername]);
+  }, [f, a, canUsername, latinFirstRole]);
   const changes = Object.keys(patch).length;
+
+  // الأستاذ: اللاتينيّ أوّلاً وهو الإلزاميّ؛ والإداريّ: العربيّ أوّلاً.
+  const latinGroup = (
+    <Group icon={Globe} title={t("admin.account.group.latin")} hint={t("admin.account.latinHint")}>
+      <Field label={t("admin.account.f.firstNameLatin")} error={errors.firstNameLatin} required={latinFirstRole}>
+        <input
+          value={f.firstNameLatin}
+          dir="ltr"
+          placeholder="Ahmed"
+          onChange={(e) => set("firstNameLatin", e.target.value)}
+          onBlur={() => latinFirst && set("firstNameLatin", latinFirst)}
+          className={inputCls(errors.firstNameLatin)}
+        />
+      </Field>
+      <Field label={t("admin.account.f.lastNameLatin")} error={errors.lastNameLatin} required={latinFirstRole}>
+        <input
+          value={f.lastNameLatin}
+          dir="ltr"
+          placeholder="BEN ALI"
+          onChange={(e) => set("lastNameLatin", e.target.value)}
+          onBlur={() => latinLast && set("lastNameLatin", latinLast)}
+          className={inputCls(errors.lastNameLatin)}
+        />
+      </Field>
+    </Group>
+  );
+  const arabicGroup = (
+    <Group icon={Languages} title={t("admin.account.group.arabic")}>
+      <Field label={t("admin.account.f.firstName")} error={errors.firstName} required={!latinFirstRole}>
+        <input value={f.firstName} onChange={(e) => set("firstName", e.target.value)} className={inputCls(errors.firstName)} data-testid="acc-firstName" />
+      </Field>
+      <Field label={t("admin.account.f.lastName")} error={errors.lastName} required={!latinFirstRole}>
+        <input value={f.lastName} onChange={(e) => set("lastName", e.target.value)} className={inputCls(errors.lastName)} />
+      </Field>
+    </Group>
+  );
 
   return (
     <div className="space-y-5">
       {/* names, both scripts, and how they will read */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Group icon={Languages} title={t("admin.account.group.arabic")}>
-          <Field label={t("admin.account.f.firstName")} error={errors.firstName} required>
-            <input value={f.firstName} onChange={(e) => set("firstName", e.target.value)} className={inputCls(errors.firstName)} data-testid="acc-firstName" />
-          </Field>
-          <Field label={t("admin.account.f.lastName")} error={errors.lastName} required>
-            <input value={f.lastName} onChange={(e) => set("lastName", e.target.value)} className={inputCls(errors.lastName)} />
-          </Field>
-        </Group>
-        <Group icon={Globe} title={t("admin.account.group.latin")} hint={t("admin.account.latinHint")}>
-          <Field label={t("admin.account.f.firstNameLatin")} error={errors.firstNameLatin}>
-            <input
-              value={f.firstNameLatin}
-              dir="ltr"
-              placeholder="Ahmed"
-              onChange={(e) => set("firstNameLatin", e.target.value)}
-              onBlur={() => latinFirst && set("firstNameLatin", latinFirst)}
-              className={inputCls(errors.firstNameLatin)}
-            />
-          </Field>
-          <Field label={t("admin.account.f.lastNameLatin")} error={errors.lastNameLatin}>
-            <input
-              value={f.lastNameLatin}
-              dir="ltr"
-              placeholder="BEN ALI"
-              onChange={(e) => set("lastNameLatin", e.target.value)}
-              onBlur={() => latinLast && set("lastNameLatin", latinLast)}
-              className={inputCls(errors.lastNameLatin)}
-            />
-          </Field>
-        </Group>
+        {latinFirstRole ? latinGroup : arabicGroup}
+        {latinFirstRole ? arabicGroup : latinGroup}
       </div>
 
       <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-dashed border-gold/40 bg-gold/5 px-5 py-4">

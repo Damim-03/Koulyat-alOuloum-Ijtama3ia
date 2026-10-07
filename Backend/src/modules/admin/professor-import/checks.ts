@@ -176,6 +176,7 @@ export function checkRow(
     noun: "أستاذٌ",
     pair: "أستاذان",
     identifier: employeeNumber ? { value: employeeNumber, label: "الرقم الوظيفي" } : undefined,
+    required: "latin",
   });
 
   // ── القسم، والكلية التي توافقه ──

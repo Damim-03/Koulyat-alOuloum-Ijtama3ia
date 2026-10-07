@@ -16,7 +16,7 @@ export const PROFESSOR_IMPORT_CONFIG: ImportDialogConfig = {
   fetchTemplate: () => adminApi.professorImportTemplate(),
   guide: PROFESSOR_GUIDE,
   mock: [
-    ["الاسم", "req"],
+    ["الاسم باللاتينية", "req"],
     ["البريد الجامعي", "req"],
     ["الرتبة", "opt"],
     ["الكلية", "auto"],

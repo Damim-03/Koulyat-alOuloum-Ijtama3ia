@@ -46,6 +46,18 @@ const uniqueLast = () => {
   return `حمادي ${s}`;
 };
 
+/** لقبٌ لاتينيّ لا يتكرّر بين التشغيلات — التكرار يُقارَن باللاتيني. */
+let latinSeq = 0;
+const uniqueLatinLast = () => {
+  let n = ++latinSeq + (Date.now() % 100000);
+  let s = "";
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26);
+  } while (n > 0);
+  return `HAMADI ${s}`;
+};
+
 type Row = Partial<Record<(typeof IMPORT_COLUMNS)[number]["header"], ExcelJS.CellValue>>;
 
 /** ملفٌّ كما يصنعه المسؤول: صفّ عناوين ثم الطلبة. */
@@ -65,6 +77,8 @@ async function xlsx(
 
 const valid = (over: Row = {}): Row => ({
   "رقم التسجيل": reg(),
+  "الاسم باللاتينية": "Youcef",
+  "اللقب باللاتينية": uniqueLatinLast(),
   "الاسم": "يوسف",
   "اللقب": uniqueLast(),
   "السنة الجامعية": f.academicYear.title,
@@ -239,8 +253,8 @@ describe("النموذج", () => {
     const row = ws.getRow(3);
     const v = valid();
     row.getCell(at("registrationNumber")).value = v["رقم التسجيل"] as string;
-    row.getCell(at("firstName")).value = v["الاسم"] as string;
-    row.getCell(at("lastName")).value = v["اللقب"] as string;
+    row.getCell(at("firstNameLatin")).value = v["الاسم باللاتينية"] as string;
+    row.getCell(at("lastNameLatin")).value = v["اللقب باللاتينية"] as string;
     row.getCell(at("academicYear")).value = f.academicYear.title;
     // الاختيار من القائمة يحلّ محلّ صيغة الخانة
     row.getCell(at("faculty")).value = f.faculty.name;
@@ -281,7 +295,9 @@ describe("المعاينة", () => {
         valid({ "رقم التسجيل": f.students[1]!.reg.replace(/\D/g, "") || "123456" }), // 4
         valid({ "التخصص": "تخصص لا وجود له" }), // 5
         valid({ "الجنس": "ربما", "الاسم باللاتينية": "يوسف" }), // 6
-        valid({ "اللقب": null, "السنة الجامعية": "1900/1901" }), // 7
+        valid({ "اللقب باللاتينية": null, "السنة الجامعية": "1900/1901" }), // 7
+        valid({ "الاسم": null, "اللقب": null }), // 8 — العربيّ اختياريّ
+        valid({ "اللقب": null }), // 9 — نصف اسمٍ عربيّ: تنبيهٌ لا خطأ
       ]),
     ).expect(200);
 
@@ -290,8 +306,11 @@ describe("المعاينة", () => {
     expect(said(rowOf(res, 3).cells.registrationNumber!)).toContain("الصفّ 2");
     expect(errorKeys(rowOf(res, 5))).toEqual(["specialization"]);
     expect(errorKeys(rowOf(res, 6))).toEqual(["firstNameLatin", "gender"]);
-    expect(errorKeys(rowOf(res, 7))).toEqual(["academicYear", "lastName"]);
-    expect(said(rowOf(res, 7).cells.lastName!)).toContain("إلزامي");
+    expect(errorKeys(rowOf(res, 7))).toEqual(["academicYear", "lastNameLatin"]);
+    expect(said(rowOf(res, 7).cells.lastNameLatin!)).toContain("إلزامي");
+    expect(errorKeys(rowOf(res, 8))).toEqual([]);
+    expect(errorKeys(rowOf(res, 9))).toEqual([]);
+    expect(said(rowOf(res, 9).cells.lastName!, "warning")).toContain("فارغ");
     expect(res.body.report.summary.invalid).toBeGreaterThanOrEqual(5);
   });
 
@@ -600,11 +619,12 @@ describe("دقّة المعاينة", () => {
     await upload("", await xlsx([first])).expect(201);
     const active = await prisma.academicYear.create({ data: { title: `${TAG} 2098/2099`, isActive: true } });
     try {
-      const again = valid({ "اللقب": first["اللقب"] });
+      // الاسم واللقب باللاتينية هما ما يُقارَن — المطلوبان في كلّ صفّ.
+      const again = valid({ "اللقب باللاتينية": first["اللقب باللاتينية"] });
       const res = await upload("/preview", await xlsx([again])).expect(200);
       const r = rowOf(res, 2);
       expect(r.errors).toBe(0);
-      expect(said(r.cells.firstName!, "warning")).toContain(first["رقم التسجيل"] as string);
+      expect(said(r.cells.firstNameLatin!, "warning")).toContain(first["رقم التسجيل"] as string);
       expect(said(r.cells.academicYear!, "warning")).toContain(active.title);
       expect(res.body.report.summary).toMatchObject({ valid: 1, invalid: 0, warned: 1 });
       // وملفّه المُعلَّم يحمل التنبيه، بلونه الكهرماني لا الأحمر.

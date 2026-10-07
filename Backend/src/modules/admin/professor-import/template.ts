@@ -123,6 +123,7 @@ export async function buildProfessorImportTemplate(input: {
       verified: `${LISTS}!$${COL.verified}$2:$${COL.verified}$3`,
     },
     { firstNameLatin: "الاسم باللاتينية", lastNameLatin: "اللقب باللاتينية" },
+    true,
   );
   const uni = L("universityEmail");
   const at = `FIND("@",${uni}${FIRST})`;

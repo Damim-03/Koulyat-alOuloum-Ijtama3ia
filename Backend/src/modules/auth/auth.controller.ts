@@ -18,6 +18,11 @@ import {
 import { BadRequestException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { HTTPSTATUS } from "../../core/config/http/http.config";
+import {
+  clearRefreshCookie,
+  readRefreshCookie,
+  setRefreshCookie,
+} from "../../core/auth/refresh-cookie";
 
 const handleLogin =
   (schema: any, service: any) =>
@@ -33,6 +38,9 @@ const handleLogin =
     }
     try {
       const result = await service(parsed.data);
+      // The web client keeps the refresh token in this httpOnly cookie, never
+      // in page storage. The body copy remains for non-browser clients.
+      setRefreshCookie(res, result.refreshToken);
       return res.status(HTTPSTATUS.OK).json({
         message: "Login successful",
         ...result,
@@ -47,8 +55,12 @@ export const refreshTokenController = async (
   res: Response,
   next: NextFunction,
 ) => {
-  const parsed = refreshTokenSchema.safeParse(req.body);
-  if (!parsed.success) {
+  // The cookie first (the web client); a body token for other clients.
+  const fromCookie = readRefreshCookie(req);
+  const parsed = refreshTokenSchema.safeParse(req.body ?? {});
+  const fromBody = parsed.success ? parsed.data.refreshToken : undefined;
+  const token = fromCookie ?? fromBody;
+  if (!token) {
     return next(
       new BadRequestException(
         "Refresh token is required",
@@ -58,12 +70,17 @@ export const refreshTokenController = async (
   }
 
   try {
-    const result = await refreshTokenService(parsed.data.refreshToken);
+    const { accessToken, refreshToken } = await refreshTokenService(token);
+    // The rotated token goes back the way the old one came: a cookie stays a
+    // cookie, so page scripts never see one in a response body.
+    if (refreshToken) setRefreshCookie(res, refreshToken);
     return res.status(HTTPSTATUS.OK).json({
       message: "Token refreshed",
-      ...result,
+      accessToken,
+      ...(refreshToken && !fromCookie ? { refreshToken } : {}),
     });
   } catch (error) {
+    if (fromCookie) clearRefreshCookie(res);
     next(error);
   }
 };
@@ -108,7 +125,8 @@ export const logoutController = async (
     const token = header?.startsWith("Bearer ")
       ? header.substring(7).trim()
       : undefined;
-    const result = await logoutService(token);
+    const result = await logoutService(token, readRefreshCookie(req));
+    clearRefreshCookie(res);
     return res.status(HTTPSTATUS.OK).json(result);
   } catch (error) {
     next(error);
@@ -122,6 +140,7 @@ export const logoutAllController = async (
 ) => {
   try {
     const result = await logoutAllService(req.user!.userId);
+    clearRefreshCookie(res);
     return res.status(HTTPSTATUS.OK).json(result);
   } catch (error) {
     next(error);

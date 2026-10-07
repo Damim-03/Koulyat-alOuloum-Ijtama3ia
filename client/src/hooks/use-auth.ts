@@ -18,13 +18,13 @@ export function useAuth() {
 
   /** Signs out here. Other devices on the account stay signed in. */
   const logout = () => {
-    void authApi.logout().catch(() => undefined);
+    void authApi.logout(useAuthStore.getState().accessToken).catch(() => undefined);
     finishLogout();
   };
 
   /** Signs out everywhere — for a lost device or a token believed stolen. */
   const logoutEverywhere = () => {
-    void authApi.logoutAll().catch(() => undefined);
+    void authApi.logoutAll(useAuthStore.getState().accessToken).catch(() => undefined);
     finishLogout();
   };
 

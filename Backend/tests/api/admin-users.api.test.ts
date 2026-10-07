@@ -540,6 +540,8 @@ describe("الطلبة", () => {
         .send({
           firstName: TAG,
           lastName: "Dup",
+          firstNameLatin: "Dup",
+          lastNameLatin: "STUDENT",
           email: `${TAG}.dup@test.local`,
           password: "A-strong-Passw0rd!",
           registrationNumber: existing.reg, // مكرّر
@@ -566,6 +568,8 @@ describe("الطلبة", () => {
         .send({
           firstName: TAG,
           lastName: "Verified",
+          firstNameLatin: "Verified",
+          lastNameLatin: "STUDENT",
           email,
           password: "A-strong-Passw0rd!",
           registrationNumber: `${TAG}VR${Date.now()}`,
@@ -582,9 +586,10 @@ describe("الطلبة", () => {
   });
 
   /**
-   * الاسم باللاتينية يُحفظ على عادة الوثائق الفرنسية أيّاً كان ما كُتب:
-   * اللقب بأحرفٍ كبيرة، والاسم بحرفٍ أوّلَ كبيرٍ لكلّ كلمة. ولا يُقبل فيه
-   * حرفٌ عربيّ، ويُمسح بـnull عند التعديل.
+   * الاسم باللاتينية إلزاميّ للطالب، والعربيّ اختياريّ. ويُحفظ اللاتينيّ على
+   * عادة الوثائق الفرنسية أيّاً كان ما كُتب: اللقب بأحرفٍ كبيرة، والاسم بحرفٍ
+   * أوّلَ كبيرٍ لكلّ كلمة. ولا يُقبل فيه حرفٌ عربيّ، ولا يُمسح — والعربيّ
+   * يُمسح بـnull.
    */
   describe("الاسم باللاتينية", () => {
     const post = (body: Record<string, unknown>) =>
@@ -594,6 +599,8 @@ describe("الطلبة", () => {
           .send({
             firstName: TAG,
             lastName: "Latin",
+            firstNameLatin: "Test",
+            lastNameLatin: "LATIN",
             password: "A-strong-Passw0rd!",
             registrationNumber: `${TAG}LT${Date.now()}${Math.random().toString().slice(2, 6)}`,
             specializationId: f.specialization.id,
@@ -628,28 +635,38 @@ describe("الطلبة", () => {
       expect((await post({ lastNameLatin: "Hamadi2" })).status).toBe(400);
     });
 
-    it("ويُضاف بعد الإنشاء، ويُمسح بـnull", async () => {
+    it("وهو إلزاميّ، والعربيّ اختياريّ", async () => {
+      expect((await post({ firstNameLatin: undefined })).status).toBe(400);
+      expect((await post({ lastNameLatin: "" })).status).toBe(400);
+
+      const email = `${TAG}.latin-only@test.local`;
+      const res = await post({ email, firstName: undefined, lastName: undefined });
+      expect([200, 201]).toContain(res.status);
+      const u = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect([u.firstName, u.lastName]).toEqual([null, null]);
+      expect([u.firstNameLatin, u.lastNameLatin]).toEqual(["Test", "LATIN"]);
+    });
+
+    it("ويُعدَّل ولا يُمسح، والعربيّ يُمسح بـnull", async () => {
       const email = `${TAG}.latin3@test.local`;
       await post({ email });
       const u = await prisma.user.findUniqueOrThrow({
         where: { email },
         include: { student: true },
       });
-      expect(u.firstNameLatin).toBeNull();
-
       const patch = (body: Record<string, unknown>) =>
-        as(
-          request(app).patch(`/api/admin/students/${u.student!.id}`).send(body),
-          "admin",
-        ).expect(200);
+        as(request(app).patch(`/api/admin/students/${u.student!.id}`).send(body), "admin");
 
-      await patch({ firstNameLatin: "youcef", lastNameLatin: "hamadi" });
+      await patch({ firstNameLatin: "youcef", lastNameLatin: "hamadi" }).expect(200);
       let now = await prisma.user.findUniqueOrThrow({ where: { email } });
       expect([now.firstNameLatin, now.lastNameLatin]).toEqual(["Youcef", "HAMADI"]);
 
-      await patch({ firstNameLatin: null, lastNameLatin: null });
+      await patch({ firstNameLatin: null }).expect(400);
+
+      await patch({ firstName: null, lastName: null }).expect(200);
       now = await prisma.user.findUniqueOrThrow({ where: { email } });
-      expect([now.firstNameLatin, now.lastNameLatin]).toEqual([null, null]);
+      expect([now.firstName, now.lastName]).toEqual([null, null]);
+      expect(now.firstNameLatin).toBe("Youcef");
     });
   });
 
@@ -737,6 +754,8 @@ describe("الأساتذة", () => {
         .send({
           firstName: TAG,
           lastName: "DupProf",
+          firstNameLatin: "Dup",
+          lastNameLatin: "PROFESSOR",
           email: `${TAG}.dupprof@test.local`,
           password: "A-strong-Passw0rd!",
           employeeNumber: `${TAG}-EMP-DUP`,

@@ -51,9 +51,17 @@ export type AdminProfileDTO = z.infer<typeof adminProfileSchema>;
  * set only by uploading one (`POST /account/avatar`): here it can only be
  * removed, never pointed at an arbitrary address.
  */
+// The Latin name is required for professors: it changes here, it never
+// empties. The Arabic one is optional: `null` clears it.
 export const professorProfileSchema = adminProfileSchema
-  .pick({ firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true, gender: true, phone: true })
-  .extend({ avatarUrl: z.null().optional() });
+  .pick({ gender: true, phone: true })
+  .extend({
+    firstNameLatin: latinFirstName.optional(),
+    lastNameLatin: latinLastName.optional(),
+    firstName: z.string().trim().min(1).max(60).nullable().optional(),
+    lastName: z.string().trim().min(1).max(60).nullable().optional(),
+    avatarUrl: z.null().optional(),
+  });
 export type ProfessorProfileDTO = z.infer<typeof professorProfileSchema>;
 
 /** The sign-in address changes only with the current password. */

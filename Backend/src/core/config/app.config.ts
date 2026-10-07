@@ -163,6 +163,25 @@ const appConfig = () => ({
   SESSION_SECRET,
   SESSION_EXPIRES_IN: getEnv("SESSION_EXPIRES_IN", "1d"),
 
+  /**
+   * The web client's refresh token lives in an httpOnly cookie, out of reach
+   * of page scripts. `lax` suits a frontend and API on the same site
+   * (app.example.dz + api.example.dz, or localhost on two ports); a frontend
+   * on an unrelated domain needs `none`, which also forces `Secure`.
+   */
+  AUTH_COOKIE_SAMESITE: ((): "lax" | "strict" | "none" => {
+    const v = getEnv("AUTH_COOKIE_SAMESITE", "lax").toLowerCase();
+    return v === "strict" || v === "none" ? v : "lax";
+  })(),
+  /** Only the auth routes ever receive the cookie. Prefix it if a proxy does. */
+  AUTH_COOKIE_PATH: getEnv("AUTH_COOKIE_PATH", "/api/auth"),
+  /**
+   * `Secure` (HTTPS only) in production. A deployment on plain HTTP — an
+   * intranet without TLS — must set `false`, or browsers drop the cookie and
+   * every session ends with its first access token.
+   */
+  AUTH_COOKIE_SECURE: getEnv("AUTH_COOKIE_SECURE", IS_PRODUCTION ? "true" : "false") !== "false",
+
   // أقصى عدد محاولات دخول فاشلة لكل عنوان في نافذة الحدّ. قابل للضبط
   // لأن الاختبارات تُفشل الدخول عمداً مراراً، فتُشعل الحدّ وتفشل لسببٍ
   // لا علاقة له بما تختبره. تُختبَر آليّة الحدّ نفسها على حدة.

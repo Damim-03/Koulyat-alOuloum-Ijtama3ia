@@ -240,6 +240,8 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
   const role = watch("role");
   const firstName = watch("firstName");
   const lastName = watch("lastName");
+  const firstNameLatin = watch("firstNameLatin");
+  const lastNameLatin = watch("lastNameLatin");
   const gender = watch("gender");
   const avatarUrl = watch("avatarUrl");
   const facultyId = watch("facultyId");
@@ -566,6 +568,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
 
   const title =
     `${firstName ?? ""} ${lastName ?? ""}`.trim() ||
+    `${firstNameLatin ?? ""} ${lastNameLatin ?? ""}`.trim() ||
     (lockedRole === "student"
       ? t("admin.addStudent")
       : lockedRole === "professor"
@@ -729,6 +732,54 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                 </div>
               )}
 
+              {/* الطالب والأستاذ: الاسم واللقب باللاتينية أوّلاً، وهما الإلزاميان —
+                  كما يُكتب في الوجه الفرنسيّ للوثائق، ويُوحَّد عند مغادرة الحقل
+                  ليُرى ما سيُحفظ. والعربيّان بعدهما، اختياريان. */}
+              {role !== "admin" && (
+                <div className="grid grid-cols-2 gap-2.5">
+                  <FieldBox
+                    label={t("admin.firstNameLatin")}
+                    required
+                    icon={User}
+                    error={e.firstNameLatin?.message}
+                  >
+                    <input
+                      {...register("firstNameLatin", {
+                        onBlur: (ev) =>
+                          setValue("firstNameLatin", toLatinFirst(ev.target.value), {
+                            shouldValidate: !!ev.target.value.trim(),
+                          }),
+                      })}
+                      dir="ltr"
+                      autoComplete="off"
+                      className={inputCls}
+                      placeholder="Youcef"
+                      data-testid="first-name-latin"
+                    />
+                  </FieldBox>
+                  <FieldBox
+                    label={t("admin.lastNameLatin")}
+                    required
+                    icon={User}
+                    error={e.lastNameLatin?.message}
+                  >
+                    <input
+                      {...register("lastNameLatin", {
+                        onBlur: (ev) =>
+                          setValue("lastNameLatin", toLatinLast(ev.target.value), {
+                            shouldValidate: !!ev.target.value.trim(),
+                          }),
+                      })}
+                      dir="ltr"
+                      autoComplete="off"
+                      className={inputCls}
+                      placeholder="HAMADI"
+                      data-testid="last-name-latin"
+                    />
+                  </FieldBox>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2.5">
                 <FieldBox
                   label={t("admin.name")}
@@ -754,51 +805,6 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                 </FieldBox>
               </div>
 
-              {/* الاسم باللاتينية، تحت العربيّ مباشرة وبنفس ترتيبه — كما
-                  يُكتب في الوجه الفرنسيّ للوثائق. اختياريّ، ويُوحَّد عند
-                  مغادرة الحقل ليُرى ما سيُحفظ. */}
-              {role === "student" && (
-                <div className="grid grid-cols-2 gap-2.5">
-                  <FieldBox
-                    label={t("admin.firstNameLatin")}
-                    icon={User}
-                    error={e.firstNameLatin?.message}
-                  >
-                    <input
-                      {...register("firstNameLatin", {
-                        onBlur: (ev) =>
-                          setValue("firstNameLatin", toLatinFirst(ev.target.value), {
-                            shouldValidate: !!ev.target.value.trim(),
-                          }),
-                      })}
-                      dir="ltr"
-                      autoComplete="off"
-                      className={inputCls}
-                      placeholder="Youcef"
-                      data-testid="first-name-latin"
-                    />
-                  </FieldBox>
-                  <FieldBox
-                    label={t("admin.lastNameLatin")}
-                    icon={User}
-                    error={e.lastNameLatin?.message}
-                  >
-                    <input
-                      {...register("lastNameLatin", {
-                        onBlur: (ev) =>
-                          setValue("lastNameLatin", toLatinLast(ev.target.value), {
-                            shouldValidate: !!ev.target.value.trim(),
-                          }),
-                      })}
-                      dir="ltr"
-                      autoComplete="off"
-                      className={inputCls}
-                      placeholder="HAMADI"
-                      data-testid="last-name-latin"
-                    />
-                  </FieldBox>
-                </div>
-              )}
 
               {/*
                 اختياران من خيارين في صفٍّ واحد.
@@ -1108,8 +1114,9 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                         });
                         if (!next) clearErrors("universityEmail");
                       }}
-                      firstName={firstName}
-                      lastName={lastName}
+                      // اللاتينيّ أولى من نقل العربيّ حرفاً حرفاً.
+                      firstName={firstNameLatin || firstName}
+                      lastName={lastNameLatin || lastName}
                     />
                   </FieldBox>
 
@@ -1287,7 +1294,9 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                   />
                   <div className="min-w-0">
                     <p className="truncate text-[15px] font-bold leading-tight text-forest">
-                      {`${firstName ?? ""} ${lastName ?? ""}`.trim() || "—"}
+                      {`${firstName ?? ""} ${lastName ?? ""}`.trim() ||
+                        `${firstNameLatin ?? ""} ${lastNameLatin ?? ""}`.trim() ||
+                        "—"}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       <span className="inline-flex items-center gap-1 rounded-full bg-gold/15 px-2.5 py-0.5 text-[11px] font-semibold text-forest-deep">

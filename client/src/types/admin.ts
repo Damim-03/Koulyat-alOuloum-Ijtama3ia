@@ -384,7 +384,14 @@ export type ImportPreviewResult = StudentImportPreview;
 /** نتيجة استيرادٍ نجح: الحسابات بمعرّفاتها، وكلمة المرور المولَّدة وحدها. */
 export interface ImportResult {
   created: number;
-  accounts: ({ firstName: string; lastName: string; password: string | null } & Record<string, string | null>)[];
+  /** الطلبة: العربيّ قد يغيب (null)، واللاتينيّ معه دائماً. */
+  accounts: ({
+    firstName: string | null;
+    lastName: string | null;
+    firstNameLatin?: string | null;
+    lastNameLatin?: string | null;
+    password: string | null;
+  } & Record<string, string | null>)[];
   accountsFile: string;
 }
 
@@ -392,8 +399,10 @@ export interface ProfessorImportResult extends ImportResult {
   accounts: {
     employeeNumber: string;
     universityEmail: string;
-    firstName: string;
-    lastName: string;
+    firstName: string | null;
+    lastName: string | null;
+    firstNameLatin: string | null;
+    lastNameLatin: string | null;
     password: string | null;
   }[];
 }
@@ -402,8 +411,10 @@ export interface StudentImportResult {
   created: number;
   accounts: {
     registrationNumber: string;
-    firstName: string;
-    lastName: string;
+    firstName: string | null;
+    lastName: string | null;
+    firstNameLatin: string | null;
+    lastNameLatin: string | null;
     /** المولَّدة وحدها؛ null لما كُتب في الملف. */
     password: string | null;
   }[];
