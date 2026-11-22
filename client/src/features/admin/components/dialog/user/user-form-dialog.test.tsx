@@ -22,6 +22,14 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+// والمخطّطات (admin.schema) تسأل i18next نفسه لا الخطّاف — فمفاتيحها هي أيضاً.
+// i18next غير مُهيّأ يعطي نصّاً فارغاً (منذ 26.7)، والرسالة الفارغة لا تظهر تحت
+// الحقل؛ وبالمفتاح يُعرف أيّ رسالةٍ ظهرت.
+vi.mock("i18next", async (original) => ({
+  ...(await original<typeof import("i18next")>()),
+  t: (key: string) => key,
+}));
+
 const noop = { mutate: vi.fn(), isPending: false };
 vi.mock("../../../hooks/admin-hook", () => ({
   useProfessors: () => ({ data: { items: [] } }),
@@ -169,11 +177,7 @@ describe("الحراسة عند الانتقال", () => {
 
   /**
    * والرسالة تحت الحقل نفسه لا في رأس الاستمارة: «راجع البيانات» لا تدلّ
-   * على شيء في استمارةٍ فيها عشرة حقول.
-   *
-   * ولا أؤكّد نصّها هنا: `admin.schema` يستدعي `t` من i18next مباشرةً، وهي
-   * غير مُهيّأة في الاختبارات — فالنصّ رهن الإعداد، أمّا **موضع** الرسالة
-   * فهو السلوك المقصود.
+   * على شيء في استمارةٍ فيها عشرة حقول — ورسالةُ هذا الحقل هو.
    */
   it("وتظهر رسالةٌ تحت الحقل الناقص وحده", async () => {
     open({ lockedRole: "student" });
@@ -182,7 +186,7 @@ describe("الحراسة عند الانتقال", () => {
     expect(box.querySelector("p")).toBeNull();
     await next();
 
-    expect(box.querySelector("p")).not.toBeNull();
+    expect(box.querySelector("p")).toHaveTextContent("validation.passwordMin");
   });
 
   it("وحين يصحّ الحقل يتقدّم، والشريط يتبع — والاسم العربيّ اختياريّ", async () => {
@@ -481,8 +485,8 @@ describe("الاسم باللاتينية", () => {
     await next();
 
     expect(currentStep()).toBe("step-personal");
-    // الرسالة تحت الحقل نفسه — ونصّها رهن i18next غير المهيّأة هنا (انظر أعلاه).
-    expect(latin.closest("label")!.querySelector("p")).not.toBeNull();
+    // الرسالة تحت الحقل نفسه، وهي رسالة «لاتينيّ فقط».
+    expect(latin.closest("label")!.querySelector("p")).toHaveTextContent("validation.latinOnly");
   });
 
   it("ويصل الخادمَ موحَّداً", async () => {

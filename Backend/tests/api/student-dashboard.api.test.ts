@@ -18,6 +18,7 @@
 import request from "supertest";
 import app from "../../src/app";
 import { prisma } from "../../src/core/prisma/client";
+import { computeTopicStatus } from "../../src/core/topic/topic-status";
 import {
   seed,
   teardown,
@@ -89,10 +90,11 @@ async function requestFor(
   rejectionReason: string | null = null,
 ) {
   const topic = await makeTopic(f, `طلب ${++n}`, "open");
+  // سقفٌ بطلبٍ واحد: الطلبُ المعلّق يملؤه فيُغلق الموضوع على غيره.
+  await prisma.graduationTopic.update({ where: { id: topic.id }, data: { maxRequests: 1 } });
   return prisma.groupRequest.create({
     data: {
       topicId: topic.id,
-      activeTopicId: status === "rejected" ? null : topic.id,
       leaderStudentId: leader.id,
       status,
       rejectionReason,
@@ -315,7 +317,8 @@ describe("لوحة الطالب — المواضيع المتاحة", () => {
     await makeTopic(f, "متاح معتمد", "approved");
     await makeTopic(f, "بانتظار الإدارة", "pending");
     await projectFor(f.nextStudents(1)); // مأخوذ بمجموعة
-    await requestFor(f.nextStudents(1)[0], []); // محجوز بطلبٍ حيّ
+    const live = await requestFor(f.nextStudents(1)[0], []); // اكتمل سقفه بطلبٍ معلّق
+    await computeTopicStatus(prisma, live.topicId);
 
     const other = await prisma.specialization.create({
       data: { name: `${TAG} spec other`, level: "master", filiereId: f.filiere.id },

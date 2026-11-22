@@ -13,6 +13,7 @@
  */
 import request from "supertest";
 import app from "../../src/app";
+import { tr } from "../../src/core/i18n";
 import { prisma } from "../../src/core/prisma/client";
 import { MAX_HOME_SLIDES } from "../../src/modules/site/site.service";
 import {
@@ -104,6 +105,11 @@ describe("للإدارة", () => {
       .expect(200);
     expect(res.body.slide.caption).toBe("المكتبة");
     expect(await publicSlides()).toEqual([]);
+  });
+
+  it("وصورةٌ غير موجودة ⇒ 404", async () => {
+    const res = await as(request(app).patch("/api/admin/home-slides/no-such-slide")).send({ isActive: false }).expect(404);
+    expect(res.body.message).toBe(tr("notFound.image"));
   });
 
   it("والسطر الفارغ يمسحه", async () => {

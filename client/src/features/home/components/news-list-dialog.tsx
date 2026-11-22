@@ -46,7 +46,7 @@ export function NewsListDialog({
     >
       <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
       <div
-        className="relative flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-cream-card shadow-2xl"
+        className="relative flex max-h-[85dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-cream-card shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="relative flex items-center justify-between gap-3 bg-forest px-5 py-4">

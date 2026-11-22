@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
@@ -35,6 +35,7 @@ function toLocalInput(iso?: string) {
 export function MilestoneFormDialog({ open, onClose, groupId, milestone }: Props) {
   const { t } = useTranslation();
   const { dir } = useLanguage();
+  const titleId = useId();
   const editing = !!milestone;
 
   const create = useCreateMilestone();
@@ -51,6 +52,11 @@ export function MilestoneFormDialog({ open, onClose, groupId, milestone }: Props
     defaultValues: { title: "", description: "", deadline: "", order: 1 },
   });
 
+  // `keepFieldsRef`: a plain reset empties the form's field registry and
+  // counts on the next render calling `register()` again. The React Compiler
+  // keeps the inputs' JSX — nothing it depends on changed — so `register()` is
+  // not called, the fields stay unregistered, and what is typed never reaches
+  // the form: every save failed with "title required", "date required".
   useEffect(() => {
     if (!open) return;
     reset(
@@ -62,6 +68,7 @@ export function MilestoneFormDialog({ open, onClose, groupId, milestone }: Props
             order: milestone.order,
           }
         : { title: "", description: "", deadline: "", order: 1 },
+      { keepFieldsRef: true },
     );
   }, [open, milestone, reset]);
 
@@ -83,7 +90,14 @@ export function MilestoneFormDialog({ open, onClose, groupId, milestone }: Props
   return createPortal(
     <div className="fixed inset-0 z-100 flex items-center justify-center p-4" onMouseDown={onClose}>
       <div className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm" />
-      <div dir={dir} onMouseDown={(e) => e.stopPropagation()} className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl bg-cream-card shadow-2xl">
+      <div
+        dir={dir}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl bg-cream-card shadow-2xl"
+      >
         {/* Header */}
         <div className="relative bg-forest px-6 py-5">
           <div className="flex items-center justify-between">
@@ -92,13 +106,13 @@ export function MilestoneFormDialog({ open, onClose, groupId, milestone }: Props
                 <MilestoneIcon size={20} />
               </div>
               <div>
-                <h2 className="font-serif text-lg font-bold text-cream">
+                <h2 id={titleId} className="font-serif text-lg font-bold text-cream">
                   {editing ? t("pro.editMilestone") : t("pro.addMilestone")}
                 </h2>
                 <p className="text-xs text-cream/70">{t("pro.milestoneDialogSubtitle")}</p>
               </div>
             </div>
-            <button onClick={onClose} className="grid size-8 place-items-center rounded-full text-cream/80 transition hover:bg-cream/15 hover:text-cream">
+            <button type="button" onClick={onClose} aria-label={t("pro.cancel")} className="grid size-8 place-items-center rounded-full text-cream/80 transition hover:bg-cream/15 hover:text-cream">
               <X size={18} />
             </button>
           </div>

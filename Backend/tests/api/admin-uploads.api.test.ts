@@ -22,6 +22,7 @@ import path from "node:path";
 import request from "supertest";
 import app from "../../src/app";
 import { prisma } from "../../src/core/prisma/client";
+import { tr } from "../../src/core/i18n";
 import {
   seed,
   teardown,
@@ -195,7 +196,7 @@ describe("الرفوض", () => {
     const res = await as(request(app).post("/api/admin/uploads/image")).expect(
       400,
     );
-    expect(res.body.message).toContain("لم يُرفَع");
+    expect(res.body.message).toBe(tr("upload.none"));
   });
 
   it("وحقلٌ باسمٍ آخر ⇒ 400 لا 500", async () => {
@@ -269,7 +270,7 @@ describe("الرفوض", () => {
     const res = await upload(huge, "big.png", "image/png");
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toMatch(/too large|كبير/i);
+    expect(res.body.message).toBe(tr("upload.tooLarge"));
 
     const after = fs.readdirSync(UPLOAD_DIR);
     expect(after.filter((n) => !before.includes(n))).toEqual([]);

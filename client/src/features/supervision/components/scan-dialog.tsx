@@ -115,7 +115,7 @@ export function ScanDialog({ onClose }: { onClose: () => void }) {
         className="absolute inset-0 bg-forest-deep/55 backdrop-blur-sm"
       />
 
-      <div className="relative z-10 flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-cream-card ring-1 ring-forest/10 shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
+      <div className="relative z-10 flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-cream-card ring-1 ring-forest/10 shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
         {/* ── الرأس ── */}
         <div className="flex shrink-0 items-center gap-3.5 bg-linear-to-l from-forest to-forest-deep px-5 py-4 text-cream sm:px-6">
           <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-cream/10 ring-1 ring-cream/15">

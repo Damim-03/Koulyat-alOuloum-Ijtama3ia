@@ -5,6 +5,7 @@ import {
 } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import type { CreateNewsDTO, UpdateNewsDTO } from "./site.validation";
+import { tr } from "../../core/i18n";
 
 /**
  * سقفُ الأخبار، منشورةً ومخفيّة.
@@ -21,7 +22,7 @@ const ORDER = [{ date: "desc" as const }, { createdAt: "desc" as const }];
 const dayOf = (v: string) => new Date(`${v}T00:00:00.000Z`);
 
 const notFound = () =>
-  new NotFoundException("الخبر غير موجود", ErrorCodeEnum.RESOURCE_NOT_FOUND);
+  new NotFoundException(tr("notFound.news"), ErrorCodeEnum.RESOURCE_NOT_FOUND);
 
 //
 // ─── للزائر ──────────────────────────────────────────────────
@@ -50,7 +51,7 @@ export const listNewsService = () => prisma.newsItem.findMany({ orderBy: ORDER }
 export const createNewsService = async (data: CreateNewsDTO) => {
   if ((await prisma.newsItem.count()) >= MAX_NEWS)
     throw new BadRequestException(
-      `بلغت الحدّ الأقصى (${MAX_NEWS} خبراً) — احذف خبراً قديماً قبل إضافة آخر`,
+      tr("site.newsLimit", { max: MAX_NEWS }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 

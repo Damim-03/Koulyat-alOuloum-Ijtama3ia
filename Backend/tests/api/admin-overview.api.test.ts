@@ -680,7 +680,6 @@ describe("تعديل الموضوع المُسنَد", () => {
     await prisma.groupRequest.create({
       data: {
         topicId: topic.id,
-        activeTopicId: topic.id,
         leaderStudentId: waiting.id,
         priority: 1,
         status: "pending",

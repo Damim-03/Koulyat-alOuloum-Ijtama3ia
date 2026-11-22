@@ -26,6 +26,7 @@
  */
 import { Prisma, TopicStatus } from "../../generated/prisma";
 import { prisma } from "../prisma/client";
+import { tr } from "../i18n";
 
 /** إمّا العميل المفرد أو عميل معاملة — كما في `notification.service`. */
 type Db = Prisma.TransactionClient | typeof prisma;
@@ -67,9 +68,8 @@ export const projectTopicStatus = (input: {
 /**
  * حالة إشغال الموضوع، مقروءة من الصفوف لا من `status`.
  *
- * «حيّ» تعني `pending` أو `accepted`: كلاهما يحمل `activeTopicId` ويحجز
- * الموضوع فعلياً عبر الفهرس الفريد. التمييز بينهما مهمّ لأن `pending` ينتظر
- * قراراً بينما `accepted` صار مشروعاً قائماً.
+ * «حيّ» تعني `pending` أو `accepted`. وقد يكون للموضوع عدّة طلباتٍ معلّقة
+ * معاً — حتى سقفه — والإدارة تختار منها واحداً؛ أمّا المقبول فواحدٌ أبداً.
  */
 export type TopicOccupancy = {
   /** تشكّلت مجموعة مشروع — الموضوع مأخوذ فعلاً. */
@@ -77,9 +77,12 @@ export type TopicOccupancy = {
   groupId: string | null;
   /** عدد أعضاء المجموعة إن وُجدت. */
   groupMemberCount: number;
-  /** طلب فريق ينتظر قرار الإدارة. */
+  /** أوّلُ طلبٍ ينتظر قرار الإدارة، إن وُجد. */
   pendingRequestId: string | null;
+  /** طلابُ ذلك الطلب — لنصّ «فريقٌ من ٣ طلاب ينتظر». */
   pendingRequestMemberCount: number;
+  /** كم فريقاً ينتظر القرار الآن. */
+  pendingRequestCount: number;
   /** الطلب الذي أنشأ المجموعة القائمة، إن وُجد. */
   acceptedRequestId: string | null;
   /** أي طلب حيّ (pending أو accepted) — هو ما يحجز الموضوع. */
@@ -90,15 +93,17 @@ export const readOccupancy = async (
   db: Db,
   topicId: string,
 ): Promise<TopicOccupancy> => {
-  const [group, pending, accepted] = await Promise.all([
+  const [group, pending, pendingCount, accepted] = await Promise.all([
     db.projectGroup.findUnique({
       where: { topicId },
       select: { id: true, _count: { select: { members: true } } },
     }),
     db.groupRequest.findFirst({
       where: { topicId, status: "pending" },
+      orderBy: { createdAt: "asc" },
       select: { id: true, _count: { select: { members: true } } },
     }),
+    db.groupRequest.count({ where: { topicId, status: "pending" } }),
     db.groupRequest.findFirst({
       where: { topicId, status: "accepted" },
       select: { id: true },
@@ -111,6 +116,7 @@ export const readOccupancy = async (
     groupMemberCount: group?._count.members ?? 0,
     pendingRequestId: pending?.id ?? null,
     pendingRequestMemberCount: pending?._count.members ?? 0,
+    pendingRequestCount: pendingCount,
     acceptedRequestId: accepted?.id ?? null,
     hasLiveRequest: !!pending || !!accepted,
   };
@@ -121,10 +127,12 @@ export const readOccupancy = async (
 //
 
 /**
- * يُعيد حساب `status` من القرار المخزَّن والإشغال الحاليّ، ويكتبه إن تغيّر.
+ * يُعيد حساب `status` من القرار المخزَّن والإشغال الحاليّ، ويكتبه إن تغيّر —
+ * ومعه `pendingRequestCount`، عدّادُ السقف.
  *
- * تُنادى بعد **كل** تغيّر في الإشغال: إنشاء مجموعة أو فسخها، قبول طلب أو
- * رفضه. لا تغيّر القرار أبداً — لذلك تُنادى بأمان داخل أي معاملة.
+ * تُنادى بعد **كل** تغيّر في الإشغال أو في الطلبات: إنشاء مجموعة أو فسخها،
+ * إرسال طلب أو إلغاؤه، قبوله أو رفضه. لا تغيّر القرار أبداً — لذلك تُنادى
+ * بأمان داخل أي معاملة.
  */
 export const computeTopicStatus = async (
   db: Db,
@@ -132,21 +140,21 @@ export const computeTopicStatus = async (
 ): Promise<TopicStatus> => {
   const topic = await db.graduationTopic.findUnique({
     where: { id: topicId },
-    select: { status: true, publishedAt: true },
+    select: { status: true, publishedAt: true, pendingRequestCount: true },
   });
   if (!topic) return "pending"; // حُذف الموضوع في نفس المعاملة — لا شيء ليُكتب.
 
-  const { hasGroup } = await readOccupancy(db, topicId);
+  const { hasGroup, pendingRequestCount } = await readOccupancy(db, topicId);
   const next = projectTopicStatus({
     decision: decisionOf(topic.status),
     publishedAt: topic.publishedAt,
     hasGroup,
   });
 
-  if (next !== topic.status) {
+  if (next !== topic.status || pendingRequestCount !== topic.pendingRequestCount) {
     await db.graduationTopic.update({
       where: { id: topicId },
-      data: { status: next },
+      data: { status: next, pendingRequestCount },
     });
   }
   return next;
@@ -213,35 +221,61 @@ export const setTopicPublished = async (
 //
 
 /**
+ * ما يزال يقبل طلباً: الطلباتُ المعلّقة دون السقف، أو لا سقف له.
+ *
+ * والمقارنةُ بين عمودين في قاعدة البيانات نفسها (`fields.maxRequests`)،
+ * فتُسأل في الاستعلام الذي يُرقّم ويَعدّ — لا بعد جلب الصفوف.
+ */
+export const UNDER_REQUEST_CAP = {
+  OR: [
+    { maxRequests: null },
+    { pendingRequestCount: { lt: prisma.graduationTopic.fields.maxRequests } },
+  ],
+} satisfies Prisma.GraduationTopicWhereInput;
+
+/** وعكسُه: اكتملت طلباتُه المعلّقة، فلا يقبل جديداً حتى تبتّ الإدارة. */
+export const REQUEST_CAP_REACHED = {
+  maxRequests: { not: null },
+  pendingRequestCount: { gte: prisma.graduationTopic.fields.maxRequests },
+} satisfies Prisma.GraduationTopicWhereInput;
+
+/**
  * الشرط الوحيد لـ«متاح للطلبة».
  *
  * كان هذا الشرط مكتوباً أربع مرّات — في تصفّح الطالب، وفي إنشاء الطلب، وفي
  * القائمة العامّة، وفي صفحة الموضوع العامّة — وكلٌّ يشتقّه بطريقته. تُستورد
  * هذه القطعة الآن بدل إعادة كتابته، فتتغيّر القاعدة في مكان واحد.
  *
- * `full` مستبعَد ضمناً: الشرط يقتصر على `approved` و`open`، وأي موضوع له
- * مجموعة يكون `full` بعد المرحلة 1.
+ * المنشور (`open`) تتقدّم إليه الفرق **معاً** حتى سقفه، والإدارة تختار.
+ * وغيرُ المنشور (`approved`) يبقى على حجز الطلب الواحد: هو حال اقتراح الأستاذ
+ * لطلبةٍ بأعيانهم، وطلبُه عليه لا يُزاحَم.
+ *
+ * `full` مستبعَد ضمناً: أي موضوع له مجموعة يكون `full`.
  */
 export const AVAILABLE_TO_STUDENTS = {
-  status: { in: ["approved", "open"] as TopicStatus[] },
-  // لا مجموعة تشكّلت، ولا فريق يحجزه بطلب حيّ.
   projectGroup: null,
-  groupRequests: {
-    none: { status: { in: ["pending", "accepted"] as const } },
-  },
+  OR: [
+    {
+      status: "open",
+      groupRequests: { none: { status: "accepted" } },
+      ...UNDER_REQUEST_CAP,
+    },
+    {
+      status: "approved",
+      groupRequests: { none: { status: { in: ["pending", "accepted"] } } },
+    },
+  ],
 } satisfies Prisma.GraduationTopicWhereInput;
 
 /**
- * ما يُحسب على سقف الموضوع — وهو ما يُعرض أيضاً.
+ * ما يُحسب على سقف الموضوع — وهو ما يُعرض أيضاً: الطلبات المعلّقة.
  *
  * العرضُ والحارسُ يقرآن هذا الشرط نفسه. ولو افترقا لقالت الشاشة «٢ / ٢»
  * والخادمُ يقبل طلباً ثالثاً، أو العكس — وكلاهما يُفقد الثقة بالعدّاد.
- *
- * ويسكن هنا لا في خدمةٍ بعينها، كـ`AVAILABLE_TO_STUDENTS` وللسبب نفسه:
- * قاعدةٌ يقرأها وجهان من النظام تُكتب مرّة.
+ * والمرفوضُ والمُلغى خارجه: يُفرِجان عن خانتيهما.
  */
-export const CAP_ATTEMPTS = {
-  countsAgainstCap: true,
+export const COUNTED_ON_CAP = {
+  status: "pending",
 } satisfies Prisma.GroupRequestWhereInput;
 
 //
@@ -316,14 +350,20 @@ export const topicActions = (
   occ: Pick<
     TopicOccupancy,
     "hasGroup" | "pendingRequestId" | "pendingRequestMemberCount" | "acceptedRequestId"
-  >,
+  > & { pendingRequestCount?: number },
 ): TopicActions => {
   const s = topic.status;
   const waiting = !!occ.pendingRequestId;
   const reserved = !!occ.acceptedRequestId;
 
-  const waitingTeam = (action: string) =>
-    `لا يمكن ${action}: هناك فريق (${occ.pendingRequestMemberCount} طلبة) بانتظار القرار على هذا الموضوع. ابتّ في طلبه من صفحة «طلبات المجموعات» أوّلاً.`;
+  // فريقٌ بعدد طلابه، أو عدّة فرق بعددها.
+  const waitingParams = {
+    count: occ.pendingRequestMemberCount,
+    teams: occ.pendingRequestCount ?? (waiting ? 1 : 0),
+  };
+  const waitingTeam = (
+    key: "gate.rejectWaiting" | "gate.publishWaiting" | "gate.archiveWaiting" | "gate.assignWaiting",
+  ) => tr(key, waitingParams);
 
   const reasons: Partial<Record<TopicActionKey, string>> = {};
   const codes: Partial<Record<TopicActionKey, TopicBlock>> = {};
@@ -341,13 +381,13 @@ export const topicActions = (
   };
   const waitingBlock: TopicBlock = {
     code: "teamWaiting",
-    params: { count: occ.pendingRequestMemberCount },
+    params: waitingParams,
   };
 
   const canApprove = gate(
     "approve",
     s === "pending" || s === "rejected",
-    "لا يُعتمد إلا موضوع قيد الانتظار أو مرفوض.",
+    tr("gate.approve"),
     { code: "notUndecided" },
   );
 
@@ -355,8 +395,8 @@ export const topicActions = (
     "reject",
     (s === "pending" || s === "approved" || s === "open") && !waiting,
     waiting
-      ? waitingTeam("رفض الموضوع")
-      : "لا يُرفض إلا موضوع قيد الانتظار أو معتمَد أو منشور. الموضوع الذي تشكّلت له مجموعة يُؤرشَف بدل رفضه.",
+      ? waitingTeam("gate.rejectWaiting")
+      : tr("gate.reject"),
     waiting ? waitingBlock : { code: "notRejectable" },
   );
 
@@ -364,17 +404,17 @@ export const topicActions = (
     "publish",
     s === "approved" && !waiting && !reserved,
     waiting
-      ? waitingTeam("نشر الموضوع")
+      ? waitingTeam("gate.publishWaiting")
       : reserved
-        ? "لا يمكن نشر الموضوع: عليه طلب فريق مقبول ما يزال يحجزه. افسخ مذكرته من صفحة «المذكرات» أوّلاً ليعود قابلاً للتداول."
-        : "يجب قبول الموضوع أوّلاً قبل نشره",
+        ? tr("gate.publishReserved")
+        : tr("gate.publishNotApproved"),
     waiting ? waitingBlock : { code: reserved ? "reserved" : "notApproved" },
   );
 
   const canUnpublish = gate(
     "unpublish",
     s === "open",
-    "لا يمكن إلغاء النشر إلا لموضوع منشور ولم تُشكّل له مجموعة",
+    tr("gate.unpublish"),
     { code: "notOpen" },
   );
 
@@ -382,15 +422,15 @@ export const topicActions = (
     "archive",
     (s === "approved" || s === "open" || s === "full") && !waiting,
     waiting
-      ? waitingTeam("أرشفة الموضوع")
-      : "لا يُؤرشَف إلا موضوع معتمَد أو منشور أو مكتمل. الموضوع قيد الانتظار أو المرفوض يُبَتّ فيه لا يُؤرشَف.",
+      ? waitingTeam("gate.archiveWaiting")
+      : tr("gate.archive"),
     waiting ? waitingBlock : { code: "notArchivable" },
   );
 
   const canUnarchive = gate(
     "unarchive",
     s === "archived",
-    "لا يمكن إلغاء الأرشفة إلا لموضوع مؤرشف",
+    tr("gate.unarchive"),
     { code: "notArchived" },
   );
 
@@ -399,10 +439,10 @@ export const topicActions = (
     "delete",
     !occ.hasGroup && !waiting && !reserved,
     occ.hasGroup
-      ? "لا يمكن حذف موضوع تشكّلت له مجموعة مذكرة؛ أرشفه بدلاً من ذلك."
+      ? tr("gate.deleteHasGroup")
       : reserved
-        ? "لا يمكن حذف موضوع عليه طلب فريق مقبول. افسخ مذكرته أوّلاً."
-        : `لا يمكن حذف الموضوع: هناك فريق (${occ.pendingRequestMemberCount} طلبة) ينتظر قراره، وحذفه يمحو طلبهم بلا خبر. ابتّ في الطلب أوّلاً — رفضُه يُحرّر الموضوع.`,
+        ? tr("gate.deleteReserved")
+        : tr("gate.deleteWaiting", waitingParams),
     occ.hasGroup
       ? { code: "hasGroup" }
       : reserved
@@ -413,7 +453,7 @@ export const topicActions = (
   const canAssignGroup = gate(
     "assignGroup",
     !waiting,
-    waitingTeam("إسناد مجموعة إلى الموضوع"),
+    waitingTeam("gate.assignWaiting"),
     waitingBlock,
   );
 
@@ -439,6 +479,7 @@ export type TopicOccupancySummary = {
   groupMemberCount: number;
   hasPendingRequest: boolean;
   pendingRequestMemberCount: number;
+  pendingRequestCount: number;
   hasAcceptedRequest: boolean;
 };
 
@@ -448,6 +489,7 @@ export const occupancyFromRelations = (row: {
   groupRequests?: { id: string; status: string; _count?: { members: number } }[];
 }): TopicOccupancy & TopicOccupancySummary => {
   const pending = row.groupRequests?.find((r) => r.status === "pending");
+  const pendingCount = row.groupRequests?.filter((r) => r.status === "pending").length ?? 0;
   const accepted = row.groupRequests?.find((r) => r.status === "accepted");
   const hasGroup = !!row.projectGroup;
   return {
@@ -456,6 +498,7 @@ export const occupancyFromRelations = (row: {
     groupMemberCount: row.projectGroup?._count?.members ?? 0,
     pendingRequestId: pending?.id ?? null,
     pendingRequestMemberCount: pending?._count?.members ?? 0,
+    pendingRequestCount: pendingCount,
     acceptedRequestId: accepted?.id ?? null,
     hasLiveRequest: !!pending || !!accepted,
     hasPendingRequest: !!pending,
@@ -482,6 +525,7 @@ export type RequestBlockCode =
   | "alreadyAccepted"
   | "topicUnavailable"
   | "topicTaken"
+  | "memberPlaced"
   | "tooManyMembers"
   | "hasProject";
 
@@ -517,6 +561,14 @@ export const requestActions = (input: {
   status: string;
   memberCount: number;
   topic: { status: TopicStatus; maxStudents: number; hasGroup: boolean };
+  /**
+   * أوّلُ عضوٍ في الطلب له مشروعٌ على موضوعٍ آخر، إن وُجد.
+   *
+   * الطالبُ الواحد لا يكون إلّا في مشروعٍ واحد. وكان القبولُ لا يسأل عن
+   * الأعضاء أصلاً: فريقٌ طلب موضوعين بأولويتين، فقُبل الأوّل، ثمّ الثاني —
+   * فصار أعضاؤه في مشروعين.
+   */
+  placed?: { name: string; topic: string } | null;
 }): RequestActions => {
   const reasons: Partial<Record<RequestActionKey, string>> = {};
   const codes: Partial<Record<RequestActionKey, RequestBlock>> = {};
@@ -533,37 +585,44 @@ export const requestActions = (input: {
     return ok;
   };
 
-  const { status, memberCount, topic } = input;
+  const { status, memberCount, topic, placed } = input;
   const accepted = status === "accepted";
 
   // الترتيب هو ترتيب الخادم نفسه، فيقع السبب المعروض على أوّل ما يمنع فعلاً.
   const canAccept = accepted
-    ? gate("accept", false, "هذا الطلب مقبولٌ بالفعل.", {
+    ? gate("accept", false, tr("gate.requestAccepted"), {
         code: "alreadyAccepted",
       })
     : !ELIGIBLE_FOR_ACCEPT.includes(topic.status)
       ? gate(
           "accept",
           false,
-          "هذا الموضوع لم يعد متاحاً (تمّت معالجته بالفعل).",
+          tr("gate.topicGone"),
           { code: "topicUnavailable", params: { status: topic.status } },
         )
       : topic.hasGroup
         ? gate(
             "accept",
             false,
-            "تمّت الموافقة على مجموعة لهذا الموضوع بالفعل — سبقهم فريقٌ آخر.",
+            tr("gate.topicTaken"),
             { code: "topicTaken" },
           )
-        : gate(
-            "accept",
-            memberCount <= topic.maxStudents,
-            `عدد الأعضاء (${memberCount}) يتجاوز الحدّ الأقصى للموضوع (${topic.maxStudents}).`,
-            {
-              code: "tooManyMembers",
-              params: { members: memberCount, max: topic.maxStudents },
-            },
-          );
+        : placed
+          ? gate(
+              "accept",
+              false,
+              tr("gate.memberPlaced", placed),
+              { code: "memberPlaced", params: placed },
+            )
+          : gate(
+              "accept",
+              memberCount <= topic.maxStudents,
+              tr("gate.tooManyMembers", { members: memberCount, max: topic.maxStudents }),
+              {
+                code: "tooManyMembers",
+                params: { members: memberCount, max: topic.maxStudents },
+              },
+            );
 
   /*
    * الشرط على المجموعة لا على حالة الطلب: طلبٌ مقبولٌ فُسخت مجموعته يبقى
@@ -572,7 +631,7 @@ export const requestActions = (input: {
   const canReject = gate(
     "reject",
     !(accepted && topic.hasGroup),
-    "لا يمكن رفض طلب تشكّلت له مذكرة بالفعل. إن أردت التراجع عن الاكتمال فافسخ المذكرة من صفحة «المذكرات» — عندها يتحرّر الموضوع ويعود قابلاً للتداول.",
+    tr("gate.rejectHasProject"),
     { code: "hasProject" },
   );
 

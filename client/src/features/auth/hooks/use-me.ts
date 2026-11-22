@@ -22,11 +22,23 @@ export function useMe() {
     retry: false,
   });
 
+  // Only an answer newer than the last one written. Every component that
+  // calls this hook mounts with the cached answer, and writing it again then
+  // undid whatever the screen had just set in between — the flags of a
+  // finished two-step setup, a name just saved — until the refetch arrived.
+  const { data, dataUpdatedAt } = query;
   useEffect(() => {
-    if (query.data?.user) {
-      setUser(query.data.user);
-    }
-  }, [query.data, setUser]);
+    if (!data?.user || (data === written.data && dataUpdatedAt <= written.at)) return;
+    written = { data, at: dataUpdatedAt };
+    setUser(data.user);
+  }, [data, dataUpdatedAt, setUser]);
 
   return query;
 }
+
+/**
+ * The answer last written to the store — shared, like the store. Another
+ * answer (a new object), or the same one fetched again (later), is written;
+ * the cached one seen again by a component that just mounted is not.
+ */
+let written: { data: unknown; at: number } = { data: null, at: 0 };

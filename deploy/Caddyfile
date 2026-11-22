@@ -1,0 +1,33 @@
+# The platform's front door: HTTPS for DOMAIN, everything passed to the app.
+#
+# With a real domain whose DNS points at this machine, and ports 80/443
+# reachable from the internet, Caddy obtains a Let's Encrypt certificate on
+# its own and renews it. With DOMAIN=localhost it issues a local one instead
+# (the browser warns until that local authority is trusted) — enough to try
+# the whole thing on the machine itself before the domain is ready.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	# Message attachments go up to 25MB each; a little room for the rest of
+	# the request. The platform checks each file's own size limit itself.
+	request_body {
+		max_size 30MB
+	}
+
+	# A trial on the machine itself: no HSTS for localhost. A browser that kept
+	# it would force HTTPS on every localhost port for six months — the Vite
+	# dev server on http://localhost:5173 included. A real domain keeps it.
+	@trial host localhost 127.0.0.1
+	header @trial -Strict-Transport-Security
+
+	# Live updates (socket.io) included: Caddy passes WebSocket upgrades on
+	# its own, and sets X-Forwarded-For / -Proto for the platform.
+	reverse_proxy app:3000
+
+	# No access log here, on purpose: the links in password-reset and
+	# confirmation emails carry their token in the address, and a log line
+	# would keep it. The platform logs each request itself, address without
+	# its query string.
+}

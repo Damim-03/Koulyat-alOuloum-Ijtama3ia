@@ -7,6 +7,7 @@ import { HTTPSTATUS } from "../config/http/http.config";
 import { AppError } from "../utils/appErros";
 import { ErrorCodeEnum } from "../enums/error-code.enum";
 import { config } from "../config/app.config";
+import { listOf, tr } from "../i18n";
 
 /**
  * ============================================================
@@ -45,7 +46,6 @@ function redact(value: unknown, depth = 0): unknown {
  * موضع الاسم يختلف باختلاف المُشغِّل: بعضها يضعه في `meta.target` جاهزاً،
  * وسائق MariaDB يضعه في اسم الفهرس داخل خطأ المُهايئ (`User_email_key`)
  * وفي نصّ الرسالة. فيُقرأ من المواضع الثلاثة بدل اختيار واحد والرهان عليه —
- * وهو نفس الدرس المسجَّل في `isReservationClash` بوحدة الطالب.
  *
  * واسم الفهرس بصيغة `Model_field_key` أو `Model_a_b_key` للمركَّب، فتُستخرج
  * منه الحقول بإسقاط اسم النموذج ولاحقة `_key`.
@@ -101,7 +101,7 @@ export const errorHandler: ErrorRequestHandler = (
   // 1) Malformed JSON body
   if (error instanceof SyntaxError && "body" in error) {
     return res.status(HTTPSTATUS.BAD_REQUEST).json({
-      message: "Invalid JSON format, please check your request body",
+      message: tr("request.invalidJson"),
       errorCode: ErrorCodeEnum.VALIDATION_ERROR,
     });
   }
@@ -110,14 +110,14 @@ export const errorHandler: ErrorRequestHandler = (
   if (error instanceof MulterError) {
     const tooBig = error.code === "LIMIT_FILE_SIZE";
     return res.status(HTTPSTATUS.BAD_REQUEST).json({
-      message: tooBig ? "File is too large" : "Invalid upload",
+      message: tooBig ? tr("upload.tooLarge") : tr("upload.invalid"),
       errorCode: ErrorCodeEnum.VALIDATION_ERROR,
     });
   }
 
   if ((error as { type?: string })?.type === "entity.too.large") {
     return res.status(413).json({
-      message: "Request body is too large",
+      message: tr("request.tooLarge"),
       errorCode: ErrorCodeEnum.VALIDATION_ERROR,
     });
   }
@@ -125,7 +125,7 @@ export const errorHandler: ErrorRequestHandler = (
   // 3) Validation failures — field paths only, never the submitted values
   if (error instanceof ZodError) {
     return res.status(HTTPSTATUS.BAD_REQUEST).json({
-      message: "Validation error",
+      message: tr("request.validation"),
       errorCode: ErrorCodeEnum.VALIDATION_ERROR,
       fields: error.issues.map((i) => i.path.join(".")).filter(Boolean),
     });
@@ -134,7 +134,7 @@ export const errorHandler: ErrorRequestHandler = (
   // 4) CORS rejection
   if (error instanceof Error && error.message === "CORS not allowed") {
     return res.status(HTTPSTATUS.FORBIDDEN).json({
-      message: "Origin not allowed",
+      message: tr("request.originNotAllowed"),
       errorCode: ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     });
   }
@@ -144,6 +144,7 @@ export const errorHandler: ErrorRequestHandler = (
     return res.status(error.statusCode).json({
       message: error.message,
       errorCode: error.errorCode,
+      ...error.extra,
     });
   }
 
@@ -166,8 +167,8 @@ export const errorHandler: ErrorRequestHandler = (
 
     return res.status(HTTPSTATUS.CONFLICT).json({
       message: fields.length
-        ? `القيمة مستعمَلة بالفعل: ${fields.join("، ")}`
-        : "القيمة مستعمَلة بالفعل",
+        ? tr("request.duplicateFields", { fields: listOf(fields) })
+        : tr("request.duplicate"),
       errorCode: ErrorCodeEnum.VALIDATION_ERROR,
       fields,
     });
@@ -188,8 +189,8 @@ export const errorHandler: ErrorRequestHandler = (
 
     return res.status(HTTPSTATUS.BAD_REQUEST).json({
       message: fields.length
-        ? `مرجعٌ غير موجود: ${fields.join("، ")}`
-        : "أحد المراجع المُرسَلة غير موجود",
+        ? tr("request.missingRefFields", { fields: listOf(fields) })
+        : tr("request.missingRef"),
       errorCode: ErrorCodeEnum.VALIDATION_ERROR,
       fields,
     });
@@ -218,7 +219,7 @@ export const errorHandler: ErrorRequestHandler = (
   }
 
   return res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
-    message: "Internal Server Error",
+    message: tr("request.serverError"),
     errorCode: ErrorCodeEnum.INTERNAL_SERVER_ERROR,
     incidentId,
   });

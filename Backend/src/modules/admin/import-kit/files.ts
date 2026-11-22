@@ -85,10 +85,10 @@ const KEEP_EXT = [
 ];
 
 function dropIncompleteRules(ws: ExcelJS.Worksheet): void {
+  // exceljs يبدأ كلّ ورقةٍ بقائمةٍ (فارغةٍ إن لم يكن فيها تلوين)، ويقرؤها كذلك من الملف.
   const holder = ws as unknown as {
-    conditionalFormattings?: { ref: string; rules: { type: string; formulae?: unknown[] }[] }[];
+    conditionalFormattings: { ref: string; rules: { type: string; formulae?: unknown[] }[] }[];
   };
-  if (!holder.conditionalFormattings) return;
   holder.conditionalFormattings = holder.conditionalFormattings
     .map((cf) => ({
       ...cf,
@@ -132,7 +132,7 @@ function keptExtensions(xml: string): string {
       if (depth++ === 0) from = t.index!;
     } else if (--depth === 0) {
       const ext = inner.slice(from, t.index! + t[0].length);
-      const open = /^<ext\b[^>]*>/.exec(ext)?.[0] ?? "";
+      const open = /^<ext\b[^>]*>/.exec(ext)![0]; // يبدأ من وسمٍ افتتاحيّ — from موضعه
       if (KEEP_EXT.some((uri) => open.includes(`"${uri}"`)))
         out.push(ext.replace(/\s+xr\d*:\w+="[^"]*"/g, ""));
     }
@@ -140,8 +140,11 @@ function keptExtensions(xml: string): string {
   return out.join("");
 }
 
+/** كما يقرؤها exceljs: الكيانات الخمسة، والمراجع العددية («&#x627;» ← «ا»). */
 const unescapeXml = (s: string) =>
   s
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")
@@ -166,8 +169,11 @@ async function sheetPath(zip: JSZip, name: string): Promise<string | undefined> 
   return target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\//, "")}`;
 }
 
-/** يُعيد امتداد Excel الأصليّ لكلّ ورقةٍ إلى الملف الذي كتبه exceljs. */
-async function carryExtensions(original: Buffer, written: Buffer, sheets: string[]): Promise<Buffer> {
+/**
+ * يُعيد امتداد Excel الأصليّ لكلّ ورقةٍ إلى الملف الذي كتبه exceljs. وورقةٌ لا
+ * تُعرف في أحدهما، أو لا امتداد لها يُنقل، تبقى كما كتبها exceljs.
+ */
+export async function carryExtensions(original: Buffer, written: Buffer, sheets: string[]): Promise<Buffer> {
   const [src, dst] = await Promise.all([JSZip.loadAsync(original), JSZip.loadAsync(written)]);
   let changed = false;
   for (const name of sheets) {
@@ -212,7 +218,8 @@ export async function annotateImportFile(
 
   let errCol = 0;
   head.eachCell((cell, c) => {
-    if (normalizeHeader(String(cell.value ?? "")) === ERRORS_HEADER) errCol = c;
+    // eachCell لا يمرّ إلا بالخانات المملوءة.
+    if (normalizeHeader(String(cell.value)) === ERRORS_HEADER) errCol = c;
   });
   if (!errCol) errCol = Math.max(head.cellCount, ...Object.values(layout.columns).map(Number)) + 1;
 

@@ -59,6 +59,12 @@ const document_: SupervisionDocument = {
   },
   createdAt: new Date("2026-09-21").toISOString(),
   revokedAt: null,
+  printedAt: null,
+  printedByRole: null,
+  printedByName: null,
+  printCount: 0,
+  lastPrintedAt: null,
+  version: "v1",
 };
 
 /** يسجّل ما طُلب من الخادم، فيُقاس ما لم يُطلب كما يُقاس ما طُلب. */

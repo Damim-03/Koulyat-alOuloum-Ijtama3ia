@@ -1,0 +1,25 @@
+# What never enters a Docker image built from Backend/.
+
+# Secrets — the server's environment is given at run time, never baked in.
+.env
+.env.*
+!.env.example
+
+# Demo accounts with a password written in the repository (see dev-only/README.md).
+dev-only/
+
+# Built or installed inside the image itself.
+node_modules/
+dist/
+coverage/
+
+# Tests, and what they leave behind.
+tests/
+**/*.test.ts
+uploads/
+
+# Tooling.
+.git/
+.vscode/
+.idea/
+*.log

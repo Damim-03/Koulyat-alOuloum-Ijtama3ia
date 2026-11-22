@@ -36,3 +36,13 @@ if (!/_test$/.test(dbName)) {
       "يجب أن ينتهي اسم قاعدة الاختبار بـ `_test`. راجع Backend/.env.test.",
   );
 }
+
+// الاختبارات تُدخل المسؤول بكلمة المرور وحدها؛ والتحقّق بخطوتين يُختبر في
+// ملفّه الخاص بتشغيله صراحةً. فيُطفأ هنا ما لم يُذكر — وإن نقص من `.env.test`.
+process.env.REQUIRE_ADMIN_2FA ??= "false";
+// وكذلك التفعيل الحضوري للطلبة: يُشغَّل في ملفّاته صراحةً — ولا يسري على
+// الاختبارات كلّها لأنّ المطوّر شغّله في `.env` ليجرّبه.
+process.env.REQUIRE_STUDENT_ACTIVATION ??= "false";
+// Nor the address databases (core/geo): 140 MB a test file would load for nothing —
+// the tests come from this machine, which has no place on a map.
+process.env.GEOIP_DIR ??= "";

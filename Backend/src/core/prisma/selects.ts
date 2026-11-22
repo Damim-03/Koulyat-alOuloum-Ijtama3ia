@@ -45,3 +45,17 @@ export const userBadgeSelect = {
 
 /** Ready-made relation include, so call sites read as `user: publicUser`. */
 export const publicUser = { select: publicUserSelect } as const;
+
+/**
+ * A person as another student sees them: a name and a face, nothing to reach
+ * them by outside the platform.
+ *
+ * `publicUser` carries the personal email, the phone and the last sign-in —
+ * right for the administration, wrong for every student browsing topics, who
+ * used to receive all three for each supervisor (and, through
+ * `include: { user }` on Professor, the employee number too).
+ */
+export const badgeUser = { select: userBadgeSelect } as const;
+
+/** A supervisor on a student's screen: the profile id and the badge. */
+export const professorBadge = { select: { id: true, user: badgeUser } } as const;

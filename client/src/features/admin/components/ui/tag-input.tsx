@@ -1,4 +1,5 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { X, Check, Plus } from "lucide-react";
 
 /**
@@ -54,6 +55,7 @@ export function TagInput({
   hint?: string;
   max?: number;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState("");
 
   const chosen = useMemo(() => new Set(value.map(fold)), [value]);
@@ -112,6 +114,9 @@ export function TagInput({
             <button
               type="button"
               onClick={() => onChange(value.filter((tg) => tg !== tag))}
+              // A bare × read aloud as "button": it says what it removes.
+              aria-label={`${t("admin.removeCover")} ${tag}`}
+              title={`${t("admin.removeCover")} ${tag}`}
               className="text-clay transition hover:text-brick"
             >
               <X size={12} />
@@ -123,6 +128,7 @@ export function TagInput({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
           onBlur={() => commit(draft)}
+          aria-label={label}
           placeholder={value.length === 0 ? placeholder : ""}
           className="min-w-32 flex-1 bg-transparent py-0.5 text-sm text-forest outline-none"
         />

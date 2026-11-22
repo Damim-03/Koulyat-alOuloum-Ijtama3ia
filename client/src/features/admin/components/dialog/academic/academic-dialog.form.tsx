@@ -35,12 +35,17 @@ export function AcademicYearFormDialog({ open, onClose, year }: Props) {
     formState: { errors },
   } = useForm<AcademicYearInput>({ resolver: zodResolver(academicYearSchema) });
 
+  // `keepFieldsRef`: without it `reset` empties the form's field registry and
+  // waits for `register()` to run again — which the React Compiler, keeping
+  // the inputs' JSX, never does. Nothing typed reached the form, and every
+  // save failed with "title required" (see MilestoneFormDialog).
   useEffect(() => {
     if (open) {
       reset(
         year
           ? { title: year.title, isActive: year.isActive }
           : { title: "", isActive: false },
+        { keepFieldsRef: true },
       );
     }
   }, [open, year, reset]);

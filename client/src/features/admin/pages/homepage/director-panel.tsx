@@ -25,7 +25,7 @@ import { adminApi } from "../../api/admin.api";
 import { SLIDE_ACCEPT, prepareSlideImage } from "../../components/dialog/home-slide/slide-kit";
 import { VisibilityToggle } from "../../components/dialog/home-slide/slide-parts";
 import { Field, inputClass } from "../../components/form/form-dialog";
-import { DEFAULT_DIRECTOR_PHOTO } from "../../../home/components/director-message";
+import { DEFAULT_DIRECTOR_PHOTO } from "../../../home/lib/director-photo";
 import { defaultDirectorMessage, initialsOf } from "../../../home/lib/site-content";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";

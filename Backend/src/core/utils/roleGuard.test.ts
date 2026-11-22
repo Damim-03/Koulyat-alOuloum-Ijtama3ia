@@ -12,6 +12,7 @@ import type { Request, Response, NextFunction } from "express";
 import { roleGuard, adminOnly, requireRole } from "./roleGuard";
 import { Permissions, Roles } from "../enums/role.enum";
 import type { RoleType } from "../enums/role.enum";
+import { tr } from "../i18n";
 
 /** ثلاثي Express صوريّ يسجّل ما حدث. */
 function harness(role?: RoleType | string) {
@@ -91,7 +92,7 @@ describe("roleGuard", () => {
 
     expect(h.passed).toBe(false);
     expect(h.status).toBe(403);
-    expect(h.message).toBe("Invalid role");
+    expect(h.message).toBe(tr("access.invalidRole"));
   });
 
   it("دور لا يملك الصلاحية ⇒ 403", () => {

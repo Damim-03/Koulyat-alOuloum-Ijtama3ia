@@ -413,6 +413,7 @@ export function SlidesPanel({ placement = "home" }: { placement?: SlidePlacement
       />
 
       <ConfirmDialog
+        icon={Trash2}
         open={!!removing}
         tone="danger"
         title={t("admin.slides.deleteTitle")}

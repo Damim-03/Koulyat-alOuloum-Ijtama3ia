@@ -1,3 +1,6 @@
+import type { TeamSizes } from "../lib/team-size";
+import type { SpecLevel } from "../lib/spec-level";
+import type { TopicExtrasRead } from "./topic-extras";
 import type { Gender, Role } from "./enums";
 
 // ── Shared ──
@@ -101,6 +104,8 @@ export interface OverviewStats {
 export interface Faculty {
   id: string;
   name: string;
+  /** The name in Latin letters, for the topics list printed in English or French. */
+  nameLatin?: string | null;
   code: string;
   /** Optional cover image shown behind this entry's card. */
   coverUrl?: string | null;
@@ -112,6 +117,8 @@ export interface Faculty {
 export interface Department {
   id: string;
   name: string;
+  /** The name in Latin letters, for the topics list printed in English or French. */
+  nameLatin?: string | null;
   code: string;
   facultyId: string;
   /** Optional cover image shown behind this entry's card. */
@@ -163,14 +170,22 @@ export interface TitlesListRow {
   status: string;
   maxStudents: number;
   supervisor: TitlesPerson & { id: string; grade: unknown; email: string | null };
+  /** A professor of the platform, or none. */
+  coSupervisor?: (TitlesPerson & { id: string; grade: unknown; email: string | null }) | null;
+  /** The short description; without one, `excerpt` is the full one's opening. */
+  summary?: string | null;
+  excerpt?: string | null;
+  /** Its code numbers the row (AI01…), its colour marks it. */
+  type?: { id: string; name: string; code: string; color: string; sortOrder: number } | null;
   /** Leader first; empty before assignment. */
   students: (TitlesPerson & { registrationNumber: string; isLeader: boolean })[];
 }
+type TitlesPlace = { id: string; name: string; nameLatin?: string | null; iconUrl?: string | null };
 export interface TitlesListGroup {
   specialization: { id: string; name: string; level: string };
   filiere: { id: string; name: string } | null;
-  department: { id: string; name: string } | null;
-  faculty: { id: string; name: string } | null;
+  department: TitlesPlace | null;
+  faculty: TitlesPlace | null;
   rows: TitlesListRow[];
 }
 export interface TopicTitlesList {
@@ -180,8 +195,76 @@ export interface TopicTitlesList {
 }
 export interface TitlesListParams {
   mode: TitlesListMode;
+  /** One level at a time: a licence list and a master's are two lists. */
+  level?: "licence" | "master" | "doctorate";
   academicYearId?: string;
   professorId?: string;
+  facultyId?: string;
+  departmentId?: string;
+  filiereId?: string;
+  specializationId?: string;
+}
+
+/** The topics page's filters, as the Excel export reads them — plus the students or not. */
+/** The columns of the topics' Excel file the administrator may leave out («#» and the title stay). */
+export const TOPIC_EXPORT_COLUMNS = [
+  "supervisor",
+  "coSupervisor",
+  "summary",
+  "type",
+  "capacity",
+  "status",
+  "faculty",
+  "department",
+  "filiere",
+  "level",
+  "specialization",
+  "year",
+] as const;
+export type TopicExportColumn = (typeof TOPIC_EXPORT_COLUMNS)[number];
+
+/** A cell of the Excel file's preview, as the file will draw it (Backend export-sheet previewSheet). */
+export interface SheetPreviewCell {
+  v: string | number;
+  fill?: string;
+  ink?: string;
+  center?: boolean;
+  muted?: boolean;
+  ltr?: boolean;
+  wrap?: boolean;
+  rowSpan?: number;
+  covered?: boolean;
+}
+
+/** The Excel file before it is downloaded: its first rows, its colours, its direction. */
+export interface SheetPreview {
+  name: string;
+  rtl: boolean;
+  title: string[];
+  note?: string;
+  columns: { header: string; accent: boolean; width: number }[];
+  rows: { band: boolean; cells: SheetPreviewCell[] }[];
+  total: number;
+  freeze: number;
+  colors: { brand: string; gold: string; goldSoft: string; zebra: string; ink: string; muted: string; line: string };
+}
+
+/** The file's preview: a sheet for each level among its topics. */
+export interface TopicExportPreview {
+  sheets: SheetPreview[];
+}
+
+export interface TopicExportParams {
+  students: "with" | "without";
+  /** The file's language: its headers, words and direction. */
+  lang?: "ar" | "en" | "fr";
+  /** The chosen columns, comma-separated — as the server reads them. */
+  columns?: string;
+  level?: "licence" | "master" | "doctorate";
+  search?: string;
+  status?: string;
+  professorId?: string;
+  academicYearId?: string;
   facultyId?: string;
   departmentId?: string;
   filiereId?: string;
@@ -194,6 +277,104 @@ export interface AcademicYear {
   isActive: boolean;
   /** Set once the year is closed into the archive. */
   archivedAt?: string | null;
+  /** The topic proposal period (lib/proposal-window). Both null: no period. */
+  proposalsOpenAt?: string | null;
+  proposalsCloseAt?: string | null;
+  /** The students' deadline to choose topics. Both null: no deadline. */
+  selectionOpenAt?: string | null;
+  selectionCloseAt?: string | null;
+  /** The number of students in every topic of the year, by level, set by the administration — none: free (lib/team-size). */
+  teamSizes?: TeamSizes | null;
+}
+
+/** A year's numbers of students per topic, by level, and how its topics stand to them. */
+export interface TeamSizeState {
+  year: { id: string; title: string; isActive: boolean; archivedAt: string | null; teamSizes: TeamSizes | null };
+  /** `topics`: those of a level with a rule; `total`: all the year's (but the archived). */
+  stats: { total: number; topics: number; matching: number; differing: number };
+}
+
+/**
+ * The most topics a professor sends for a year (`null`: no limit), and the
+ * professors against it — every topic of theirs in the year but the rejected.
+ */
+export interface TopicQuotaState {
+  year: { id: string; title: string; isActive: boolean; archivedAt: string | null; maxTopicsPerProfessor: number | null };
+  stats: { professors: number; proposing: number; atLimit: number; over: number };
+  /** How many professors have each count: `{ "3": 4 }`. */
+  histogram: Record<string, number>;
+  /** The proposing professors, the most topics first. */
+  professors: { id: string; name: string; avatar: { avatarUrl: string | null; gender: string | null } | null; count: number }[];
+}
+
+export interface TeamSizeChange {
+  id: string;
+  title: string;
+  professor: string;
+  /** The supervisor's face: a photo, or a silhouette by gender. */
+  avatar: { avatarUrl: string | null; gender: string | null } | null;
+  specialization: string;
+  status: string;
+  /** Its students now. */
+  members: number;
+  level: SpecLevel;
+  from: number;
+  to: number;
+}
+
+/** What the rules would do to the year's topics, before they are saved. */
+export interface TeamSizeImpact {
+  total: number;
+  /** The topics of a level with a rule. */
+  ruled: number;
+  matching: number;
+  changesCount: number;
+  changes: TeamSizeChange[];
+  /** More students than the number: nobody leaves — `to` is their count, the free seats closed. */
+  overCount: number;
+  over: TeamSizeChange[];
+  /** Pending requests whose team is larger: refused on acceptance. */
+  pendingOver: number;
+  /** Each level in detail, ruled or not: its topics, the numbers they have now (`sizes`: number → topics), and the rule's effect. */
+  levels: Record<
+    SpecLevel,
+    { total: number; sizes: Record<string, number>; ruled: boolean; matching: number; changes: number; over: number; pendingOver: number }
+  >;
+}
+
+export type ProposalWindowState = "unset" | "upcoming" | "open" | "closed";
+
+/** A year's topic proposal period, as the administration follows it. */
+export interface ProposalWindow {
+  year: {
+    id: string;
+    title: string;
+    isActive: boolean;
+    archivedAt: string | null;
+    proposalsOpenAt: string | null;
+    proposalsCloseAt: string | null;
+  };
+  state: ProposalWindowState;
+  /** The year's topics, and how many of the active professors have one. */
+  stats: { topics: number; professorsProposed: number; professorsTotal: number };
+}
+
+/** The students' deadline to choose topics for a year (GET /admin/academic-years/:id/selection-window). */
+export interface SelectionWindow {
+  year: {
+    id: string;
+    title: string;
+    isActive: boolean;
+    archivedAt: string | null;
+    /** The professors' period beside it: choosing should open once proposing has ended. */
+    proposalsOpenAt: string | null;
+    proposalsCloseAt: string | null;
+    selectionOpenAt: string | null;
+    selectionCloseAt: string | null;
+  };
+  state: ProposalWindowState;
+  /** Topics open to choose; the year's active students in a live request, of all of them; requests awaiting a decision. */
+  stats: { topics: number; studentsRequested: number; studentsTotal: number; pendingRequests: number };
 }
 
 // ── The archive of academic years ──
@@ -328,7 +509,7 @@ export interface ImportColumn {
   key: ImportColumnKey;
   header: string;
   kind: ImportColumnKind;
-  group: "personal" | "academic" | "professional";
+  group: "personal" | "academic" | "professional" | "supervisor" | "topic" | "decision" | "students";
   /** حرفه في الملف المرفوع، أو null إن غاب عنه. */
   letter: string | null;
 }
@@ -381,7 +562,10 @@ export type ImportReport = StudentImportReport;
 export type ImportRow = StudentImportRow;
 export type ImportPreviewResult = StudentImportPreview;
 
-/** نتيجة استيرادٍ نجح: الحسابات بمعرّفاتها، وكلمة المرور المولَّدة وحدها. */
+/**
+ * نتيجة استيرادٍ نجح. للطلبة والأساتذة: الحسابات بمعرّفاتها، وكلمة المرور
+ * المولَّدة وحدها. ولما ليس حسابات (المواضيع): قائمةُ ما أُنشئ وحده.
+ */
 export interface ImportResult {
   created: number;
   /** الطلبة: العربيّ قد يغيب (null)، واللاتينيّ معه دائماً. */
@@ -393,6 +577,40 @@ export interface ImportResult {
     password: string | null;
   } & Record<string, string | null>)[];
   accountsFile: string;
+}
+
+/** ما أُنشئ في استيرادٍ ليس حسابات — صفٌّ لكلّ عنصر. */
+export interface CreatedListResult {
+  created: number;
+  items: Record<string, string | null>[];
+}
+
+/** موضوعٌ أُنشئ من ملفّ الاستيراد، كما يُعرض بعده. */
+export interface ImportedTopic {
+  title: string;
+  professor: string;
+  specialization: string;
+  /** «مقبول» أو «منشور» أو «قيد المراجعة» — بالعربية كما في الملف. */
+  status: string;
+}
+export interface TopicImportResult {
+  created: number;
+  topics: ImportedTopic[];
+}
+
+/** موضوعٌ مُسنَدٌ أُنشئ من ملفّ الاستيراد، بطلبته. */
+export interface ImportedAssignedTopic {
+  title: string;
+  professor: string;
+  /** أسماء الطلبة بترتيب مقاعدهم، مفصولةً بـ«، » — والأوّل المرسِل. */
+  students: string;
+  specialization: string;
+}
+export interface AssignedTopicImportResult {
+  created: number;
+  /** عدد الطلبة المُسنَدين في الدفعة كلّها. */
+  assigned: number;
+  topics: ImportedAssignedTopic[];
 }
 
 export interface ProfessorImportResult extends ImportResult {
@@ -509,7 +727,7 @@ export interface TopicOccupancy {
   hasAcceptedRequest: boolean;
 }
 
-export interface AdminTopic {
+export interface AdminTopic extends TopicExtrasRead {
   professorId?: string;
   references: TopicReference[];
   id: string;
@@ -702,6 +920,27 @@ export interface AdminGroupRequest {
   members?: AdminGroupRequestMember[];
 }
 
+/**
+ * A topic with the requests made for it — GET /admin/group-requests/by-topic.
+ * `requests` are those passing the page's filters, oldest first; `counts` are
+ * all of the topic's requests by status.
+ */
+export interface AdminRequestTopic {
+  id: string;
+  title: string;
+  status: string;
+  maxStudents: number;
+  maxRequests: number | null;
+  pendingRequestCount: number;
+  professor?: { id: string; user?: { firstName: string | null; lastName: string | null } | null } | null;
+  specialization?: { id: string; name: string } | null;
+  projectGroup?: { id: string } | null;
+  counts: AdminGroupRequestCounts;
+  requests: AdminGroupRequest[];
+  /** The topic the page was opened for — first on page one, highlighted. */
+  focused?: boolean;
+}
+
 // Types for the GET /admin/dashboard payload (mirrors getDashboardService).
 
 export type TopicStatus =
@@ -739,6 +978,9 @@ export interface AcademicYearLite {
   id: string;
   title: string;
   isActive: boolean;
+  proposalsOpenAt?: string | null;
+  proposalsCloseAt?: string | null;
+  teamSizes?: TeamSizes | null;
 }
 
 interface UserName {
@@ -883,4 +1125,86 @@ export interface AcademicStructureResult {
     filieres: number;
     specializations: number;
   };
+}
+
+/** One row of the audit log (GET /admin/audit-logs). */
+export interface AuditLogEntry {
+  id: string;
+  actorId: string | null;
+  actorRole: string | null;
+  /** Who it was, as it read at the time — kept after the account is gone. */
+  actorLabel: string | null;
+  /** `auth.login`, `password.changed`, … or a change: `PATCH /students/:id`. */
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  /** What it was done to, as it was named at the time — kept after it is gone. */
+  targetLabel?: string | null;
+  /**
+   * What was sent (`body`, `file`), and what the platform read: `changes`
+   * (each field, from what to what), `created`, `deleted`, `refs` (the other
+   * items the route named), `result` (the counts answered). An event's own
+   * facts (`session`, `secondFactor`…) sit beside them.
+   */
+  details: Record<string, unknown> | null;
+  success: boolean;
+  ip: string | null;
+  userAgent: string | null;
+  /** Where the address was, read on the server the day the row was written (ISO country code). */
+  country?: string | null;
+  /** The first subdivision: in Algeria, the wilaya. */
+  region?: string | null;
+  city?: string | null;
+  /** The network the address belongs to: Telecom Algeria, Djezzy… */
+  isp?: string | null;
+  createdAt: string;
+}
+
+export type AuditLogKind = "all" | "changes" | "security" | "failed";
+export type AuditArea = "accounts" | "structure" | "topics" | "projects" | "site" | "signin" | "credentials" | "account" | "messages";
+export type AuditRole = "admin" | "professor" | "student" | "none";
+export type AuditVerb = "create" | "update" | "delete";
+
+export interface AuditLogParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  kind?: AuditLogKind;
+  area?: AuditArea;
+  role?: AuditRole;
+  verb?: AuditVerb;
+  /** One operation exactly: `PATCH /students/:id`, `auth.login`. */
+  action?: string;
+  actorId?: string;
+  targetType?: string;
+  targetId?: string;
+  ip?: string;
+  /** ISO country code: `DZ`. */
+  country?: string;
+  from?: string;
+  to?: string;
+  order?: "desc" | "asc";
+}
+
+/** A country the audit log's addresses are in (GET /admin/audit-logs/countries). */
+export interface AuditCountry {
+  country: string;
+  count: number;
+}
+
+/** Someone who appears in the audit log (GET /admin/audit-logs/actors). */
+export interface AuditActor {
+  id: string;
+  label: string | null;
+  role: string | null;
+  count: number;
+  lastAt: string;
+}
+
+/** The last 24 hours of the audit log (GET /admin/audit-logs/summary). */
+export interface AuditSummary {
+  total: number;
+  changes: number;
+  failed: number;
+  people: number;
 }

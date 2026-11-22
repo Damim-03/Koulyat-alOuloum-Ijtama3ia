@@ -33,7 +33,31 @@ const PUBLIC_ON_PURPOSE = new Set([
   "POST /api/auth/student/login",
   "POST /api/auth/professor/login",
   "POST /api/auth/admin/login",
+  // الخطوة الثانية لدخول المسؤول: لا رمز وصول بعد — بل تذكرة التحدّي التي
+  // أعطتها كلمة المرور، تُتحقَّق في الخدمة (core/auth/challenge).
+  "POST /api/auth/admin/login/2fa",
   "POST /api/auth/refresh",
+  // نسيتُ كلمة المرور وتأكيد البريد: صاحبها لا يستطيع الدخول، أو فتح الرسالة
+  // على جهازٍ آخر. الرمز في البريد هو الإذن (modules/auth/email-links).
+  "GET /api/auth/password/available",
+  "POST /api/auth/password/forgot",
+  "POST /api/auth/password/reset/check",
+  "POST /api/auth/password/reset",
+  "POST /api/auth/email/verify",
+  // …وللطالب الذي لا بريد مؤكَّداً لحسابه: الطلب إلى الإدارة (modules/password-request).
+  // البحث يقول «موجود/لا» وحده بلا اسم؛ والإرسال يشترط بطاقة صاحب الرقم؛ والمتابعة
+  // بسرٍّ يحمله المتصفّح الذي أرسل (256 بتّاً، بصمته وحدها في القاعدة).
+  "POST /api/auth/password/student",
+  "POST /api/auth/password/request",
+  "POST /api/auth/password/request/status",
+  "POST /api/auth/password/request/close",
+  // التحقّق القصير يُطلب قبل الدخول، فلا رمز وصول بعد. ولا يُعطي شيئاً: مسألةٌ
+  // تُحلّ لتُرسل مع الدخول (modules/auth/captcha)، بحدٍّ لكلّ عنوان.
+  "GET /api/auth/challenge",
+  "POST /api/auth/challenge/verify",
+  // الخروج يعمل بعد أن ينتهي رمز الوصول: الجلسة تُسمّى برمز الوصول أو بكوكي
+  // التحديث، ولا يُبطَل إلا ما يُثبت حاملُه أنه منه (auth.routes).
+  "POST /api/auth/logout",
   // صور الصفحة الرئيسية: تُعرض للزائر قبل أن يسجّل دخوله.
   "GET /api/site/home-slides",
   // وأخبارها وكلمة رئيس القسم، للسبب نفسه.
@@ -41,6 +65,8 @@ const PUBLIC_ON_PURPOSE = new Set([
   "GET /api/site/director-message",
   "GET /api/site/about-page",
   "GET /api/site/login-page",
+  // ونصوص الموقع التي تحلّ محلّ نصوص الواجهة في الصفحات العامّة.
+  "GET /api/site/texts",
 ]);
 
 /** الدور المتوقَّع لكل بادئة. `public` و`common` يقبلان أي مستخدم مصادَق. */

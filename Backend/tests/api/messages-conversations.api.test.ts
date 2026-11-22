@@ -384,8 +384,12 @@ describe("المحادثات شخصاً شخصاً", () => {
   });
 
   it("ومن لا تحقّ مراسلته: canWrite=false، والإرسال يُرفض", async () => {
+    await prisma.user.update({ where: { id: outsider.userId }, data: { lastLoginAt: new Date() } });
     const chat = await as(request(app).get(`/api/messages/chat/${outsider.userId}`), "A").expect(200);
     expect(chat.body.canWrite).toBe(false);
+    // ولا صلة بينهما: الاسم والصورة فقط — لا متى دخل آخر مرّة، ولا أهو متّصل.
+    expect(chat.body.user.lastLoginAt).toBeNull();
+    expect(chat.body.user.online).toBe(false);
     await send("A", [outsider.userId], "ممنوع").expect(400);
   });
 

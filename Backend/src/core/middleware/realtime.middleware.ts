@@ -22,6 +22,16 @@ const AFFECTS_DASHBOARD = new Set([
   "users",
 ]);
 
+/**
+ * Requests that write nothing, though they are POSTs: a preview drawn from
+ * what is sent (an import's file, an email being written) and a test message
+ * — the audit trail skips them too (core/audit/audit). Announced, they told
+ * every connected screen that its data had changed; and the emails' editor,
+ * which keys its preview under "mail-templates", heard its own preview as a
+ * change, previewed again, and so on without end.
+ */
+const NOT_A_CHANGE = /\/preview$|^\/mail-templates\/test$/;
+
 /** First path segment after the module prefix, e.g. "/admin/topics/x" → topics */
 function resourceOf(req: Request): string | null {
   // req.baseUrl is the mount point ("/api/admin"); req.path is the rest.
@@ -42,6 +52,7 @@ export function realtimeBroadcast(
   if (req.originalUrl.startsWith("/api/messages")) return next();
   // One person's own account concerns no one else's screen.
   if (req.originalUrl.startsWith("/api/account")) return next();
+  if (NOT_A_CHANGE.test(req.path)) return next();
 
   res.on("finish", () => {
     if (res.statusCode >= 400) return; // failed writes change nothing

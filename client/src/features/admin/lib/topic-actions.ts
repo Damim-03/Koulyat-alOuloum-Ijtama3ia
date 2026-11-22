@@ -60,7 +60,10 @@ export const blockReason = (
   const fallback = a.blockedReasons[action];
   const block = a.blockedCodes[action];
   if (!block) return fallback;
-  return t(`topicBlocked.${block.code}`, {
+  // Several teams may be waiting together; the sentence says how many.
+  const code =
+    block.code === "teamWaiting" && Number(block.params?.teams ?? 1) > 1 ? "teamsWaiting" : block.code;
+  return t(`topicBlocked.${code}`, {
     ...(block.params ?? {}),
     defaultValue: fallback ?? "",
   });

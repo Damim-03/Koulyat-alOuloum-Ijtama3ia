@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -27,6 +27,7 @@ import { LoadingArea } from "../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../components/ui/error-retry";
 import { SupervisionDialog } from "../../supervision/components/supervision-dialog";
 import { personName } from "../../../lib/person-name";
+import { Ring } from "../components/progress-ring";
 
 /**
  * The projects a professor supervises.
@@ -251,7 +252,7 @@ function Hero({
 
       <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-4">
-          <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-gold-soft to-gold text-[var(--t-brand-deep)] shadow-[0_8px_24px_rgba(193,150,90,0.35)]">
+          <span className="hidden size-14 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-gold-soft to-gold text-[var(--t-brand-deep)] shadow-[0_8px_24px_rgba(193,150,90,0.35)] sm:grid">
             <FolderKanban size={26} />
           </span>
           <div className="min-w-0">
@@ -263,8 +264,10 @@ function Hero({
         </div>
 
         {/* the two numbers that sum the whole page up */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+        {/* Side by side they were wider than a phone and ran off the card;
+            there they share the width as two columns. */}
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center">
+          <div className="flex flex-col items-start gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:flex-row sm:items-center sm:gap-3">
             <Ring percent={avg} size={52} />
             <div>
               <p className="text-[11px] text-soft-sage">{t("pro.pj.avgProgress")}</p>
@@ -273,7 +276,7 @@ function Hero({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+          <div className="flex flex-col items-start gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:flex-row sm:items-center sm:gap-3">
             <span className="grid size-[52px] place-items-center rounded-full bg-white/8 text-gold-soft">
               <Users size={22} />
             </span>
@@ -301,7 +304,7 @@ function Hero({
               type="button"
               aria-pressed={active}
               onClick={() => onFilter(active && key !== "all" ? "all" : key)}
-              className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-start transition ${
+              className={`flex flex-col items-start gap-2 rounded-2xl border px-4 py-3 text-start transition sm:flex-row sm:items-center sm:gap-3 ${
                 active
                   ? "border-gold/70 bg-white/12 shadow-[0_0_0_1px_rgba(217,174,114,0.35)]"
                   : alarm
@@ -521,60 +524,6 @@ function ProjectCard({
 // ─────────────────────────────────────────────────────────────
 //  small pieces
 // ─────────────────────────────────────────────────────────────
-
-/** A progress arc; `light` for the cream cards, dark ground otherwise. */
-function Ring({
-  percent,
-  size,
-  light,
-  alarm,
-}: {
-  percent: number;
-  size: number;
-  light?: boolean;
-  alarm?: boolean;
-}) {
-  const gid = useId();
-  const r = 26;
-  const c = 2 * Math.PI * r;
-  return (
-    <span className="relative inline-grid shrink-0 place-items-center" style={{ width: size, height: size }}>
-      <svg viewBox="0 0 64 64" className="size-full -rotate-90">
-        <defs>
-          <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor={alarm ? "#e07a5f" : "#e6c496"} />
-            <stop offset="100%" stopColor={alarm ? "#a8442d" : "#c1965a"} />
-          </linearGradient>
-        </defs>
-        <circle
-          cx="32"
-          cy="32"
-          r={r}
-          fill="none"
-          strokeWidth="7"
-          className={light ? "stroke-forest/10" : "stroke-white/10"}
-        />
-        <circle
-          cx="32"
-          cy="32"
-          r={r}
-          fill="none"
-          stroke={`url(#${gid})`}
-          strokeWidth="7"
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={c * (1 - percent / 100)}
-          className="transition-[stroke-dashoffset] duration-700"
-        />
-      </svg>
-      {light && (
-        <span className="absolute font-serif text-sm font-bold text-forest tabular-nums">
-          {percent}%
-        </span>
-      )}
-    </span>
-  );
-}
 
 function Fact({
   icon: Icon,

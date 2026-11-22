@@ -34,7 +34,7 @@ export async function hashMany(
 
   const workers = Math.max(
     1,
-    Math.min(os.availableParallelism?.() ?? os.cpus().length, passwords.length) - 1,
+    Math.min(os.availableParallelism(), passwords.length) - 1,
   );
   const size = Math.ceil(passwords.length / workers);
   const bcryptPath = require.resolve("bcryptjs");

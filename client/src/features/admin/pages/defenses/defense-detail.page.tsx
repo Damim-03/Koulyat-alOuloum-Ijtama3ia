@@ -35,6 +35,7 @@ import {
   Trash2,
   UserCheck,
   Users,
+  CalendarX,
 } from "lucide-react";
 
 import { useDefense, useDeleteDefense, useUpdateDefense } from "../../hooks/admin-hook";
@@ -463,6 +464,7 @@ export function AdminDefenseDetailPage() {
         initialStatus={edit?.initialStatus}
       />
       <ConfirmDialog
+        icon={confirm === "cancel" ? CalendarX : Trash2}
         open={!!confirm}
         tone="danger"
         title={confirm === "cancel" ? t("admin.defensesPage.cancelTitle") : t("admin.proj.deleteDefense")}

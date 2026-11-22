@@ -35,6 +35,7 @@ import {
   distribution,
   facts,
   filterRows,
+  GROUP_KEY,
   initialFilter,
   type PreviewProfile,
   type RowFilter,
@@ -42,12 +43,6 @@ import {
 import { KindPill, LetterBadge } from "./import-ui";
 
 const PAGE = 50;
-
-const GROUP_KEY: Record<ImportColumn["group"], string> = {
-  personal: "admin.import.groupPersonal",
-  academic: "admin.import.groupAcademic",
-  professional: "admin.import.groupProfessional",
-};
 
 /** شريطٌ أعلى رأس العمود بلون نوعه — على خلفية الشعار في الوضعين. */
 const KIND_STRIPE: Record<ImportColumnKind, string> = {
@@ -77,6 +72,18 @@ const COL_WIDTH: Partial<Record<ImportColumnKey, string>> = {
   gender: "min-w-28",
   level: "min-w-28",
   password: "min-w-36",
+  professor: "min-w-44",
+  title: "min-w-64",
+  description: "min-w-80",
+  objectives: "min-w-60",
+  requirements: "min-w-60",
+  references: "min-w-64",
+  status: "min-w-28",
+  student1: "min-w-52",
+  student2: "min-w-52",
+  student3: "min-w-52",
+  student4: "min-w-52",
+  student5: "min-w-52",
 };
 
 /**
@@ -94,6 +101,7 @@ export function ImportPreview({
   importing,
   profile,
   annotatedName = "import-errors",
+  tt: ttProp,
 }: {
   report: StudentImportReport;
   annotatedFile?: string;
@@ -103,8 +111,11 @@ export function ImportPreview({
   profile: PreviewProfile;
   /** اسم الملف المُعلَّم عند تنزيله (بلا تاريخه). */
   annotatedName?: string;
+  /** نصوص هذا الاستيراد (admin.importTopic…)، وما لم يوجد فيها من admin.import. */
+  tt?: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const { t } = useTranslation();
+  const tt = ttProp ?? ((key: string, opts?: Record<string, unknown>) => t(`admin.import.${key}`, opts));
   const [filter, setFilter] = useState<RowFilter>(() => initialFilter(report));
   const [column, setColumn] = useState<ImportColumnKey | null>(null);
   const [query, setQuery] = useState("");
@@ -119,7 +130,10 @@ export function ImportPreview({
     [report.rows, filter, column, query, profile.searchKeys],
   );
   const dist = useMemo(() => distribution(report.rows, profile.distribution), [report.rows, profile.distribution]);
-  const fx = useMemo(() => facts(report.rows, profile.extraFacts), [report.rows, profile.extraFacts]);
+  const fx = useMemo(
+    () => facts(report.rows, profile.extraFacts, profile.personFacts !== false),
+    [report.rows, profile.extraFacts, profile.personFacts],
+  );
   const [mainHead, badgeHead, monoHead] = profile.distribution.headers;
 
   const pages = Math.max(1, Math.ceil(shown.length / PAGE));
@@ -158,7 +172,7 @@ export function ImportPreview({
             <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-brick/12 text-brick ring-8 ring-brick/5">
               <FileWarning size={30} />
             </span>
-            <p className="mt-4 font-serif text-xl font-bold text-forest">{t("admin.import.fileErrorsTitle")}</p>
+            <p className="mt-4 font-serif text-xl font-bold text-forest">{tt("fileErrorsTitle")}</p>
             <ul className="mx-auto mt-3 max-w-lg space-y-2 text-start text-sm text-forest/85">
               {report.fileErrors.map((m) => (
                 <li key={m} className="flex items-start gap-2 rounded-xl bg-cream-card px-3 py-2 ring-1 ring-brick/20">
@@ -179,29 +193,29 @@ export function ImportPreview({
 
         {/* ── the verdict ── */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat icon={<Rows3 size={16} />} label={t("admin.import.statTotal")} value={summary.total} total={summary.total} tone="forest" active={filter === "all"} onClick={() => choose("all")} />
-          <Stat icon={<CheckCircle2 size={16} />} label={t("admin.import.statValid")} value={summary.valid} total={summary.total} tone="sage" active={filter === "ready"} onClick={() => choose("ready")} testid="import-valid" />
-          <Stat icon={<XCircle size={16} />} label={t("admin.import.statInvalid")} value={summary.invalid} total={summary.total} tone="brick" active={filter === "errors"} onClick={() => choose("errors")} testid="import-invalid" />
-          <Stat icon={<AlertTriangle size={16} />} label={t("admin.import.statWarned")} value={summary.warned} total={summary.total} tone="gold" active={filter === "warnings"} onClick={() => choose("warnings")} testid="import-warned" />
+          <Stat icon={<Rows3 size={16} />} label={tt("statTotal")} value={summary.total} total={summary.total} tone="forest" active={filter === "all"} onClick={() => choose("all")} />
+          <Stat icon={<CheckCircle2 size={16} />} label={tt("statValid")} value={summary.valid} total={summary.total} tone="sage" active={filter === "ready"} onClick={() => choose("ready")} testid="import-valid" />
+          <Stat icon={<XCircle size={16} />} label={tt("statInvalid")} value={summary.invalid} total={summary.total} tone="brick" active={filter === "errors"} onClick={() => choose("errors")} testid="import-invalid" />
+          <Stat icon={<AlertTriangle size={16} />} label={tt("statWarned")} value={summary.warned} total={summary.total} tone="gold" active={filter === "warnings"} onClick={() => choose("warnings")} testid="import-warned" />
         </div>
 
         {summary.invalid > 0 ? (
-          <Banner tone="error" text={t("admin.import.hasErrors")}>
-            {annotatedFile && <AnnotatedButton file={annotatedFile} name={annotatedName} label={t("admin.import.downloadAnnotated")} tone="error" />}
+          <Banner tone="error" text={tt("hasErrors")}>
+            {annotatedFile && <AnnotatedButton file={annotatedFile} name={annotatedName} label={tt("downloadAnnotated")} tone="error" />}
           </Banner>
         ) : summary.warned > 0 ? (
-          <Banner tone="warning" text={t("admin.import.hasWarnings", { count: summary.warned })}>
-            {annotatedFile && <AnnotatedButton file={annotatedFile} name={annotatedName} label={t("admin.import.downloadAnnotatedWarn")} tone="warning" />}
+          <Banner tone="warning" text={tt("hasWarnings", { count: summary.warned })}>
+            {annotatedFile && <AnnotatedButton file={annotatedFile} name={annotatedName} label={tt("downloadAnnotatedWarn")} tone="warning" />}
           </Banner>
         ) : (
-          <Banner tone="ok" text={t("admin.import.allValid")} />
+          <Banner tone="ok" text={tt("allValid")} />
         )}
 
         {report.fileWarnings.length > 0 && (
           <div data-testid="import-file-warnings" className="rounded-2xl border border-gold/40 bg-linear-to-l from-gold/10 to-transparent px-5 py-3.5">
             <p className="mb-1.5 flex items-center gap-2 text-sm font-bold text-forest">
               <AlertTriangle size={16} className="text-gold" />
-              {t("admin.import.fileWarningsTitle")}
+              {tt("fileWarningsTitle")}
             </p>
             <ul className="space-y-1 text-xs leading-relaxed text-forest/80">
               {report.fileWarnings.map((m) => (
@@ -217,7 +231,7 @@ export function ImportPreview({
         <div className="grid gap-4 xl:grid-cols-2">
           {/* ── how the file was read ── */}
           {report.file && (
-            <Section icon={<FileSearch size={16} />} title={t("admin.import.fileInfoTitle")} open={showFile} onToggle={() => setShowFile((v) => !v)} testid="import-file-info">
+            <Section icon={<FileSearch size={16} />} title={tt("fileInfoTitle")} open={showFile} onToggle={() => setShowFile((v) => !v)} testid="import-file-info">
               <dl className="grid grid-cols-3 gap-2">
                 {(
                   [
@@ -227,7 +241,7 @@ export function ImportPreview({
                   ] as const
                 ).map(([k, v]) => (
                   <div key={k} className="rounded-xl bg-cream-2/60 px-3 py-2 ring-1 ring-forest/6">
-                    <dt className="text-[10.5px] text-clay">{t(`admin.import.${k}`)}</dt>
+                    <dt className="text-[10.5px] text-clay">{tt(`${k}`)}</dt>
                     <dd className="truncate font-serif text-base font-bold text-forest tabular-nums">{v}</dd>
                   </div>
                 ))}
@@ -250,28 +264,28 @@ export function ImportPreview({
                     <EyeOff size={11} />
                     {c.header}
                     <LetterBadge letter={c.letter} />
-                    <span className="text-[10px]">· {t("admin.import.ignored")}</span>
+                    <span className="text-[10px]">· {tt("ignored")}</span>
                   </li>
                 ))}
               </ul>
               {report.file.otherSheets.length > 0 && (
                 <p className="mt-2 text-[11px] text-clay">
-                  {t("admin.import.otherSheets")}: {report.file.otherSheets.map((s) => `«${s}»`).join("، ")}
+                  {tt("otherSheets")}: {report.file.otherSheets.map((s) => `«${s}»`).join("، ")}
                 </p>
               )}
             </Section>
           )}
 
           {/* ── what the batch will add ── */}
-          <Section icon={<PieChart size={16} />} title={t("admin.import.summaryTitle")} open={showSummary} onToggle={() => setShowSummary((v) => !v)} testid="import-summary">
+          <Section icon={<PieChart size={16} />} title={tt("summaryTitle")} open={showSummary} onToggle={() => setShowSummary((v) => !v)} testid="import-summary">
             <div className="overflow-hidden rounded-xl ring-1 ring-forest/10">
               <table className="w-full text-start text-xs" data-testid="import-distribution">
                 <thead className="bg-forest-deep text-cream">
                   <tr>
-                    <th className="px-3 py-2 text-start font-semibold">{t(`admin.import.${mainHead}`)}</th>
-                    <th className="px-3 py-2 text-start font-semibold">{t(`admin.import.${badgeHead}`)}</th>
-                    {monoHead && <th className="px-3 py-2 text-start font-semibold">{t(`admin.import.${monoHead}`)}</th>}
-                    <th className="px-3 py-2 text-end font-semibold">{t("admin.import.distCount")}</th>
+                    <th className="px-3 py-2 text-start font-semibold">{tt(`${mainHead}`)}</th>
+                    <th className="px-3 py-2 text-start font-semibold">{tt(`${badgeHead}`)}</th>
+                    {monoHead && <th className="px-3 py-2 text-start font-semibold">{tt(`${monoHead}`)}</th>}
+                    <th className="px-3 py-2 text-end font-semibold">{tt("distCount")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-forest/8">
@@ -304,10 +318,10 @@ export function ImportPreview({
             </div>
             <dl className="mt-3 grid grid-cols-3 gap-2 text-xs" data-testid="import-facts">
               {fx.map((x) => (
-                <Fact key={x.labelKey} label={t(`admin.import.${x.labelKey}`)} value={x.value} muted={x.muted} />
+                <Fact key={x.labelKey} label={tt(`${x.labelKey}`)} value={x.value} muted={x.muted} />
               ))}
             </dl>
-            <p className="mt-2 text-[10.5px] leading-relaxed text-clay">{t("admin.import.summaryNote")}</p>
+            <p className="mt-2 text-[10.5px] leading-relaxed text-clay">{tt("summaryNote")}</p>
           </Section>
         </div>
 
@@ -315,7 +329,7 @@ export function ImportPreview({
         <section className="overflow-hidden rounded-3xl border border-forest/10 bg-cream-card shadow-[0_14px_40px_-24px_rgba(26,49,45,0.55)]">
           <div className="space-y-3 border-b border-forest/10 bg-linear-to-b from-cream-2/70 to-cream-card px-4 py-3.5">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex gap-1 rounded-2xl bg-cream-2/80 p-1 ring-1 ring-forest/8" role="group" aria-label={t("admin.import.filterLabel")}>
+              <div className="flex gap-1 rounded-2xl bg-cream-2/80 p-1 ring-1 ring-forest/8" role="group" aria-label={tt("filterLabel")}>
                 {(
                   [
                     ["all", summary.total],
@@ -334,7 +348,7 @@ export function ImportPreview({
                       filter === k ? "bg-cream-card text-forest shadow-[0_4px_12px_-6px_rgba(26,49,45,0.45)] ring-1 ring-gold/50" : "text-clay hover:text-forest"
                     }`}
                   >
-                    {t(`admin.import.filter_${k}`)}
+                    {tt(`filter_${k}`)}
                     <span className={`rounded-md px-1.5 text-[10.5px] tabular-nums ${filter === k ? "bg-gold/20 text-forest" : "bg-forest/6"}`}>{n}</span>
                   </button>
                 ))}
@@ -348,7 +362,7 @@ export function ImportPreview({
                     setQuery(e.target.value);
                     setPage(0);
                   }}
-                  placeholder={t(`admin.import.${profile.searchPlaceholderKey}`)}
+                  placeholder={tt(`${profile.searchPlaceholderKey}`)}
                   data-testid="import-search"
                   className="w-full rounded-xl border border-forest/12 bg-cream-card py-2 ps-9 pe-3 text-xs text-forest outline-none transition focus:border-gold focus:ring-4 focus:ring-gold/15"
                 />
@@ -359,7 +373,7 @@ export function ImportPreview({
               <div className="flex flex-wrap items-center gap-1.5" data-testid="import-column-chips">
                 <span className="me-1 flex items-center gap-1.5 text-[11px] font-bold text-clay">
                   <Columns3 size={14} className="text-gold" />
-                  {t("admin.import.columnsToReview")}
+                  {tt("columnsToReview")}
                 </span>
                 {reviewed.map((s) => (
                   <button
@@ -382,7 +396,7 @@ export function ImportPreview({
                 ))}
                 {column && (
                   <button type="button" onClick={() => setColumn(null)} className="text-[11px] font-semibold text-clay underline-offset-2 hover:underline">
-                    {t("admin.import.allColumns")}
+                    {tt("allColumns")}
                   </button>
                 )}
               </div>
@@ -391,7 +405,7 @@ export function ImportPreview({
             <Legend />
           </div>
 
-          <div className="max-h-[64vh] overflow-auto">
+          <div className="max-h-[64dvh] overflow-auto">
             <table className="w-max min-w-full border-separate border-spacing-0 text-start text-xs" data-testid="import-table">
               <thead className="sticky top-0 z-20">
                 <tr>
@@ -404,7 +418,7 @@ export function ImportPreview({
                 </tr>
                 <tr>
                   <th className="sticky start-0 z-30 border-b-2 border-gold bg-forest-deep px-3 py-2.5 text-start text-[12px] font-bold text-cream">
-                    {t("admin.import.colRow")}
+                    {tt("colRow")}
                   </th>
                   {stats.map((s) => {
                     const pct = (s.filled / Math.max(1, summary.total)) * 100;
@@ -441,7 +455,7 @@ export function ImportPreview({
                   <tr>
                     <td colSpan={report.columns.length + 1} className="px-4 py-12 text-center text-sm text-clay">
                       <Search size={22} className="mx-auto mb-2 text-gold/60" />
-                      {t("admin.import.noMatch")}
+                      {tt("noMatch")}
                     </td>
                   </tr>
                 )}
@@ -479,17 +493,17 @@ export function ImportPreview({
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-forest/10 bg-cream-2/50 px-4 py-2.5 text-[11px] text-clay">
             <p className="flex items-center gap-1.5">
               <Info size={13} className="shrink-0 text-gold" />
-              {t("admin.import.rowHint")}
+              {tt("rowHint")}
             </p>
             {shown.length > PAGE && (
               <div className="flex items-center gap-2">
                 <span className="tabular-nums">
-                  {t("admin.import.range", { from: current * PAGE + 1, to: Math.min(shown.length, (current + 1) * PAGE), total: shown.length })}
+                  {tt("range", { from: current * PAGE + 1, to: Math.min(shown.length, (current + 1) * PAGE), total: shown.length })}
                 </span>
-                <PagerButton disabled={current === 0} onClick={() => setPage(current - 1)} label={t("admin.import.prev")}>
+                <PagerButton disabled={current === 0} onClick={() => setPage(current - 1)} label={tt("prev")}>
                   <ChevronRight size={15} className="rtl:rotate-0 ltr:rotate-180" />
                 </PagerButton>
-                <PagerButton disabled={current >= pages - 1} onClick={() => setPage(current + 1)} label={t("admin.import.next")}>
+                <PagerButton disabled={current >= pages - 1} onClick={() => setPage(current + 1)} label={tt("next")}>
                   <ChevronLeft size={15} className="rtl:rotate-0 ltr:rotate-180" />
                 </PagerButton>
               </div>
@@ -500,7 +514,7 @@ export function ImportPreview({
         {importing && (
           <p className="flex items-center gap-2 rounded-2xl bg-gold/8 px-4 py-3 text-sm font-medium text-forest ring-1 ring-gold/30" aria-live="polite">
             <Loader2 size={16} className="animate-spin text-gold" />
-            {t("admin.import.importing")}
+            {tt("importing")}
           </p>
         )}
       </div>
@@ -761,7 +775,7 @@ function CellView({ cell }: { cell: ImportCell }) {
           {text || "—"}
         </span>
       ) : text ? (
-        <span className="font-medium break-words text-forest" dir="auto">{text}</span>
+        <span className="line-clamp-3 font-medium break-words whitespace-pre-line text-forest" dir="auto">{text}</span>
       ) : cell.state === "error" ? (
         <span className="inline-flex items-center rounded-md border border-dashed border-brick/50 px-1.5 font-semibold text-brick italic">
           {t("admin.import.cellEmpty")}
@@ -770,7 +784,7 @@ function CellView({ cell }: { cell: ImportCell }) {
         <span className="text-clay/45">—</span>
       )}
       {!auto && cell.saved !== undefined && (
-        <span className="mt-0.5 block text-[10.5px] font-semibold text-sage" dir="auto">
+        <span className="mt-0.5 line-clamp-3 text-[10.5px] font-semibold whitespace-pre-line text-sage" dir="auto">
           ← {cell.saved}
         </span>
       )}
@@ -889,13 +903,13 @@ function RowPanel({
                       </dt>
                       <dd className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-xs">
                         <span className="text-clay">{t("admin.import.inFile")}:</span>
-                        <span className="break-words text-forest" dir="auto">
+                        <span className="break-words whitespace-pre-line text-forest" dir="auto">
                           {cell.value || <i className="text-clay">{c.letter ? t("admin.import.cellEmpty") : t("admin.import.notInFile")}</i>}
                         </span>
                         {cell.saved !== undefined && (
                           <>
                             <span className="text-clay">{t("admin.import.willSave")}:</span>
-                            <span className="break-words font-semibold text-sage" dir="auto">{cell.saved}</span>
+                            <span className="break-words font-semibold whitespace-pre-line text-sage" dir="auto">{cell.saved}</span>
                           </>
                         )}
                       </dd>

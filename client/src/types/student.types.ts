@@ -314,3 +314,15 @@ export interface TopicView {
   specialization?: { name?: string | null } | null;
   academicYear?: { title?: string | null } | null;
 }
+
+/**
+ * The deadline to choose topics for the student's own year
+ * (GET /student/selection-window). Both dates null: no deadline.
+ */
+export interface StudentSelectionWindow {
+  id: string;
+  title: string;
+  selectionOpenAt: string | null;
+  selectionCloseAt: string | null;
+  state: "unset" | "upcoming" | "open" | "closed";
+}

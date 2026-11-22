@@ -256,7 +256,7 @@ export function TopicDeleteDialog({
         فلو تمدّد الإطار بطول محتواه لقفز في كل انتقال وتحرّك زرّ «المتابعة»
         تحت الإصبع. والمحتوى وحده يتمرّر داخله.
       */}
-      <div className="animate-[fadeIn_0.15s_ease-out] relative flex h-[min(90vh,720px)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-forest/10 bg-cream-card shadow-2xl">
+      <div className="animate-[fadeIn_0.15s_ease-out] relative flex h-[min(90dvh,720px)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-forest/10 bg-cream-card shadow-2xl">
         {/* ── الترويسة ── */}
         <header className="relative shrink-0 bg-linear-to-l from-forest to-forest-deep px-6 py-3.5 text-cream">
           <div className="flex items-center gap-4">

@@ -138,7 +138,7 @@ export function AdminFacultiesPage() {
         <div className="relative">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-4">
-              <span className="grid size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft">
+              <span className="hidden size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft sm:grid">
                 <Building2 size={26} />
               </span>
               <div>
@@ -292,6 +292,7 @@ export function AdminFacultiesPage() {
       {wizardOpen && <AcademicStructureWizard open onClose={() => setWizardOpen(false)} />}
       <FacultyFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} faculty={editing} />
       <DeleteNodeDialog
+        kind="faculty"
         target={removing}
         title={t("admin.struct.deleteTitle.faculty")}
         loading={deleteFaculty.isPending}

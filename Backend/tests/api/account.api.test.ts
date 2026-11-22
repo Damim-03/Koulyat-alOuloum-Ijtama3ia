@@ -5,15 +5,22 @@
  *   والبريد (بكلمة المرور) وكلمة المرور.
  *   **الأستاذ** — اسماه والجنس والهاتف والصورة وكلمة المرور؛ والبريد الجامعي
  *   والقسم والرتبة سجلّ الإدارة.
- *   **الطالب** — كلمة مروره، لا غير.
+ *   **الطالب** — اسمه ولقبه بالعربية (يُصحَّحان، أو يُملآن إن كانا فارغين)،
+ *   وبريده (بكلمة المرور)، وكلمة مروره — لا غير.
  *
  * ولا يصل أحدٌ إلى ما ليس له: الدور والحالة والتوثيق يُتجاهَل ما يُدسّ منها.
  * والخطأ في كلمة المرور الحالية 400 لا 401، فلا يُطرد صاحبه. وكلمة مرورٍ
  * جديدة تُخرج الأجهزة الأخرى ويبقى هذا الجهاز برموزٍ جديدة.
  */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import request from "supertest";
 import app from "../../src/app";
 import { prisma } from "../../src/core/prisma/client";
+import { tr } from "../../src/core/i18n";
+import * as account from "../../src/modules/account/account.service";
+import { outbox } from "../../src/core/mail/mailer";
 import { seed, teardown, residue, TEST_PASSWORD, TAG, type Fixture } from "../helpers/fixture";
 
 let f: Fixture;
@@ -56,15 +63,17 @@ describe("GET /api/account", () => {
 
     const p = await as(request(app).get("/api/account"), profToken).expect(200);
     expect(p.body.account.professor.universityEmail).toBe(f.professor.universityEmail);
+    // A professor's own address too, for links and alerts (2026-11-20) — signing in stays by the university one.
     expect(p.body.account.can).toEqual({
       edit: ["firstName", "lastName", "firstNameLatin", "lastNameLatin", "gender", "phone"],
       photo: true,
-      email: false,
+      email: true,
     });
+    expect(p.body.account.recoveryEmail).toBe(f.professor.universityEmail);
 
     const s = await as(request(app).get("/api/account"), studentToken).expect(200);
     expect(s.body.account.student.registrationNumber).toBe(student.reg);
-    expect(s.body.account.can).toEqual({ edit: [], photo: false, email: false });
+    expect(s.body.account.can).toEqual({ edit: ["firstName", "lastName"], photo: false, email: true });
   });
 
   it("بلا تسجيل دخول ⇒ 401", async () => {
@@ -111,8 +120,37 @@ describe("PATCH /api/account", () => {
     await as(request(app).patch("/api/account").send({ avatarUrl: "https://evil.example/pixel.png" }), profToken).expect(400);
   });
 
-  it("الطالب: لا شيء ⇒ 403", async () => {
-    await as(request(app).patch("/api/account").send({ phone: "0550000000" }), studentToken).expect(403);
+  it("الطالب: اسمه ولقبه بالعربية وحدهما — يُملآن إن كانا فارغين، ويُصحَّحان؛ وما سواهما يُتجاهَل", async () => {
+    const before = await prisma.user.findUniqueOrThrow({ where: { id: student.userId } });
+    // Left empty by the administration: filled in by the student.
+    await prisma.user.update({ where: { id: student.userId }, data: { firstName: null, lastName: null } });
+    const res = await as(
+      request(app)
+        .patch("/api/account")
+        .send({ firstName: "  عماد   الدين ", lastName: "كير", firstNameLatin: "X", phone: "0550000000", gender: "female", email: `${TAG}.z@test.local` }),
+      studentToken,
+    ).expect(200);
+    expect(res.body.account).toMatchObject({ firstName: "عماد الدين", lastName: "كير" });
+    const u = await prisma.user.findUniqueOrThrow({ where: { id: student.userId } });
+    // Nothing else moved: the Latin name, the phone, the gender, the email are not the student's to change here.
+    expect(u).toMatchObject({
+      firstNameLatin: before.firstNameLatin,
+      phone: before.phone,
+      gender: before.gender,
+      email: before.email,
+    });
+    // Corrected later, one of them alone.
+    await as(request(app).patch("/api/account").send({ lastName: "بن كير" }), studentToken).expect(200);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: student.userId } })).toMatchObject({ firstName: "عماد الدين", lastName: "بن كير" });
+    await prisma.user.update({ where: { id: student.userId }, data: { firstName: before.firstName, lastName: before.lastName } });
+  });
+
+  it("الطالب: بالعربية وحدها — لا لاتينية ولا أرقام، ولا يُفرَّغ", async () => {
+    for (const bad of [{ firstName: "Imad" }, { lastName: "كير2" }, { firstName: "" }, { lastName: " " }, { firstName: null }, { firstName: "ك" }])
+      expect((await as(request(app).patch("/api/account").send(bad), studentToken).expect(400)).body.message).toBeTruthy();
+    expect((await as(request(app).patch("/api/account").send({ firstName: "Imad" }), studentToken).expect(400)).body.message).toContain(
+      tr("account.arabicName"),
+    );
   });
 });
 
@@ -134,9 +172,33 @@ describe("POST /api/account/avatar", () => {
 });
 
 describe("POST /api/account/email", () => {
-  it("للمدير وحده: الأستاذ والطالب ⇒ 403", async () => {
-    await as(request(app).post("/api/account/email").send({ email: `${TAG}.p@test.local`, currentPassword: TEST_PASSWORD }), profToken).expect(403);
-    await as(request(app).post("/api/account/email").send({ email: `${TAG}.s@test.local`, currentPassword: TEST_PASSWORD }), studentToken).expect(403);
+  it("الأستاذ أيضاً (2026-11-20) — لكن لا بريدَ جامعيّاً: بريده هو ⇒ 400، وبريد أستاذٍ آخر ⇒ 400 «مستعمل»", async () => {
+    const send = (email: string) =>
+      as(request(app).post("/api/account/email").send({ email, currentPassword: TEST_PASSWORD }), profToken);
+    expect((await send(f.professor.universityEmail).expect(400)).body.message).toBe(tr("account.emailIsUniversity"));
+    const other = await prisma.professor.findFirstOrThrow({ where: { NOT: { userId: f.profUser.id }, user: { email: { startsWith: TAG } } } });
+    expect((await send(other.universityEmail).expect(400)).body.message).toBe(tr("account.emailTaken"));
+  });
+
+  it("الطالب يُدخل بريده بكلمة مروره: الخاطئة ⇒ 400، والمستعمل ⇒ 400، والصحيحة ⇒ يتغيّر ويصله رابط التأكيد", async () => {
+    const before = (await prisma.user.findUniqueOrThrow({ where: { id: student.userId } })).email;
+    await as(request(app).post("/api/account/email").send({ email: `${TAG}.s-new@test.local`, currentPassword: "wrong" }), studentToken).expect(400);
+    await as(request(app).post("/api/account/email").send({ email: f.admin2.email, currentPassword: TEST_PASSWORD }), studentToken).expect(400);
+    const res = await as(
+      request(app).post("/api/account/email").send({ email: `${TAG}.S-New@test.local`, currentPassword: TEST_PASSWORD }),
+      studentToken,
+    ).expect(200);
+    expect(res.body.account.email).toBe(`${TAG}.s-new@test.local`.toLowerCase());
+    // Not proven yet — and the link that proves it left at once, to the new address.
+    expect(res.body.account.emailVerified).toBe(false);
+    expect(res.body.verification).toBe("sent");
+    const mail = outbox.at(-1)!;
+    expect(mail.to).toBe(`${TAG}.s-new@test.local`.toLowerCase());
+    expect(mail.subject).toBe(tr("mail.verify.subject"));
+    expect(await prisma.emailToken.count({ where: { userId: student.userId, purpose: "verify", email: `${TAG}.s-new@test.local`.toLowerCase() } })).toBe(1);
+    // Still signed in by the registration number — the email is not how a student signs in.
+    expect((await request(app).post("/api/auth/student/login").send({ registrationNumber: student.reg, password: TEST_PASSWORD })).status).toBe(200);
+    await prisma.user.update({ where: { id: student.userId }, data: { email: before } });
   });
 
   it("كلمة مرور خاطئة ⇒ 400 (لا 401)، وبريدٌ مستعمل ⇒ 400", async () => {
@@ -168,8 +230,55 @@ describe("POST /api/account/password", () => {
   });
 
   it("الأستاذ يغيّرها كذلك", async () => {
-    const res = await as(request(app).post("/api/account/password").send({ currentPassword: TEST_PASSWORD, newPassword: "Prof-New-Pass9" }), profToken).expect(200);
+    // كلمةٌ واحدة للتغيير والدخول: كانت كلمتين مختلفتين، فكان الدخول يفشل
+    // بكلمةٍ لم تُضبط أصلاً — والتغيير نفسه سليم.
+    const next = "Ustad-Jadid-2026";
+    const res = await as(request(app).post("/api/account/password").send({ currentPassword: TEST_PASSWORD, newPassword: next }), profToken).expect(200);
     expect(res.body.refreshToken).toBeTruthy();
-    expect((await request(app).post("/api/auth/professor/login").send({ universityEmail: f.professor.universityEmail, password: "Prof-New-Pass9" })).status).toBe(200);
+    expect((await request(app).post("/api/auth/professor/login").send({ universityEmail: f.professor.universityEmail, password: next })).status).toBe(200);
+  });
+});
+
+//
+// ═══ ما بقي من الحساب ═══
+//
+
+describe("الحساب — ما بقي", () => {
+  it("المدير يختار اسم مستخدمٍ حرّاً", async () => {
+    const res = await as(request(app).patch("/api/account"), adminToken).send({ username: `${TAG}-free-name` }).expect(200);
+    expect(res.body.account.username).toBe(`${TAG}-free-name`);
+  });
+
+  it("البريد نفسه ⇒ لا تغيير", async () => {
+    const res = await as(request(app).post("/api/account/email"), adminToken)
+      .send({ email: f.admin.email!.toUpperCase(), currentPassword: TEST_PASSWORD })
+      .expect(400);
+    expect(res.body.message).toBe(tr("account.sameEmail"));
+  });
+
+  /** (والخدمة مباشرةً: اختبارٌ قبله غيّر كلمة مرور الأستاذ فأنهى جلساته.) */
+  it("الأستاذ بلا ملفٍّ مرفوع ⇒ 400", async () => {
+    await expect(account.setAvatarService(f.profUser.id, undefined)).rejects.toMatchObject({
+      statusCode: 400,
+      message: tr("upload.none"),
+    });
+  });
+
+  /** الطالب يُردّ قبل الرفع على المسار؛ والخدمة تردّه أيضاً — وتمحو ما رُفع، لا تتركه يتيماً. */
+  it("والخدمة نفسها ترفض صورة الطالب وتمحو الملفّ", async () => {
+    const file = path.join(os.tmpdir(), `${TAG}-avatar.png`);
+    fs.writeFileSync(file, PNG);
+    await expect(account.setAvatarService(student.userId, { path: file } as Express.Multer.File)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fs.existsSync(file)).toBe(false);
+  });
+  /** وملفٌّ اختفى قبل أن يُمحى (نظّفه غيرها) لا يُبدّل الجواب: 403، لا 500. */
+  it("وملفٌّ لم يعد موجوداً لا يُسقطها", async () => {
+    const gone = path.join(os.tmpdir(), `${TAG}-never-written.png`);
+    await expect(account.setAvatarService(student.userId, { path: gone } as Express.Multer.File)).rejects.toMatchObject({
+      statusCode: 403,
+    });
   });
 });

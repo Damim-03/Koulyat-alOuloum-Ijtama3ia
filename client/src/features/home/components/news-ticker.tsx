@@ -7,6 +7,7 @@ import { newsDate, newsText } from "../lib/site-content";
 import type { PublicNewsItem, SiteLang } from "../../../types/site.types";
 import { NewsLink } from "./news-link";
 import { NewsListDialog } from "./news-list-dialog";
+import { useShown } from "../../../i18n/site-visibility";
 
 // ألوان النقاط المتنوّعة (مثل CEIL)
 const DOTS = ["bg-gold", "bg-sky-400", "bg-fuchsia-400", "bg-soft-sage"];
@@ -15,6 +16,10 @@ const DOTS = ["bg-gold", "bg-sky-400", "bg-fuchsia-400", "bg-soft-sage"];
 export function NewsTicker() {
   const { data, isLoading } = useSiteNews();
   const [open, setOpen] = useState(false);
+  const shown = useShown();
+
+  // The admin hid the bar (واجهة الموقع ← النصوص).
+  if (!shown("home.news")) return null;
 
   // أثناء التحميل يُحجز مكانه، فلا يقفز ما تحته حين يصل.
   if (isLoading) return <NewsTickerBar items={[]} />;
@@ -43,6 +48,7 @@ export function NewsTickerBar({
   const { t } = useTranslation();
   const { dir, isRTL, currentLang } = useLanguage();
   const lang = currentLang as SiteLang;
+  const shown = useShown();
 
   const loop = [...items, ...items];
   const Chevron = isRTL ? ChevronLeft : ChevronRight;
@@ -99,6 +105,7 @@ export function NewsTickerBar({
       </div>
 
       {/* view all */}
+      {shown("home.newsAll") && (
       <button
         type="button"
         onClick={onViewAll}
@@ -108,6 +115,7 @@ export function NewsTickerBar({
         <span className="hidden whitespace-nowrap sm:inline">{t("news.viewAll")}</span>
         <Chevron size={14} />
       </button>
+      )}
 
       <style>{`
         @keyframes ticker {

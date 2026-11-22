@@ -7,6 +7,8 @@
 import request from "supertest";
 import app from "../../src/app";
 import { prisma } from "../../src/core/prisma/client";
+import { tr } from "../../src/core/i18n";
+import { MAX_NEWS } from "../../src/modules/site/news.service";
 import {
   seed,
   teardown,
@@ -21,6 +23,7 @@ let adminToken = "";
 let directorBefore: unknown = null;
 let aboutBefore: unknown = null;
 let loginBefore: unknown = null;
+let textsBefore: unknown = null;
 
 const as = (r: request.Test) => r.set("Authorization", `Bearer ${adminToken}`);
 
@@ -71,6 +74,8 @@ beforeAll(async () => {
     (await prisma.siteContent.findUnique({ where: { slug: "about-page" } }))?.value ?? null;
   loginBefore =
     (await prisma.siteContent.findUnique({ where: { slug: "login-page" } }))?.value ?? null;
+  textsBefore =
+    (await prisma.siteContent.findUnique({ where: { slug: "site-texts" } }))?.value ?? null;
 });
 
 afterEach(async () => {
@@ -96,6 +101,12 @@ afterAll(async () => {
       data: { value: loginBefore as object },
     });
   else await prisma.siteContent.deleteMany({ where: { slug: "login-page" } });
+  if (textsBefore)
+    await prisma.siteContent.update({
+      where: { slug: "site-texts" },
+      data: { value: textsBefore as object },
+    });
+  else await prisma.siteContent.deleteMany({ where: { slug: "site-texts" } });
   await teardown();
   expect(await residue()).toBe(0);
   await prisma.$disconnect();
@@ -250,5 +261,63 @@ describe("لوحة الترحيب في صفحة الدخول", () => {
     await as(request(app).put("/api/admin/login-page"))
       .send(login({ body: "x".repeat(401) }))
       .expect(400);
+  });
+});
+
+describe("آخر الأخبار — للإدارة", () => {
+  it("تراها الإدارة كلّها، والمخفيّ منها أيضاً", async () => {
+    const hidden = await as(request(app).post("/api/admin/news")).send(news({ isActive: false })).expect(201);
+    const res = await as(request(app).get("/api/admin/news")).expect(200);
+    expect(res.body.news.map((n: { id: string }) => n.id)).toContain(hidden.body.item.id);
+    expect((await publicNews()).map((n) => n.id)).not.toContain(hidden.body.item.id);
+  });
+
+  it("تعديلٌ بلا تاريخ لا يمسّه، والرابط الفارغ يُمسح؛ وخبرٌ غير موجود ⇒ 404", async () => {
+    const { body } = await as(request(app).post("/api/admin/news")).send(news({ linkUrl: "/topics" })).expect(201);
+    const res = await as(request(app).patch(`/api/admin/news/${body.item.id}`))
+      .send({ text: `${TAG} معدَّل`, linkUrl: "" })
+      .expect(200);
+    expect(res.body.item).toMatchObject({ text: `${TAG} معدَّل`, linkUrl: null, date: body.item.date });
+
+    const missing = await as(request(app).patch("/api/admin/news/no-such-news")).send({ text: "x" }).expect(404);
+    expect(missing.body.message).toBe(tr("notFound.news"));
+  });
+
+  /** «example.com» بلا بروتوكول ليس مساراً داخلياً ولا عنواناً مطلقاً — قد يُقرأ في المتصفّح نسبياً. */
+  it("ورابطٌ بلا بروتوكول ⇒ يُردّ", async () => {
+    await as(request(app).post("/api/admin/news")).send(news({ linkUrl: "example.com/news" })).expect(400);
+  });
+
+  it("وفوق الحدّ ⇒ يُردّ بالحدّ", async () => {
+    const have = await prisma.newsItem.count();
+    await prisma.newsItem.createMany({
+      data: Array.from({ length: Math.max(0, MAX_NEWS - have) }, (_, i) => ({
+        text: `${TAG} ملء ${i}`,
+        date: new Date("2026-09-01"),
+      })),
+    });
+    const res = await as(request(app).post("/api/admin/news")).send(news()).expect(400);
+    expect(res.body.message).toBe(tr("site.newsLimit", { max: MAX_NEWS }));
+  });
+});
+
+describe("كلمة رئيس القسم — للإدارة", () => {
+  it("تقرؤها الإدارة كما حُفظت، المخفيّة أيضاً", async () => {
+    await as(request(app).put("/api/admin/director-message")).send(director({ isVisible: false })).expect(200);
+    const res = await as(request(app).get("/api/admin/director-message")).expect(200);
+    expect(res.body.director).toMatchObject({ isVisible: false, ar: { fullName: "أ.د. اختبار" } });
+  });
+});
+
+describe("نصوص الموقع", () => {
+  it("تحفظها الإدارة، ويقرؤها الزائر بلا حساب", async () => {
+    await as(request(app).put("/api/admin/site-texts"))
+      .send({ ar: { "hero.title": "عنوان الاختبار" }, hidden: ["hero.badge"] })
+      .expect(200);
+    const res = await request(app).get("/api/site/texts").expect(200);
+    expect(res.body.texts).toEqual({ ar: { "hero.title": "عنوان الاختبار" }, fr: {}, en: {}, hidden: ["hero.badge"] });
+
+    const admin = await as(request(app).get("/api/admin/site-texts")).expect(200);
+    expect(admin.body.texts.hidden).toEqual(["hero.badge"]);
   });
 });

@@ -3,8 +3,9 @@ import ExcelJS from "exceljs";
 import { prisma } from "../../core/prisma/client";
 import { BadRequestException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
-import { LEVEL_LABEL } from "./student-import/columns";
 import { studentAcademicWhere, type StudentAcademicFilter } from "./student-filters";
+import { tr } from "../../core/i18n";
+import { PLACE, YEAR, arabicCount, byPlace, finishWorkbook, levelOf, sheetName, writeSheet, type Column } from "./export-sheet";
 
 /**
  * قوائم الطلبة في ملفّ Excel — بالفلاتر نفسها التي في صفحة الطلبة.
@@ -32,21 +33,10 @@ export interface ExportStudentsQuery extends StudentAcademicFilter {
 /** فوق هذا تصير قائمةً لا يقرؤها أحد — والفلاتر أولى. */
 const MAX_ROWS = 10_000;
 
-const BRAND = "FF26423D";
-const GOLD = "FFC1965A";
-const ZEBRA = "FFF4F1E8";
-const LEVEL_ORDER: Record<string, number> = { licence: 0, master: 1, doctorate: 2 };
-
-/**
- * ما يُكتب في خانةٍ لا قيمة لها (هاتف، بريد، اسمٌ عربيّ…): خانةٌ فارغة تُقرأ
- * سهواً أو نسياناً، و«لا يوجد» تقول إنّها فارغةٌ في المنصّة نفسها.
- *
- * ويُكتب في الملف وحده: لا يُحفظ في المنصّة شيء. فإذا أُضيف الهاتف أو البريد
- * إلى حساب الطالب، ظهر في أوّل تصديرٍ بعده.
- */
-const NONE = "لا يوجد";
-const MUTED = "FF9A9384";
 const GENDER_AR: Record<string, string> = { male: "ذكر", female: "أنثى" };
+
+/** «#» ورقم التسجيل واللقب والاسم: ما يُعرف به الطالب يبقى ظاهراً عند التمرير. */
+const FREEZE = 4;
 
 type Row = Awaited<ReturnType<typeof loadStudents>>[number];
 
@@ -91,45 +81,11 @@ const byName = (a: Row, b: Row) => {
   return key(a).localeCompare(key(b), "fr", { sensitivity: "base" }) || a.registrationNumber.localeCompare(b.registrationNumber);
 };
 
-/** بترتيب الهرم: الكلية، القسم، الشعبة، المستوى، التخصص. */
-const byPlace = (a: Row, b: Row) => {
-  const sa = a.specialization;
-  const sb = b.specialization;
-  return (
-    sa.filiere.department.faculty.name.localeCompare(sb.filiere.department.faculty.name, "ar") ||
-    sa.filiere.department.name.localeCompare(sb.filiere.department.name, "ar") ||
-    sa.filiere.name.localeCompare(sb.filiere.name, "ar") ||
-    (LEVEL_ORDER[sa.level] ?? 9) - (LEVEL_ORDER[sb.level] ?? 9) ||
-    sa.name.localeCompare(sb.name, "ar")
-  );
-};
-
-const levelOf = (l: string) => LEVEL_LABEL[l] ?? l;
-
 /** العدد والمعدود كما تقولهما العربية: طالبٌ واحد، طالبان، ٥ طلاب، ٢٠ طالباً. */
-export function studentsCount(n: number): string {
-  if (n === 0) return "لا طلبة";
-  if (n === 1) return "طالبٌ واحد";
-  if (n === 2) return "طالبان";
-  const r = n % 100;
-  if (r >= 3 && r <= 10) return `${n} طلاب`;
-  if (r >= 11) return `${n} طالباً`;
-  return `${n} طالب`;
-}
+export const studentsCount = (n: number): string =>
+  arabicCount(n, { none: "لا طلبة", one: "طالبٌ واحد", two: "طالبان", few: "طلاب", many: "طالباً", hundred: "طالب" });
 
-interface Column {
-  header: string;
-  width: number;
-  value: (r: Row, i: number) => string | number;
-  ltr?: boolean;
-  /**
-   * خانةٌ بتنسيق «نص»: ما يُكتب فيها لاحقاً في Excel يبقى كما هو — هاتفٌ
-   * يبدأ بصفر لا يفقده، ورقم تسجيلٍ لا يصير صيغةً علمية.
-   */
-  text?: boolean;
-}
-
-const PERSON: Column[] = [
+const PERSON: Column<Row>[] = [
   { header: "#", width: 6, value: (_r, i) => i + 1 },
   { header: "رقم التسجيل", width: 17, value: (r) => r.registrationNumber, ltr: true, text: true },
   { header: "اللقب (Nom)", width: 20, value: (r) => r.user.lastNameLatin ?? "", ltr: true },
@@ -141,120 +97,6 @@ const PERSON: Column[] = [
   { header: "رقم الهاتف", width: 14, value: (r) => r.user.phone ?? "", ltr: true, text: true },
 ];
 
-const PLACE: Column[] = [
-  { header: "الكلية", width: 30, value: (r) => r.specialization.filiere.department.faculty.name },
-  { header: "القسم", width: 24, value: (r) => r.specialization.filiere.department.name },
-  { header: "الشعبة", width: 20, value: (r) => r.specialization.filiere.name },
-  { header: "المستوى", width: 10, value: (r) => levelOf(r.specialization.level) },
-  { header: "التخصص", width: 26, value: (r) => r.specialization.name },
-];
-
-const YEAR: Column = { header: "السنة الجامعية", width: 13, value: (r) => r.academicYear?.title ?? "", ltr: true };
-
-/** اسم ورقةٍ يقبله Excel: 31 حرفاً، بلا []:*?/\، ولا يتكرّر. */
-function sheetName(wanted: string, taken: Set<string>): string {
-  const base = wanted.replace(/[[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31) || "قائمة";
-  let name = base;
-  for (let n = 2; taken.has(name.toLowerCase()); n++) {
-    const suffix = ` (${n})`;
-    name = base.slice(0, 31 - suffix.length) + suffix;
-  }
-  taken.add(name.toLowerCase());
-  return name;
-}
-
-/** ورقةٌ واحدة: سطور العنوان، ثمّ الرأس، ثمّ الطلبة — جاهزةٌ للطباعة. */
-function writeSheet(
-  wb: ExcelJS.Workbook,
-  name: string,
-  title: string[],
-  columns: Column[],
-  rows: Row[],
-  /** «لا يوجد» في الخانة الفارغة — أو تبقى فارغة. */
-  sayNone: boolean,
-) {
-  const ws = wb.addWorksheet(name, {
-    views: [{ rightToLeft: true, state: "frozen", ySplit: title.length + 2 }],
-    pageSetup: {
-      paperSize: 9, // A4
-      orientation: columns.length > 10 ? "landscape" : "portrait",
-      fitToPage: true,
-      fitToWidth: 1,
-      fitToHeight: 0,
-      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
-    },
-    headerFooter: { oddFooter: "&Cصفحة &P من &N" },
-  });
-  ws.columns = columns.map((c) => ({ width: c.width }));
-  const last = columns.length;
-
-  // ── العنوان ──
-  title.forEach((text, i) => {
-    const row = ws.addRow([text]);
-    ws.mergeCells(row.number, 1, row.number, last);
-    const cell = row.getCell(1);
-    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-    cell.font = i === 0
-      ? { name: "Arial", size: 15, bold: true, color: { argb: BRAND } }
-      : { name: "Arial", size: 11, color: { argb: "FF5B6B66" } };
-    row.height = i === 0 ? 26 : 18;
-  });
-  ws.addRow([]);
-
-  // ── الرأس ──
-  const header = ws.addRow(columns.map((c) => c.header));
-  header.height = 24;
-  header.eachCell((c) => {
-    c.font = { name: "Arial", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND } };
-    c.alignment = { horizontal: "center", vertical: "middle" };
-    c.border = { bottom: { style: "medium", color: { argb: GOLD } } };
-  });
-  ws.pageSetup.printTitlesRow = `${header.number}:${header.number}`;
-
-  // ── الطلبة ──
-  rows.forEach((r, i) => {
-    const values = columns.map((c) => c.value(r, i));
-    const row = ws.addRow(values.map((v) => (v === "" ? (sayNone ? NONE : null) : v)));
-    row.height = 20;
-    row.eachCell({ includeEmpty: true }, (cell, col) => {
-      const spec = columns[col - 1]!;
-      const missing = values[col - 1] === "";
-      // الخطّ عاديٌّ دائماً؛ وبهتانُ «لا يوجد» قاعدةُ تنسيقٍ شرطيّ أدناه — فما
-      // يُكتب مكانها في Excel يظهر بخطٍّ عاديّ لا باهتاً كأنّه ناقص.
-      cell.font = { name: "Arial", size: 10.5 };
-      if (spec.text) cell.numFmt = "@";
-      cell.alignment = {
-        vertical: "middle",
-        horizontal: col === 1 || missing ? "center" : spec.ltr ? "left" : "right",
-        readingOrder: missing || !spec.ltr ? "rtl" : "ltr",
-      };
-      cell.border = { bottom: { style: "hair", color: { argb: "FFD9D3C4" } } };
-      if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA } };
-    });
-  });
-
-  // «لا يوجد» باهتةٌ مائلة ما دامت «لا يوجد»: تُميَّز من قيمةٍ حقيقيةٍ بنظرة،
-  // وتعود الخانة عاديّةً حين يُكتب فيها غيرها.
-  if (sayNone && rows.length > 0) {
-    const first = header.number + 1;
-    ws.addConditionalFormatting({
-      ref: `A${first}:${ws.getColumn(last).letter}${first + rows.length - 1}`,
-      rules: [
-        {
-          type: "cellIs",
-          operator: "equal",
-          formulae: [`"${NONE}"`],
-          priority: 1,
-          style: { font: { italic: true, color: { argb: MUTED } } },
-        },
-      ],
-    });
-  }
-
-  ws.autoFilter = { from: { row: header.number, column: 1 }, to: { row: header.number, column: last } };
-}
-
 export async function exportStudentsService(q: ExportStudentsQuery): Promise<Buffer> {
   const [students, year] = await Promise.all([
     loadStudents(q),
@@ -264,13 +106,13 @@ export async function exportStudentsService(q: ExportStudentsQuery): Promise<Buf
   ]);
   if (students.length > MAX_ROWS)
     throw new BadRequestException(
-      `أكثر من ${MAX_ROWS} طالب — ضيّق الفلاتر (السنة أو الكلية أو التخصص).`,
+      tr("export.tooMany", { max: MAX_ROWS }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
   const yearText = year ? `السنة الجامعية ${year.title}` : "كلّ السنوات الجامعية";
   // ما لم تُحصر السنة، فلكلّ طالبٍ سنته في عمود.
-  const withYear = (cols: Column[]) => (year ? cols : [...cols, YEAR]);
+  const withYear = (cols: Column<Row>[]) => (year ? cols : [...cols, YEAR]);
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "Mudhakkirati";
@@ -284,7 +126,7 @@ export async function exportStudentsService(q: ExportStudentsQuery): Promise<Buf
       ["قائمة الطلبة", `${yearText} — ${studentsCount(rows.length)}`],
       withYear([...PERSON, ...PLACE]),
       rows,
-      q.empty === "none",
+      { sayNone: q.empty === "none", freeze: FREEZE },
     );
   } else {
     const groups = new Map<string, Row[]>();
@@ -303,10 +145,10 @@ export async function exportStudentsService(q: ExportStudentsQuery): Promise<Buf
         ],
         withYear([...PERSON, ...PLACE]),
         [...rows].sort(byName),
-        q.empty === "none",
+        { sayNone: q.empty === "none", freeze: FREEZE },
       );
     }
   }
 
-  return Buffer.from(await wb.xlsx.writeBuffer());
+  return finishWorkbook(wb);
 }

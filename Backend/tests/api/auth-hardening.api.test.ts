@@ -109,15 +109,28 @@ describe("الحساب الموقوف", () => {
 // ═══ تغيير كلمة المرور — اختياريّ، بقواعد ═══
 //
 
-describe("تغيير كلمة المرور متى شاء صاحبها", () => {
+describe("كلمة المرور المسلَّمة تُستبدل قبل أيّ شيء", () => {
   const s = () => f.students[3];
 
-  it("الدخول بكلمة المرور المسلَّمة يفتح الحساب كاملاً — لا إجبار", async () => {
-    const { accessToken } = (await studentLogin(s().reg, TEST_PASSWORD).expect(200)).body;
-    await request(app).get("/api/student/dashboard").set("Authorization", `Bearer ${accessToken}`).expect(200);
+  // كما يخرج الحساب من يد الإدارة: بكلمةٍ يعرفها غيرُ صاحبه.
+  beforeAll(async () => {
+    await prisma.user.update({ where: { id: s().userId }, data: { mustChangePassword: true } });
   });
 
-  it("والكلمة الجديدة لا تكون تاريخاً أو أرقاماً، ولا رقم التسجيل", async () => {
+  it("يدخل بها، لكن لا يُفتح له إلا تغييرها", async () => {
+    const res = await studentLogin(s().reg, TEST_PASSWORD).expect(200);
+    expect(res.body.user.mustChangePassword).toBe(true);
+    const bearer = `Bearer ${res.body.accessToken}`;
+
+    const blocked = await request(app).get("/api/student/dashboard").set("Authorization", bearer).expect(403);
+    expect(blocked.body.errorCode).toBe("PASSWORD_CHANGE_REQUIRED");
+    // ما يلزم لتغييرها مفتوح: من أنا، وصفحة الحساب.
+    const me = await request(app).get("/api/auth/me").set("Authorization", bearer).expect(200);
+    expect(me.body.user.mustChangePassword).toBe(true);
+    await request(app).get("/api/account").set("Authorization", bearer).expect(200);
+  });
+
+  it("والكلمة الجديدة تخضع للسياسة: لا تاريخ، ولا شائعة، ولا رقم التسجيل", async () => {
     const { accessToken } = (await studentLogin(s().reg, TEST_PASSWORD).expect(200)).body;
     const change = (newPassword: string) =>
       request(app)
@@ -126,10 +139,11 @@ describe("تغيير كلمة المرور متى شاء صاحبها", () => {
         .send({ currentPassword: TEST_PASSWORD, newPassword });
     await change("2003/07/31").expect(400);
     await change("20030731").expect(400);
+    await change("Azerty2024!").expect(400);
     await change(`x${s().reg}x`).expect(400);
   });
 
-  it("وكلمةٌ صالحة تُحفظ، بجلسةٍ جديدة وكعكة تحديثٍ جديدة", async () => {
+  it("وكلمةٌ صالحة تُحفظ وتفتح الحساب، بجلسةٍ جديدة وكعكة تحديثٍ جديدة", async () => {
     const { accessToken } = (await studentLogin(s().reg, TEST_PASSWORD).expect(200)).body;
     const res = await request(app)
       .post("/api/account/password")
@@ -138,6 +152,7 @@ describe("تغيير كلمة المرور متى شاء صاحبها", () => {
       .expect(200);
     expect(refreshCookieOf(res)).toBeDefined();
     await request(app).get("/api/student/dashboard").set("Authorization", `Bearer ${res.body.accessToken}`).expect(200);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: s().userId } })).mustChangePassword).toBe(false);
   });
 });
 

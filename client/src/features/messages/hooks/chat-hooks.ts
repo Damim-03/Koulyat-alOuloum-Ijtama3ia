@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { t } from "i18next";
 import { serverMessage } from "../../../lib/api/error";
 import { useSocket } from "../../../app/socket-context";
-import { messagesApi, type ChatMessage, type ChatPage } from "../api/messages.api";
+import { messagesApi, type ChatMessage, type ChatPage, type MessageAttachment } from "../api/messages.api";
 
 /**
  * Chats: the messages exchanged with one person, as a messenger shows them.
@@ -72,9 +72,13 @@ function patchNewest(qc: ReturnType<typeof useQueryClient>, userId: string, fn: 
 export function useSendChat(userId: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ body }: { body: string; tempId: string }) =>
-      messagesApi.sendMessage({ recipientIds: [userId as string], body }),
-    onMutate: async ({ body, tempId }) => {
+    mutationFn: ({ body, attachments }: { body: string; attachments?: MessageAttachment[]; tempId: string }) =>
+      messagesApi.sendMessage({
+        recipientIds: [userId as string],
+        body,
+        attachmentIds: attachments?.length ? attachments.map((a) => a.id) : undefined,
+      }),
+    onMutate: async ({ body, attachments, tempId }) => {
       if (!userId) return;
       await qc.cancelQueries({ queryKey: CHAT_KEYS.chat(userId) });
       patchNewest(qc, userId, (items) => [
@@ -91,6 +95,7 @@ export function useSendChat(userId: string | null) {
           mine: true,
           readAt: null,
           recipientsCount: 1,
+          attachments,
           pending: "sending",
         },
       ]);
@@ -100,7 +105,14 @@ export function useSendChat(userId: string | null) {
       patchNewest(qc, userId, (items) =>
         items.map((x) =>
           x.id === tempId
-            ? { ...x, id: m.id, senderId: m.senderId, createdAt: String(m.createdAt), pending: undefined }
+            ? {
+                ...x,
+                id: m.id,
+                senderId: m.senderId,
+                createdAt: String(m.createdAt),
+                attachments: m.attachments ?? x.attachments,
+                pending: undefined,
+              }
             : x,
         ),
       );
@@ -201,4 +213,53 @@ export function useTypingPeople() {
   }, [socket]);
 
   return typing;
+}
+
+/**
+ * Changing my message's text: the bubble shows the new text at once, marked
+ * edited; if the server refuses (the few minutes have passed), it shows the
+ * old text again and says why.
+ */
+export function useEditChatMessage(userId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string; before: string }) => messagesApi.editMessage(id, body),
+    onMutate: ({ id, body }) => {
+      if (userId) patchAll(qc, userId, (x) => (x.id === id ? { ...x, body, editedAt: new Date().toISOString() } : x));
+    },
+    onSuccess: (m) => {
+      if (userId) patchAll(qc, userId, (x) => (x.id === m.id ? { ...x, body: m.body, editedAt: m.editedAt ? String(m.editedAt) : null } : x));
+      qc.invalidateQueries({ queryKey: CHAT_KEYS.list });
+    },
+    onError: (e, { id, before }) => {
+      if (userId) patchAll(qc, userId, (x) => (x.id === id ? { ...x, body: before, editedAt: null } : x));
+      toast.error(serverMessage(e, t("msg.actions.editFailed")));
+    },
+  });
+}
+
+/** The administration deletes its message for everyone: gone from the chat at once, leaving nothing. */
+export function useDeleteForEveryone(userId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => messagesApi.deleteForEveryone(id),
+    onSuccess: (_r, id) => {
+      if (userId) {
+        const key = CHAT_KEYS.chat(userId);
+        const cur = qc.getQueryData<ChatData>(key);
+        if (cur) qc.setQueryData<ChatData>(key, { ...cur, pages: cur.pages.map((p) => ({ ...p, items: p.items.filter((x) => x.id !== id) })) });
+      }
+      qc.invalidateQueries({ queryKey: CHAT_KEYS.list });
+      toast.success(t("msg.actions.deleted"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("msg.actions.deleteFailed"))),
+  });
+}
+
+/** Every loaded page of a chat — a message being edited may be an older one. */
+function patchAll(qc: ReturnType<typeof useQueryClient>, userId: string, fn: (m: ChatMessage) => ChatMessage) {
+  const key = CHAT_KEYS.chat(userId);
+  const cur = qc.getQueryData<ChatData>(key);
+  if (!cur) return;
+  qc.setQueryData<ChatData>(key, { ...cur, pages: cur.pages.map((p) => ({ ...p, items: p.items.map(fn) })) });
 }

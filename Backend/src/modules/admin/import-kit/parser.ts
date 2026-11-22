@@ -1,5 +1,7 @@
 import ExcelJS from "exceljs";
+import { tr } from "../../../core/i18n";
 import { MAX_IMPORT_ROWS, columnLetter, normalizeHeader, type ImportSpec } from "./columns";
+import { sep } from "./match";
 
 /**
  * خانةٌ كما قُرئت — نصّها، وما يخفيه Excel وراءه.
@@ -79,14 +81,12 @@ function cellText(v: ExcelJS.CellValue): string {
       : String(v);
   if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
   if (v instanceof Date) return v.toISOString().slice(0, 10);
-  if (typeof v === "object") {
-    if ("richText" in v) return v.richText.map((t) => t.text).join("");
-    if ("formula" in v || "sharedFormula" in v)
-      return cellText((v as { result?: ExcelJS.CellValue }).result ?? null);
-    if ("text" in v) return cellText((v as { text: ExcelJS.CellValue }).text);
-    if ("error" in v) return "";
-  }
-  return String(v);
+  if ("richText" in v) return v.richText.map((t) => t.text).join("");
+  if ("formula" in v || "sharedFormula" in v)
+    return cellText((v as { result?: ExcelJS.CellValue }).result ?? null);
+  if ("text" in v) return cellText((v as { text: ExcelJS.CellValue }).text);
+  // وما بقي من قيم exceljs خطأ Excel (#N/A…): لا نصّ له.
+  return "";
 }
 
 function readCell(v: ExcelJS.CellValue): RawCell {
@@ -132,12 +132,12 @@ export async function parseImportFile<K extends string>(
   try {
     await wb.xlsx.load(buffer as unknown as ArrayBuffer);
   } catch {
-    return none(["الملف ليس ملفّ Excel صالحاً (xlsx)."]);
+    return none([tr("imp.file.notXlsx")]);
   }
 
   const visible = wb.worksheets.filter((s) => s.state !== "hidden" && s.state !== "veryHidden");
   const ws = wb.getWorksheet(spec.sheetName) ?? visible[0];
-  if (!ws) return none([`الملف لا يحتوي على ورقة «${spec.sheetName}».`]);
+  if (!ws) return none([tr("imp.file.noSheet", { sheet: spec.sheetName })]);
 
   // صفّ العناوين: أوّل صفٍّ فيه عنوان العمود الدالّ بين الصفوف العشرة الأولى —
   // النموذج يضع فوقه شريطَ الخطوات، وملفٌّ مكتوبٌ باليد قد لا يضعه.
@@ -162,17 +162,17 @@ export async function parseImportFile<K extends string>(
     }
   }
   if (!headerRow)
-    return none([`لم يُعثر على صفّ العناوين (عمود «${anchor.header}»). استعمل النموذج من المنصّة.`]);
+    return none([tr("imp.file.noHeader", { column: anchor.header })]);
 
   const fileErrors: string[] = [];
   for (const c of COLUMNS) {
     const at = found.get(c.key) ?? [];
     if (at.length > 1)
       fileErrors.push(
-        `عمود «${c.header}» مكرّر في الملف (${at.map(columnLetter).join(" و")}) — احذف أحدهما.`,
+        tr("imp.file.columnTwice", { column: c.header, letters: at.map(columnLetter).join(tr("imp.and")) }),
       );
     else if (at.length === 0 && c.kind === "req")
-      fileErrors.push(`عمود «${c.header}» غير موجود في الملف.`);
+      fileErrors.push(tr("imp.file.columnMissing", { column: c.header }));
   }
   if (fileErrors.length) return none(fileErrors);
 
@@ -181,16 +181,16 @@ export async function parseImportFile<K extends string>(
   const missingOpt = COLUMNS.filter((c) => c.kind === "opt" && !colOf.has(c.key));
   if (missingOpt.length)
     fileWarnings.push(
-      `أعمدةٌ اختيارية غير موجودة في الملف، تُترك فارغةً في كلّ الصفوف: ${missingOpt.map((c) => `«${c.header}»`).join("، ")}.`,
+      tr("imp.file.optionalMissing", { list: missingOpt.map((c) => `«${c.header}»`).join(sep()) }),
     );
   if (ignored.length)
     fileWarnings.push(
-      `أعمدةٌ لا تعرفها المنصّة، لم تُقرأ: ${ignored.map((c) => `«${c.header}» (${c.letter})`).join("، ")}.`,
+      tr("imp.file.unknownColumns", { list: ignored.map((c) => `«${c.header}» (${c.letter})`).join(sep()) }),
     );
   const otherSheets = visible.filter((s) => s !== ws).map((s) => s.name);
   if (otherSheets.length)
     fileWarnings.push(
-      `قُرئت ورقة «${ws.name}» وحدها؛ وفي الملف أوراقٌ أخرى لم تُقرأ: ${otherSheets.map((s) => `«${s}»`).join("، ")}.`,
+      tr("imp.file.otherSheets", { sheet: ws.name, list: otherSheets.map((s) => `«${s}»`).join(sep()) }),
     );
 
   const present = COLUMNS.filter((c) => colOf.has(c.key));
@@ -214,11 +214,9 @@ export async function parseImportFile<K extends string>(
     if (any) rows.push({ row: r, hidden: !!row.hidden, cells });
   }
 
-  if (rows.length === 0) return none([`الملف لا يحتوي على أيّ ${spec.nounOne}.`]);
+  if (rows.length === 0) return none([tr("imp.file.empty", { noun: spec.noun })]);
   if (rows.length > MAX_IMPORT_ROWS)
-    return none([
-      `الملف فيه ${rows.length} ${spec.nounCount}، والحدّ ${MAX_IMPORT_ROWS} في الملف الواحد. قسّمه.`,
-    ]);
+    return none([tr("imp.file.tooManyRows", { noun: spec.noun, count: rows.length, max: MAX_IMPORT_ROWS })]);
 
   const letters = Object.fromEntries(
     COLUMNS.map((c) => [c.key, colOf.has(c.key) ? columnLetter(colOf.get(c.key)!) : null]),

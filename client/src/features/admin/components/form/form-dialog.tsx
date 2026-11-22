@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { useBodyScrollLock } from "../../../../hooks/use-body-scroll-lock";
 import type { LucideIcon } from "lucide-react";
@@ -50,6 +51,8 @@ export function FormDialog({
   size = "md",
   footerAlign = "start",
 }: FormDialogProps) {
+  const { t } = useTranslation();
+  const titleId = useId();
   useBodyScrollLock(open);
 
   if (!open) return null;
@@ -63,8 +66,12 @@ export function FormDialog({
       <div className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm" />
 
       {/* Panel */}
+      {/* A dialog to assistive technology too, named by its title. */}
       <div
-        className={`relative z-10 flex max-h-[92vh] w-full ${SIZE_CLASS[size]} flex-col overflow-hidden rounded-2xl bg-cream-card shadow-2xl`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={`relative z-10 flex max-h-[92dvh] w-full ${SIZE_CLASS[size]} flex-col overflow-hidden rounded-2xl bg-cream-card shadow-2xl`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -77,12 +84,14 @@ export function FormDialog({
                 </div>
               )}
               <div>
-                <h2 className="font-serif text-lg font-bold text-cream">{title}</h2>
+                <h2 id={titleId} className="font-serif text-lg font-bold text-cream">{title}</h2>
                 {subtitle && <p className="text-xs text-cream/70">{subtitle}</p>}
               </div>
             </div>
             <button
+              type="button"
               onClick={onClose}
+              aria-label={t("admin.close")}
               className="grid size-8 place-items-center rounded-full text-cream/80 transition hover:bg-cream/15 hover:text-cream"
             >
               <X size={18} />

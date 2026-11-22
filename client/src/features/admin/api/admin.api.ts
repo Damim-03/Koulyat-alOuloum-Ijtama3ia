@@ -1,12 +1,25 @@
+import type { TeamSizeRule, TeamSizes } from "../../../lib/team-size";
+import type { SpecLevel } from "../../../lib/spec-level";
+import type { TopicTypeRow } from "../../../types/topic-extras";
 import { client } from "../../../lib/api/client";
+import { EMPTY_SITE_TEXTS, asSiteTexts, type SiteTexts } from "../../../i18n/site-texts";
 import type {
   TitlesListParams,
+  TopicExportParams,
+  TopicExportPreview,
+  ProposalWindow,
+  SelectionWindow,
+  TeamSizeImpact,
+  TeamSizeState,
+  TopicQuotaState,
   TopicTitlesList,
   OverviewStats,
   Paginated,
   StudentImportPreview,
   StudentImportResult,
   ProfessorImportResult,
+  TopicImportResult,
+  AssignedTopicImportResult,
   UserLite,
   Student,
   Professor,
@@ -23,6 +36,8 @@ import type {
   DefenseClashes,
   DefenseStats,
   AdminGroupRequest,
+  AdminGroupRequestCounts,
+  AdminRequestTopic,
   AdminDashboard,
   UserDetail,
   Filiere,
@@ -30,6 +45,11 @@ import type {
   UniversityDomain,
   AcademicStructurePayload,
   AcademicStructureResult,
+  AuditActor,
+  AuditCountry,
+  AuditLogEntry,
+  AuditLogParams,
+  AuditSummary,
 } from "../../../types/admin";
 import type {
   AboutPage,
@@ -41,6 +61,13 @@ import type {
   NewsItem,
   SlidePlacement,
 } from "../../../types/site.types";
+import type { SupervisionTemplate } from "../../supervision/lib/sheet-template";
+
+/** The supervision sheet as saved (`null`: never), and the original it falls back to. */
+export interface SupervisionSheetContent {
+  content: SupervisionTemplate | null;
+  defaults: SupervisionTemplate;
+}
 
 const BASE = "/admin";
 
@@ -49,6 +76,14 @@ export interface ListParams {
   limit?: number;
   search?: string;
   [key: string]: unknown;
+}
+
+export interface TopicTypeInput {
+  departmentId: string;
+  name: string;
+  code: string;
+  color: string;
+  sortOrder?: number;
 }
 
 export const adminApi = {
@@ -182,6 +217,50 @@ export const adminApi = {
     return r.data;
   },
 
+  topicImportTemplate: () =>
+    client
+      .get<Blob>(`${BASE}/topics/import/template`, { responseType: "blob" })
+      .then((r) => r.data),
+  previewTopicImport: async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file); // "file" لمطابقة xlsxFileUpload
+    const r = await client.post<StudentImportPreview>(`${BASE}/topics/import/preview`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return r.data;
+  },
+  importTopics: async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await client.post<TopicImportResult>(`${BASE}/topics/import`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 5 * 60 * 1000,
+    });
+    return r.data;
+  },
+
+  assignedTopicImportTemplate: () =>
+    client
+      .get<Blob>(`${BASE}/topics/assigned/import/template`, { responseType: "blob" })
+      .then((r) => r.data),
+  previewAssignedTopicImport: async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file); // "file" لمطابقة xlsxFileUpload
+    const r = await client.post<StudentImportPreview>(`${BASE}/topics/assigned/import/preview`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return r.data;
+  },
+  importAssignedTopics: async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await client.post<AssignedTopicImportResult>(`${BASE}/topics/assigned/import`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 5 * 60 * 1000,
+    });
+    return r.data;
+  },
+
   uploadImage: async (file: File) => {
     const fd = new FormData();
     fd.append("image", file); // "image" لمطابقة cardUpload.single("image")
@@ -241,6 +320,17 @@ export const adminApi = {
       .then((r) => r.data.department),
   deleteDepartment: (id: string) =>
     client.delete(`${BASE}/departments/${id}`).then((r) => r.data),
+
+  // ── Topic types: a department's axes, with a code and a colour each ──
+  listTopicTypes: (departmentId?: string) =>
+    client
+      .get<{ types: TopicTypeRow[] }>(`${BASE}/topic-types`, { params: departmentId ? { departmentId } : {} })
+      .then((r) => r.data.types),
+  createTopicType: (data: TopicTypeInput) =>
+    client.post<{ type: TopicTypeRow }>(`${BASE}/topic-types`, data).then((r) => r.data.type),
+  updateTopicType: (id: string, data: Partial<Omit<TopicTypeInput, "departmentId">>) =>
+    client.patch<{ type: TopicTypeRow }>(`${BASE}/topic-types/${id}`, data).then((r) => r.data.type),
+  deleteTopicType: (id: string) => client.delete(`${BASE}/topic-types/${id}`).then((r) => r.data),
 
   // ── Specializations ──
   listSpecializations: () =>
@@ -328,6 +418,43 @@ export const adminApi = {
       .then((r) => r.data.academicYear),
   deleteAcademicYear: (id: string) =>
     client.delete(`${BASE}/academic-years/${id}`).then((r) => r.data),
+  /** فترة اقتراح المواضيع لسنة: تُقرأ، وتُحدَّد (من يومٍ إلى يوم)، وتُلغى. */
+  proposalWindow: (yearId: string) =>
+    client.get<ProposalWindow>(`${BASE}/academic-years/${yearId}/proposal-window`).then((r) => r.data),
+  setProposalWindow: (yearId: string, body: { opensOn: string; closesOn: string; opensTime?: string; closesTime?: string }) =>
+    client.put<ProposalWindow>(`${BASE}/academic-years/${yearId}/proposal-window`, body).then((r) => r.data),
+  clearProposalWindow: (yearId: string) =>
+    client.delete<ProposalWindow>(`${BASE}/academic-years/${yearId}/proposal-window`).then((r) => r.data),
+  selectionWindow: (yearId: string) =>
+    client.get<SelectionWindow>(`${BASE}/academic-years/${yearId}/selection-window`).then((r) => r.data),
+  setSelectionWindow: (yearId: string, body: { opensOn: string; closesOn: string; opensTime?: string; closesTime?: string }) =>
+    client.put<SelectionWindow>(`${BASE}/academic-years/${yearId}/selection-window`, body).then((r) => r.data),
+  clearSelectionWindow: (yearId: string) =>
+    client.delete<SelectionWindow>(`${BASE}/academic-years/${yearId}/selection-window`).then((r) => r.data),
+  // The number of students in every topic of a year.
+  teamSize: (yearId: string) =>
+    client.get<TeamSizeState>(`${BASE}/academic-years/${yearId}/team-size`).then((r) => r.data),
+  /** The rules in the query, one per level: `licence=max-3&master=exact-2`. */
+  teamSizePreview: (yearId: string, rules: TeamSizes) =>
+    client
+      .get<TeamSizeImpact>(`${BASE}/academic-years/${yearId}/team-size/preview`, {
+        params: Object.fromEntries(Object.entries(rules).map(([level, r]) => [level, `${r!.mode}-${r!.n}`])),
+      })
+      .then((r) => r.data),
+  setTeamSize: (yearId: string, body: { rules: Record<SpecLevel, TeamSizeRule | null>; applyToExisting: boolean }) =>
+    client
+      .put<TeamSizeState & { applied: { changed: number } }>(`${BASE}/academic-years/${yearId}/team-size`, body)
+      .then((r) => r.data),
+  clearTeamSize: (yearId: string) =>
+    client.delete<TeamSizeState>(`${BASE}/academic-years/${yearId}/team-size`).then((r) => r.data),
+
+  // ── حدّ المواضيع لكلّ أستاذ ──
+  topicQuota: (yearId: string) =>
+    client.get<TopicQuotaState>(`${BASE}/academic-years/${yearId}/topic-quota`).then((r) => r.data),
+  setTopicQuota: (yearId: string, max: number) =>
+    client.put<TopicQuotaState>(`${BASE}/academic-years/${yearId}/topic-quota`, { max }).then((r) => r.data),
+  clearTopicQuota: (yearId: string) =>
+    client.delete<TopicQuotaState>(`${BASE}/academic-years/${yearId}/topic-quota`).then((r) => r.data),
 
   // ── The archive ──
   listArchiveYears: () =>
@@ -358,6 +485,14 @@ export const adminApi = {
   /** The memoir titles of a scope, grouped by specialization — before or after assignment. */
   topicTitlesList: (params: TitlesListParams) =>
     client.get<TopicTitlesList>(`${BASE}/topics/titles-list`, { params }).then((r) => r.data),
+  /** المواضيع بفلاتر الصفحة — ملفّ Excel، بطلبتها أو بدونهم. */
+  /** The Excel file's sheets — a sheet per level — their first rows as it will draw them, seen before it is downloaded. */
+  previewTopicsExport: (params: TopicExportParams) =>
+    client.get<{ preview: TopicExportPreview }>(`${BASE}/topics/export/preview`, { params }).then((r) => r.data.preview),
+  exportTopics: (params: TopicExportParams) =>
+    client
+      .get<Blob>(`${BASE}/topics/export`, { params, responseType: "blob" })
+      .then((r) => r.data),
   listTopics: (params?: ListParams) =>
     client
       .get<Paginated<AdminTopic>>(`${BASE}/topics`, { params })
@@ -420,6 +555,19 @@ export const adminApi = {
   listGroupRequests: (params?: ListParams) =>
     client
       .get<Paginated<AdminGroupRequest>>(`${BASE}/group-requests`, { params })
+      .then((r) => r.data),
+  /** The same requests gathered under their topics; pages count topics. */
+  /** The audit log — read-only, newest first. */
+  auditLogs: (params?: AuditLogParams) =>
+    client.get<Paginated<AuditLogEntry>>(`${BASE}/audit-logs`, { params }).then((r) => r.data),
+  auditActors: () => client.get<{ actors: AuditActor[] }>(`${BASE}/audit-logs/actors`).then((r) => r.data.actors),
+  auditSummary: () => client.get<AuditSummary>(`${BASE}/audit-logs/summary`).then((r) => r.data),
+  auditCountries: () =>
+    client.get<{ countries: AuditCountry[] }>(`${BASE}/audit-logs/countries`).then((r) => r.data.countries),
+
+  listGroupRequestsByTopic: (params?: ListParams) =>
+    client
+      .get<Paginated<AdminRequestTopic> & { counts: AdminGroupRequestCounts; pageTotal?: number }>(`${BASE}/group-requests/by-topic`, { params })
       .then((r) => r.data),
   getGroupRequest: (id: string) =>
     client
@@ -586,4 +734,22 @@ export const adminApi = {
     client
       .put<{ content: LoginContent }>(`${BASE}/login-page`, data)
       .then((r) => r.data.content),
+
+  // ── ورقة «طلب الموافقة على الإشراف» ──
+  getSupervisionSheet: () =>
+    client.get<SupervisionSheetContent>(`${BASE}/supervision-sheet`).then((r) => r.data),
+  saveSupervisionSheet: (data: SupervisionTemplate) =>
+    client.put<SupervisionSheetContent>(`${BASE}/supervision-sheet`, data).then((r) => r.data),
+  resetSupervisionSheet: () =>
+    client.delete<SupervisionSheetContent>(`${BASE}/supervision-sheet`).then((r) => r.data),
+
+  // ── نصوص الموقع ──
+  getSiteTexts: () =>
+    client
+      .get<{ texts: SiteTexts }>(`${BASE}/site-texts`)
+      .then((r) => asSiteTexts(r.data.texts) ?? EMPTY_SITE_TEXTS),
+  saveSiteTexts: (data: SiteTexts) =>
+    client
+      .put<{ texts: SiteTexts }>(`${BASE}/site-texts`, data)
+      .then((r) => asSiteTexts(r.data.texts) ?? data),
 };

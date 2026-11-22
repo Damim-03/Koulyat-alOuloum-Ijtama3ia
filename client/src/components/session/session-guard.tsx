@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/use-auth";
 import { useLanguage } from "../../hooks/use-language";
 import { useAuthStore } from "../../store/auth.store";
-import { SESSION_EXPIRED_EVENT } from "../../lib/api/client";
+import { SESSION_EXPIRED_EVENT, type SessionEndReason } from "../../lib/api/client";
 import { PATHS } from "../../routes/paths";
 import { SessionExpiredModal } from "./session-expired-modal";
 
@@ -11,16 +11,17 @@ const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 min
 
 export function SessionGuard({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { logout } = useAuth();
   const { localePath } = useLanguage();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState<"idle" | "token">("token");
+  const [reason, setReason] = useState<"idle" | SessionEndReason>("token");
   const shownRef = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showExpired = (r: "idle" | "token") => {
+  const showExpired = (r: "idle" | SessionEndReason) => {
     if (shownRef.current) return;
     shownRef.current = true;
     setReason(r);
@@ -31,7 +32,8 @@ export function SessionGuard({ children }: { children: ReactNode }) {
 
   // 1) token failure event from axios
   useEffect(() => {
-    const handler = () => showExpired("token");
+    const handler = (e: Event) =>
+      showExpired((e as CustomEvent<SessionEndReason | undefined>).detail ?? "token");
     window.addEventListener(SESSION_EXPIRED_EVENT, handler);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handler);
   }, []);
@@ -58,7 +60,9 @@ export function SessionGuard({ children }: { children: ReactNode }) {
     setOpen(false);
     shownRef.current = false;
     logout(); // navigates to login
-    navigate(localePath(PATHS.login), { replace: true });
+    // ProtectedRoute has usually redirected already, noting where the reader
+    // was; keeping that note brings them back there once signed in again.
+    navigate(localePath(PATHS.login), { replace: true, state: location.state });
   };
 
   return (

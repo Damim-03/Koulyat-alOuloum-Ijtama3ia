@@ -204,12 +204,26 @@ describe("مقعد الإسناد", () => {
     expect(onResolve).toHaveBeenCalledWith(0, null);
   });
 
-  it("نصٌّ لا يطابق رقماً ⇒ يُعرض ما وجده الخادم لينقره المستعمل", async () => {
+  it("اسمٌ لا رقم ⇒ لا يُقال «لا طالب بهذا الرقم»: يُبحث في قائمة طلبة التخصّص الأحرار، والنقر يملأ رقمه", async () => {
     const user = userEvent.setup();
     const { onChange } = setup({ value: "أمينة" });
 
-    expect(screen.getByText("admin.noStudentWithNumber")).toBeInTheDocument();
-    await user.click(screen.getByText(STUDENT.registrationNumber));
+    expect(screen.queryByText("admin.noStudentWithNumber")).toBeNull();
+    // Not looked up as a number.
+    expect(calls.some((c) => c.enabled && (c.params as Record<string, unknown>)?.limit === 5)).toBe(false);
+
+    await user.click(screen.getByRole("combobox"));
+    const option = await screen.findByRole("option", { name: new RegExp(STUDENT.registrationNumber) });
+    expect(
+      calls.some(
+        (c) =>
+          c.enabled &&
+          (c.params as Record<string, unknown>)?.quickSearch === "أمينة" &&
+          (c.params as Record<string, unknown>)?.specializationId === "spec-7" &&
+          (c.params as Record<string, unknown>)?.unassigned === "true",
+      ),
+    ).toBe(true);
+    await user.click(option);
     expect(onChange).toHaveBeenCalledWith(0, STUDENT.registrationNumber);
   });
 

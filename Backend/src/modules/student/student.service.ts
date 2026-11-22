@@ -1,7 +1,9 @@
 import { prisma } from "../../core/prisma/client";
+import type { Prisma } from "../../generated/prisma";
 import {
   AVAILABLE_TO_STUDENTS,
-  CAP_ATTEMPTS,
+  COUNTED_ON_CAP,
+  computeTopicStatus,
 } from "../../core/topic/topic-status";
 import {
   NotFoundException,
@@ -10,8 +12,10 @@ import {
 } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { CreateGroupRequestDTO, ListTopicsDTO } from "./student.validation";
-import { publicUser } from "../../core/prisma/selects";
+import { badgeUser, professorBadge } from "../../core/prisma/selects";
 import { notifyAdminsQuietly } from "../notification/notification.service";
+import { tr } from "../../core/i18n";
+import { assertSelectionNotClosed, assertSelectionOpen, selectionWindowState } from "../../core/academic/selection-window";
 
 //
 // ─── resolve the Student row for the logged-in user ───────────
@@ -21,7 +25,7 @@ const getStudent = async (userId: string) => {
   const student = await prisma.student.findUnique({ where: { userId } });
   if (!student) {
     throw new NotFoundException(
-      "Student not found",
+      tr("notFound.student"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
@@ -71,7 +75,7 @@ export const browseTopicsService = async (
     include: {
       specialization: true,
       academicYear: true,
-      professor: { include: { user: publicUser } },
+      professor: professorBadge,
       _count: { select: { groupRequests: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -86,20 +90,20 @@ export const getTopicByIdService = async (userId: string, topicId: string) => {
     include: {
       specialization: true,
       academicYear: true,
-      professor: { include: { user: publicUser } },
+      professor: professorBadge,
     },
   });
 
   if (!topic) {
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
   // Students may only view published topics.
   if (topic.status !== "approved" && topic.status !== "open") {
     throw new UnauthorizedException(
-      "This topic is not available",
+      tr("student.topicUnavailable"),
       ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     );
   }
@@ -139,7 +143,7 @@ export const lookupStudentByRegistrationService = async (
   const reg = registration.trim();
   if (!reg) {
     throw new BadRequestException(
-      "رقم التسجيل مطلوب",
+      tr("student.registrationRequired"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
@@ -184,19 +188,25 @@ export const lookupStudentByRegistrationService = async (
 //
 
 /**
- * True when a write lost the race for a topic — the unique index on
- * `GroupRequest.activeTopicId` refused it.
- *
- * The index name reaches us in different shapes depending on the driver: as
- * `meta.target` on some, nested under the adapter's error on the MariaDB one.
- * It is always in the message, so both are searched rather than picking one
- * and hoping.
+ * Still takes a request: published (or approved) with no group, and — when
+ * published — fewer pending requests than its cap. Said with the reason that
+ * applies: the cap is full, or the topic has been taken.
  */
-const isReservationClash = (e: unknown) => {
-  const err = e as { code?: string; meta?: unknown; message?: string };
-  if (err.code !== "P2002") return false;
-  return `${JSON.stringify(err.meta ?? "")} ${err.message ?? ""}`.includes(
-    "activeTopicId",
+const assertStillOpen = async (
+  db: Prisma.TransactionClient | typeof prisma,
+  topic: { id: string; maxRequests: number | null },
+) => {
+  const open = await db.graduationTopic.findFirst({
+    where: { id: topic.id, ...AVAILABLE_TO_STUDENTS },
+    select: { id: true },
+  });
+  if (open) return;
+  const pending = await db.groupRequest.count({ where: { topicId: topic.id, ...COUNTED_ON_CAP } });
+  throw new BadRequestException(
+    topic.maxRequests !== null && pending >= topic.maxRequests
+      ? tr("student.requestCap", { max: topic.maxRequests })
+      : tr("student.topicReserved"),
+    ErrorCodeEnum.VALIDATION_ERROR,
   );
 };
 
@@ -212,16 +222,20 @@ export const createGroupRequestService = async (
   });
   if (!topic) {
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
   if (topic.status !== "approved" && topic.status !== "open") {
     throw new BadRequestException(
-      "This topic is not open for requests",
+      tr("student.topicNotOpen"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
+
+  // 1.a.a مهلة اختيار المواضيع لسنة الموضوع (core/academic/selection-window):
+  // قبلها وبعدها لا طلب — بتاريخها، لا بخطأٍ عامّ.
+  await assertSelectionOpen(topic.academicYearId);
 
   // 1.a.b طلبُ فريقي على هذا الموضوع، إن كان ما يزال حيّاً.
   //
@@ -252,42 +266,59 @@ export const createGroupRequestService = async (
     throw new BadRequestException(
       mine.status === "accepted"
         ? isLeader
-          ? "طلبك على هذا الموضوع قُبل بالفعل — إنه موضوع مذكرتك."
-          : "فريقك مقبولٌ على هذا الموضوع — إنه موضوع مذكرتكم."
+          ? tr("student.ownAccepted")
+          : tr("student.teamAccepted")
         : isLeader
-          ? "لك طلبٌ على هذا الموضوع ما يزال بانتظار قرار الإدارة."
-          : "أرسل فريقك طلباً على هذا الموضوع، وهو بانتظار قرار الإدارة.",
+          ? tr("student.ownPending")
+          : tr("student.teamPending"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
 
-  // 1.b الموضوع يُحجز عند أول طلب: امنع أي طلب جديد إن لم يعد متاحاً.
-  const available = await prisma.graduationTopic.findFirst({
-    where: { id: topic.id, ...AVAILABLE_TO_STUDENTS },
-    select: { id: true },
-  });
-  if (!available) {
-    throw new BadRequestException(
-      "هذا الموضوع محجوز بالفعل",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  }
-
-  // 1.c سقفُ المحاولات، إن وضعت الإدارة له سقفاً.
+  // 1.a.c المرسِل نفسه، بالقاعدة التي يُفحص بها زملاؤه (2.b).
   //
-  // ويُعدّ **كلُّ** ما وصل الموضوع لا الحيَّ منه: الفهرسُ الفريد على
-  // `activeTopicId` لا يسمح بأكثر من طلبٍ حيٍّ واحد أصلاً، فعدُّ الحيّ
-  // يجعل السقف بلا أثر. والمقصود منعُ فريقٍ يُعيد الطلب كلّما رُفض.
-  if (topic.maxRequests !== null) {
-    const attempts = await prisma.groupRequest.count({
-      where: { topicId: topic.id, ...CAP_ATTEMPTS },
-    });
-    if (attempts >= topic.maxRequests)
-      throw new BadRequestException(
-        `بلغ هذا الموضوع سقف الطلبات المسموح به (${topic.maxRequests}).`,
-        ErrorCodeEnum.VALIDATION_ERROR,
-      );
+  // كان الفحصُ على الزملاء وحدهم: أيمن عضوٌ في فريق أحمد — أو له مشروعٌ
+  // قائم — يُرسل طلباً بنفسه ومعه علاء وحسام، فيُفحص علاء وحسام ولا يُفحص
+  // هو. فيمرّ الطلب، وإن قُبل صار أيمن في مشروعين.
+  //
+  // وطلباتُ المرسِل التي أرسلها هو مستثناةٌ كما هناك: هي الفريقُ نفسه يطلب
+  // موضوعاً ثانياً بأولويةٍ أخرى.
+  const [ownProject, ownOtherTeam] = await Promise.all([
+    prisma.projectMember.findFirst({
+      where: { studentId: leader.id },
+      select: { group: { select: { topic: { select: { title: true } } } } },
+    }),
+    prisma.groupRequestMember.findFirst({
+      where: { studentId: leader.id, request: otherTeamsLiveRequest(leader.id) },
+      select: {
+        request: {
+          select: {
+            topic: { select: { title: true } },
+            leader: { select: { user: { select: { firstName: true, lastName: true } } } },
+          },
+        },
+      },
+    }),
+  ]);
+  if (ownProject)
+    throw new BadRequestException(
+      tr("student.selfHasProject", { title: ownProject.group.topic.title }),
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+  if (ownOtherTeam) {
+    const { firstName, lastName } = ownOtherTeam.request.leader.user;
+    throw new BadRequestException(
+      tr("student.selfInOtherTeam", {
+        name: [firstName, lastName].filter(Boolean).join(" "),
+        title: ownOtherTeam.request.topic.title,
+      }),
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
   }
+
+  // 1.b ما يزال يقبل طلباً — الفحصُ نفسه يُعاد تحت القفل عند الكتابة (7)؛
+  // وهنا ليُقال السببُ الصحيح قبل أن يُبنى الفريق.
+  await assertStillOpen(prisma, topic);
 
   // 2. Resolve teammate registration numbers → Student rows.
   const regNumbers = Array.from(
@@ -309,7 +340,7 @@ export const createGroupRequestService = async (
   // بالنصّ قبله: ما طابقته قاعدة البيانات هو ما يُعتدّ به.
   if (teammates.some((s) => s.id === leader.id)) {
     throw new BadRequestException(
-      "لا يمكنك إدخال رقم تسجيلك ضمن الزملاء — المرسِل يُضاف تلقائيًا.",
+      tr("student.selfAsMember"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
@@ -319,7 +350,7 @@ export const createGroupRequestService = async (
     const found = new Set(teammates.map((s) => s.registrationNumber));
     const missing = regNumbers.filter((r) => !found.has(r));
     throw new BadRequestException(
-      `أرقام تسجيل غير موجودة: ${missing.join(", ")}`,
+      tr("student.unknownRegistrations", { list: missing.join(", ") }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
@@ -347,12 +378,12 @@ export const createGroupRequestService = async (
     ]);
     if (inProject)
       throw new BadRequestException(
-        `الطالب ${inProject.student.registrationNumber} لديه مذكرة تخرّج بالفعل — لا يمكن إضافته إلى مجموعتك.`,
+        tr("student.memberHasProject", { reg: inProject.student.registrationNumber }),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
     if (inOtherTeam)
       throw new BadRequestException(
-        `الطالب ${inOtherTeam.student.registrationNumber} منضمٌّ بالفعل إلى مجموعة أخرى — لا يمكن إضافته إلى مجموعتك.`,
+        tr("student.memberInOtherTeam", { reg: inOtherTeam.student.registrationNumber }),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
   }
@@ -365,65 +396,52 @@ export const createGroupRequestService = async (
   // 4. Team size must not exceed the topic capacity.
   if (memberStudentIds.length > topic.maxStudents) {
     throw new BadRequestException(
-      `الحد الأقصى لهذا الموضوع ${topic.maxStudents} طلاب`,
+      tr("student.teamTooBig", { max: topic.maxStudents }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
 
-  // 6. None of the members may already be in an accepted group request
-  //    for this same topic (prevents double-placement).
-  const alreadyPlaced = await prisma.groupRequestMember.findFirst({
-    where: {
-      studentId: { in: memberStudentIds },
-      request: { topicId: topic.id, status: "accepted" },
-    },
-  });
-  if (alreadyPlaced) {
-    throw new BadRequestException(
-      "أحد الأعضاء منضمٌّ بالفعل إلى مجموعة مقبولة لهذا الموضوع",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  }
+  // 6. A member already in an accepted request for this topic needs no check
+  //    of its own: any accepted request takes the topic out of
+  //    AVAILABLE_TO_STUDENTS, so `assertStillOpen` refuses it — above, and
+  //    again under the row lock below, whoever was accepted in between.
 
   // 7. Create the request with its members (status forced to pending).
-  // Two teams can still arrive together — the read above cannot prevent
-  // that, only give a clear message in the ordinary case. The unique index
-  // is what settles it, and this turns its error into the same sentence.
-  let request;
-  try {
-    request = await prisma.groupRequest.create({
-    data: {
-      topicId: topic.id,
-      // Reserves the topic. The read above is only there to give a clear
-      // message first; this is what actually settles a race.
-      activeTopicId: topic.id,
-      leaderStudentId: leader.id,
-      priority: data.priority,
-      status: "pending",
-      members: {
-        create: memberStudentIds.map((studentId) => ({ studentId })),
+  //
+  // Several teams may ask at once, up to the cap — so two arriving together
+  // for the last place would both pass the reads above. The topic's row is
+  // locked for the length of the transaction: requests on the same topic
+  // queue behind one another, and each re-checks the cap with the previous
+  // one already counted. Requests on other topics are not held up.
+  const request = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM GraduationTopic WHERE id = ${topic.id} FOR UPDATE`;
+    await assertStillOpen(tx, topic);
+    const created = await tx.groupRequest.create({
+      data: {
+        topicId: topic.id,
+        leaderStudentId: leader.id,
+        priority: data.priority,
+        status: "pending",
+        members: {
+          create: memberStudentIds.map((studentId) => ({ studentId })),
+        },
       },
-    },
-    include: {
-      topic: { select: { id: true, title: true } },
-      members: { include: { student: { include: { user: publicUser } } } },
-    },
+      include: {
+        topic: { select: { id: true, title: true } },
+        members: { include: { student: { include: { user: badgeUser } } } },
+      },
     });
-  } catch (e) {
-    if (isReservationClash(e))
-      throw new BadRequestException(
-        "هذا الموضوع محجوز بالفعل",
-        ErrorCodeEnum.VALIDATION_ERROR,
-      );
-    throw e;
-  }
+    // The pending count — the cap's measure — moves with it.
+    await computeTopicStatus(tx, topic.id);
+    return created;
+  });
 
   // الطلب يحجز الموضوع ويقف بانتظار قرار الإدارة. وكلّما طال انتظاره تعطّل
   // فريقٌ كامل عن موضوعٍ آخر — فالتبليغ هنا ليس ترفاً.
   await notifyAdminsQuietly({
     type: "general",
-    title: "طلبُ مجموعة جديد",
-    message: `وصل طلبُ مجموعة على موضوع: «${request.topic.title}».`,
+    title: { key: "notif.groupRequestNew.title" },
+    message: { key: "notif.groupRequestNew.message", params: { title: request.topic.title } },
     link: "/admin/group-requests",
   });
 
@@ -464,7 +482,7 @@ export const getMyGroupRequestsService = async (userId: string) => {
           specialization: { select: { id: true, name: true } },
         },
       },
-      members: { include: { student: { include: { user: publicUser } } } },
+      members: { include: { student: { include: { user: badgeUser } } } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -487,24 +505,31 @@ export const cancelGroupRequestService = async (
   });
   if (!request) {
     throw new NotFoundException(
-      "Request not found",
+      tr("notFound.groupRequest"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
   if (request.leaderStudentId !== student.id) {
     throw new UnauthorizedException(
-      "You do not own this request",
+      tr("access.notOwner.request"),
       ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     );
   }
   if (request.status !== "pending") {
     throw new BadRequestException(
-      "لا يمكن إلغاء طلب تمت مراجعته",
+      tr("student.requestReviewed"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
+  // After the deadline a request sent in time is the administration's to decide: it stays.
+  const topic = await prisma.graduationTopic.findUnique({ where: { id: request.topicId }, select: { academicYearId: true } });
+  if (topic) await assertSelectionNotClosed(topic.academicYearId);
 
-  await prisma.groupRequest.delete({ where: { id: requestId } });
+  // The team withdraws: its place on the topic's cap frees with it.
+  await prisma.$transaction(async (tx) => {
+    await tx.groupRequest.delete({ where: { id: requestId } });
+    await computeTopicStatus(tx, request.topicId);
+  });
   return { message: "تم إلغاء الطلب" };
 };
 
@@ -531,14 +556,14 @@ export const getMyProjectService = async (userId: string) => {
         include: {
           topic: {
             include: {
-              professor: { include: { user: publicUser } },
+              professor: professorBadge,
               academicYear: { select: { id: true, title: true } },
               specialization: { select: { id: true, name: true } },
             },
           },
           members: {
             orderBy: { isLeader: "desc" },
-            include: { student: { include: { user: publicUser } } },
+            include: { student: { include: { user: badgeUser } } },
           },
           milestones: {
             orderBy: { order: "asc" },
@@ -612,7 +637,7 @@ export const getStudentDashboardService = async (userId: string) => {
   });
   if (!student) {
     throw new NotFoundException(
-      "Student not found",
+      tr("notFound.student"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
@@ -816,4 +841,22 @@ export const getStudentDashboardService = async (userId: string) => {
       rejectedRequests,
     },
   };
+};
+
+//
+// ─── THE DEADLINE TO CHOOSE ──────────────────────────────────
+//
+
+/**
+ * The deadline to choose topics for the student's own academic year
+ * (core/academic/selection-window): its days and where it stands now. No
+ * deadline set: `unset`, and choosing is open.
+ */
+export const selectionWindowService = async (userId: string) => {
+  const student = await getStudent(userId);
+  const year = await prisma.academicYear.findUnique({
+    where: { id: student.academicYearId },
+    select: { id: true, title: true, selectionOpenAt: true, selectionCloseAt: true },
+  });
+  return { window: year ? { ...year, state: selectionWindowState(year) } : null };
 };

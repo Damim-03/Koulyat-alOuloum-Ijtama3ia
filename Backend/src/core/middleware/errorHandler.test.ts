@@ -26,6 +26,7 @@ import request from "supertest";
 import { errorHandler } from "./errorHandler.middleware";
 import { BadRequestException, NotFoundException } from "../utils/appErros";
 import { ErrorCodeEnum } from "../enums/error-code.enum";
+import { listOf, tr } from "../i18n";
 
 /** أسرارٌ لو ظهرت في ردٍّ أو سجلٍّ كانت تسريباً. */
 const SECRET = "p@ssw0rd-must-never-appear";
@@ -70,7 +71,7 @@ describe("الفرع الأخير: خطأٌ غير متوقَّع", () => {
 
       expect(res.status).toBe(500);
       expect(res.body).toEqual({
-        message: "Internal Server Error",
+        message: tr("request.serverError"),
         errorCode: ErrorCodeEnum.INTERNAL_SERVER_ERROR,
         incidentId: expect.stringMatching(
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
@@ -176,7 +177,7 @@ describe("الفرع الأخير: خطأٌ غير متوقَّع", () => {
       const res = await request(appThrowing(() => thrown)).get("/boom");
 
       expect(res.status).toBe(500);
-      expect(res.body.message).toBe("Internal Server Error");
+      expect(res.body.message).toBe(tr("request.serverError"));
       expect(res.body.incidentId).toBeTruthy();
     } finally {
       log.restore();
@@ -342,7 +343,7 @@ describe("والمعروف لا يسقط إلى الفرع الأخير", () => 
       const res = await request(appThrowing(make)).get("/boom");
 
       expect(res.status).toBe(status);
-      expect(res.body.message).not.toBe("Internal Server Error");
+      expect(res.body.message).not.toBe(tr("request.serverError"));
       // ولا رقم حادثة: تلك للأعطال التي يتحمّلها الخادم.
       expect(res.body.incidentId).toBeUndefined();
       // ولا سطرَ سجلٍّ أصلاً: خطأ العميل ليس حادثة.
@@ -350,5 +351,50 @@ describe("والمعروف لا يسقط إلى الفرع الأخير", () => 
     } finally {
       log.restore();
     }
+  });
+});
+
+//
+// ═══ ما يُعرف ولا يرميه AppError ═══
+//
+
+describe("أخطاء الطلب والقاعدة المعروفة", () => {
+  const send = (make: () => unknown) => request(appThrowing(make)).get("/boom");
+
+  it("JSON معطوب ⇒ 400، وجسمٌ فوق الحدّ ⇒ 413، وأصلٌ غير مسموح ⇒ 403", async () => {
+    const bad = await send(() => Object.assign(new SyntaxError("Unexpected token"), { body: "{" }));
+    expect([bad.status, bad.body.message]).toEqual([400, tr("request.invalidJson")]);
+    const big = await send(() => Object.assign(new Error("request entity too large"), { type: "entity.too.large" }));
+    expect([big.status, big.body.message]).toEqual([413, tr("request.tooLarge")]);
+    const cors = await send(() => new Error("CORS not allowed"));
+    expect([cors.status, cors.body.message]).toEqual([403, tr("request.originNotAllowed")]);
+  });
+
+  /** اسم الحقل في أيّ موضعٍ وضعه المُشغِّل — أو لا اسم، فرسالةٌ عامّة بلا حقول. */
+  it.each<[string, object, string[]]>([
+    ["في meta.target مصفوفةً", { meta: { target: ["email", "username"] } }, ["email", "username"]],
+    ["في meta.target نصّاً", { meta: { target: "email" } }, ["email"]],
+    ["في اسم فهرسٍ بلا اسم نموذج", { message: "Unique constraint failed on the constraint: `email_key`" }, ["email"]],
+    ["ولا اسم في أيّ موضع", {}, []],
+  ])("تفرّدٌ منتهَك (P2002) — الحقل %s", async (_l, extra, fields) => {
+    const res = await send(() => ({ code: "P2002", ...extra }));
+    expect(res.status).toBe(409);
+    expect(res.body.fields).toEqual(fields);
+    expect(res.body.message).toBe(
+      fields.length ? tr("request.duplicateFields", { fields: listOf(fields) }) : tr("request.duplicate"),
+    );
+  });
+
+  it.each<[string, object, string[]]>([
+    ["في meta.field_name", { meta: { field_name: "professorId" } }, ["professorId"]],
+    ["في اسم قيدٍ بلا اسم نموذج", { message: "Foreign key constraint violated on the constraint: `professorId_fkey`" }, ["professorId"]],
+    ["ولا اسم في أيّ موضع", {}, []],
+  ])("مرجعٌ لا يقابل صفّاً (P2003) — الحقل %s", async (_l, extra, fields) => {
+    const res = await send(() => ({ code: "P2003", ...extra }));
+    expect(res.status).toBe(400);
+    expect(res.body.fields).toEqual(fields);
+    expect(res.body.message).toBe(
+      fields.length ? tr("request.missingRefFields", { fields: listOf(fields) }) : tr("request.missingRef"),
+    );
   });
 });

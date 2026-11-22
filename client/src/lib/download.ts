@@ -26,3 +26,17 @@ export function downloadBase64(base64: string, fileName: string, mime = XLSX_MIM
 /** «students-accounts-2026-09-29.xlsx» — تاريخ اليوم، فلا يكتب ملفٌّ فوق سابقه. */
 export const datedName = (base: string, ext = "xlsx") =>
   `${base}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+
+/**
+ * رسالةُ الخادم من خطأ طلبٍ جوابُه blob: جسمُ الخطأ نفسه blob، فيُقرأ نصّاً —
+ * وإلّا ظهرت رسالةٌ عامّة والخادم قال لماذا.
+ */
+export async function blobErrorMessage(e: unknown, fallback: string): Promise<string> {
+  const data = (e as { response?: { data?: unknown } })?.response?.data;
+  if (!(data instanceof Blob)) return fallback;
+  try {
+    return JSON.parse(await data.text()).message ?? fallback;
+  } catch {
+    return fallback;
+  }
+}

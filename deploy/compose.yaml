@@ -1,0 +1,123 @@
+# منصة مذكرتي — the platform, its database, and HTTPS in front of it.
+#
+#   cd deploy
+#   cp .env.example .env        # then fill it in (see README.md)
+#   docker compose up -d --build
+#
+# Three containers:
+#   db     MariaDB. On an internal network only: no port on the machine, and
+#          no way out to the internet.
+#   app    The platform (../Dockerfile). Reached only through caddy.
+#   caddy  The only one facing the network: ports 80 and 443, a certificate
+#          for DOMAIN obtained and renewed by itself.
+#
+# Everything that must survive a rebuild is in a named volume (db-data,
+# uploads, storage, caddy-data). `docker compose down` keeps them;
+# `docker compose down -v` DELETES THEM — the database included.
+
+name: mudhakkirati
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: mudhakkirati
+      MARIADB_USER: mudhakkirati
+      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in deploy/.env}
+      # Nobody signs in as root: the platform has its own user.
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+      # Upgrades the data files when the image moves to a newer 11.4.x.
+      MARIADB_AUTO_UPGRADE: "1"
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - db-data:/var/lib/mysql
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: mudhakkirati:latest
+    restart: unless-stopped
+    init: true
+    depends_on:
+      db:
+        condition: service_healthy
+    # Every setting and secret of the platform (JWT, SMTP…).
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # The password is URL-safe as generated (README.md): no encoding needed.
+      DATABASE_URL: mysql://mudhakkirati:${DB_PASSWORD}@db:3306/mudhakkirati
+      # The address in every email link, and the only origin allowed in.
+      FRONTEND_ORIGIN: ${PUBLIC_ORIGIN:-https://${DOMAIN:?set DOMAIN in deploy/.env}}
+      # One proxy (caddy) between the internet and the platform: the real
+      # address of each visitor is read from it, for the per-address limits.
+      TRUST_PROXY_HOPS: "1"
+    volumes:
+      - uploads:/app/Backend/uploads
+      - storage:/app/Backend/storage
+    # internal: to the database. edge: from caddy, and out to the mail server.
+    networks: [internal, edge]
+
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    depends_on: [app]
+    # LISTEN_ADDRESS=127.0.0.1 keeps it on this machine (a trial run);
+    # unset, it listens on every network the machine is on. HTTP_PORT and
+    # HTTPS_PORT move it off 80/443 when something else holds them — then
+    # PUBLIC_ORIGIN must say the port (https://localhost:8443).
+    ports:
+      - "${LISTEN_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${LISTEN_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+      - "${LISTEN_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge]
+
+  # Optional: a Cloudflare quick tunnel, for a trial with a real HTTPS address
+  # and no domain, no router setting — it works behind CGNAT too. Started only
+  # when asked for:
+  #   docker compose --profile tunnel up -d
+  #   docker compose logs tunnel | grep trycloudflare.com
+  # then PUBLIC_ORIGIN=<that address> in .env and `docker compose up -d app`.
+  # The address changes each time the tunnel starts. While it runs, the
+  # platform is on the internet; `docker compose stop tunnel` takes it off.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: [tunnel]
+    restart: unless-stopped
+    depends_on: [app]
+    # Straight to the platform: Cloudflare is the one proxy in front of it,
+    # as caddy is otherwise (TRUST_PROXY_HOPS=1 holds for both).
+    # HTTP/2 over TCP, not the default QUIC (UDP 7844): many networks — ISPs,
+    # institutions — drop that UDP, and the tunnel then never connects
+    # (Cloudflare answers "Error 1033").
+    command: ["tunnel", "--no-autoupdate", "--protocol", "http2", "--url", "http://app:3000"]
+    networks: [edge]
+
+networks:
+  internal:
+    internal: true
+  edge: {}
+
+volumes:
+  db-data:
+  uploads:
+  storage:
+  caddy-data:
+  caddy-config:

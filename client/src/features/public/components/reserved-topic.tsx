@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { GraduationCap, Info, Layers, Lock, Search, Users, X } from "lucide-react";
+import { FolderKanban, GraduationCap, Info, Layers, Lock, Search, Users, X } from "lucide-react";
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import { useBodyScrollLock } from "../../../hooks/use-body-scroll-lock";
 import { noneText } from "../../../lib/none-text";
@@ -28,6 +28,9 @@ const nameOf = (u?: Person) =>
  * واللوحة واحدةٌ في موضعين: نافذةٌ فوق القائمة حين تُنقر البطاقة، وصفحةٌ
  * حين يصل الطالب بالرابط المباشر — وهناك لا ملخّص، فالخادم لا يُسلّم شيئاً
  * من تفاصيل المحجوز.
+ *
+ * وقفلٌ ثانٍ بالبناء نفسه (`placed`): طالبٌ له مذكرة لا يفتح إلّا موضوعها —
+ * فالقفل يقول ذلك باسم مذكرته، وخطوته التالية «عرض مذكرتي».
  */
 export function ReservedTopicPanel({
   topic,
@@ -36,10 +39,15 @@ export function ReservedTopicPanel({
   onBrowseSupervisor,
   onClose,
   primaryRef,
+  placedIn,
+  onOpenProject,
 }: {
   topic?: Summary | null;
   titleId?: string;
   onBrowseAvailable: () => void;
+  /** The reader's own thesis: the lock is theirs, not the topic's. */
+  placedIn?: string | null;
+  onOpenProject?: () => void;
   /** يُعرض حين يُعرف المشرف: «مواضيع فلان المتاحة». */
   onBrowseSupervisor?: () => void;
   /** في النافذة وحدها: زرّ الإغلاق و«حسناً». */
@@ -48,10 +56,12 @@ export function ReservedTopicPanel({
 }) {
   const { t } = useTranslation();
   const prof = nameOf(topic?.professor?.user);
+  const placed = placedIn != null;
+  const k = (key: string, o?: Record<string, unknown>) => t(`public.${placed ? "placedDialog" : "reservedDialog"}.${key}`, o);
 
   return (
     <div
-      data-testid="reserved-panel"
+      data-testid={placed ? "placed-panel" : "reserved-panel"}
       className="overflow-hidden rounded-3xl border border-gold/25 bg-cream-card shadow-[0_30px_80px_-20px_rgba(10,20,18,0.55)]"
     >
       {/* ══ الرأس: الختم ══ */}
@@ -87,18 +97,18 @@ export function ReservedTopicPanel({
           <span className="animate-pulse-soft absolute inset-0 rounded-full bg-gold/20" />
           <span className="absolute inset-2 rounded-full border border-gold/40" />
           <span className="relative grid size-16 place-items-center rounded-full bg-linear-to-br from-gold-soft via-gold to-gold-soft/70 text-[var(--t-brand-deep)] shadow-[0_10px_30px_rgba(193,150,90,0.45)]">
-            <Lock size={28} strokeWidth={2.2} />
+            {placed ? <FolderKanban size={28} strokeWidth={2.2} /> : <Lock size={28} strokeWidth={2.2} />}
           </span>
         </div>
 
         <p className="relative mt-5 text-[11px] font-semibold tracking-[0.18em] text-gold-soft">
-          {t("public.reservedDialog.kicker")}
+          {k("kicker")}
         </p>
         <h2
           id={titleId}
           className="relative mt-1.5 font-serif text-2xl leading-snug font-bold text-cream"
         >
-          {t("public.reservedDialog.title")}
+          {k("title")}
         </h2>
       </div>
 
@@ -142,25 +152,38 @@ export function ReservedTopicPanel({
         )}
 
         <p className="text-sm leading-relaxed text-forest/85">
-          {t("public.reservedDialog.body")}
+          {k("body", { title: placedIn ?? "" })}
         </p>
         <p className="flex items-start gap-2 rounded-2xl bg-gold/8 px-4 py-3 text-xs leading-relaxed text-clay ring-1 ring-gold/20">
           <Info size={14} className="mt-0.5 shrink-0 text-gold" />
-          {t("public.reservedDialog.note")}
+          {k("note")}
         </p>
 
         <div className="space-y-2.5 pt-1">
-          <button
-            ref={primaryRef}
-            type="button"
-            onClick={onBrowseAvailable}
-            data-testid="reserved-browse-available"
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-l from-gold to-gold-soft py-3.5 text-sm font-bold text-[var(--t-brand-deep)] shadow-[0_10px_24px_rgba(193,150,90,0.35)] transition hover:brightness-105 active:scale-[0.98]"
-          >
-            <Search size={17} />
-            {t("public.reservedDialog.browseAvailable")}
-          </button>
-          {onBrowseSupervisor && prof && (
+          {placed ? (
+            <button
+              ref={primaryRef}
+              type="button"
+              onClick={onOpenProject}
+              data-testid="placed-open-project"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-l from-gold to-gold-soft py-3.5 text-sm font-bold text-[var(--t-brand-deep)] shadow-[0_10px_24px_rgba(193,150,90,0.35)] transition hover:brightness-105 active:scale-[0.98]"
+            >
+              <FolderKanban size={17} />
+              {k("openProject")}
+            </button>
+          ) : (
+            <button
+              ref={primaryRef}
+              type="button"
+              onClick={onBrowseAvailable}
+              data-testid="reserved-browse-available"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-l from-gold to-gold-soft py-3.5 text-sm font-bold text-[var(--t-brand-deep)] shadow-[0_10px_24px_rgba(193,150,90,0.35)] transition hover:brightness-105 active:scale-[0.98]"
+            >
+              <Search size={17} />
+              {t("public.reservedDialog.browseAvailable")}
+            </button>
+          )}
+          {!placed && onBrowseSupervisor && prof && (
             <button
               type="button"
               onClick={onBrowseSupervisor}
@@ -198,11 +221,15 @@ export function ReservedTopicDialog({
   onClose,
   onBrowseAvailable,
   onBrowseSupervisor,
+  placedIn,
+  onOpenProject,
 }: {
   topic: Summary | null;
   onClose: () => void;
   onBrowseAvailable: () => void;
   onBrowseSupervisor?: () => void;
+  placedIn?: string | null;
+  onOpenProject?: () => void;
 }) {
   const open = !!topic;
   useBodyScrollLock(open);
@@ -262,7 +289,7 @@ export function ReservedTopicDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        data-testid="reserved-dialog"
+        data-testid={placedIn != null ? "placed-dialog" : "reserved-dialog"}
         className="animate-scale-in relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl"
       >
         <ReservedTopicPanel
@@ -272,6 +299,8 @@ export function ReservedTopicDialog({
           onClose={onClose}
           onBrowseAvailable={onBrowseAvailable}
           onBrowseSupervisor={onBrowseSupervisor}
+          placedIn={placedIn}
+          onOpenProject={onOpenProject}
         />
       </div>
     </div>,

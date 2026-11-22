@@ -1,3 +1,4 @@
+import type { TopicExtrasRead } from "./topic-extras";
 import type { TopicStatus, MilestoneStatus } from "./enums";
 
 // ════════════════════════════════════════════════════════════
@@ -56,6 +57,11 @@ export interface AcademicYearLite {
   id: string;
   title: string;
   isActive: boolean;
+  /** The topic proposal period (lib/proposal-window). Both null: no period. */
+  proposalsOpenAt?: string | null;
+  proposalsCloseAt?: string | null;
+  /** The number of students in every topic of the year, by level, when the administration set it (lib/team-size). */
+  teamSizes?: import("../lib/team-size").TeamSizes | null;
 }
 
 // ── Student (nested in group requests / members) ──
@@ -81,7 +87,7 @@ export interface TopicGroupRequest {
 }
 
 // ── Topic ──
-export interface Topic {
+export interface Topic extends TopicExtrasRead {
   id: string;
   title: string;
   description: string;
@@ -330,6 +336,13 @@ export interface ProfessorDashboard {
 // ── Student lookup (proposing a team) ──
 // What GET /professor/students/search answers with: only the fields the
 // picker puts on screen.
+/** His limit for a year and how much of it he has used: «2 of 3». `max` null: no limit. */
+export interface TopicQuota {
+  year: { id: string; title: string } | null;
+  max: number | null;
+  used: number;
+}
+
 export interface StudentSearchHit {
   id: string;
   registrationNumber: string;

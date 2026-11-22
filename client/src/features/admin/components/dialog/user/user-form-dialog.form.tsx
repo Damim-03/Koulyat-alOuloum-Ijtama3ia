@@ -469,9 +469,11 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
     setAckError(false);
   }
 
+  // `keepFieldsRef` — see MilestoneFormDialog: a plain reset under the React
+  // Compiler can leave the fields unregistered, and typing is lost.
   useEffect(() => {
     if (open) {
-      reset(initial);
+      reset(initial, { keepFieldsRef: true });
       setShowPassword(false);
       setCropFile(null);
       setStepIndex(0);
@@ -517,7 +519,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
 
     const done = () => {
       onClose();
-      reset(initial);
+      reset(initial, { keepFieldsRef: true });
     };
     if (role === "student") {
       drop("role");
@@ -594,7 +596,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
         الأربع، والمحتوى وحده يتمرّر داخله.
         و`min` تحمي الشاشات القصيرة: على حاسوبٍ منخفض الارتفاع يصير ٩٠٪ منه.
       */}
-      <div className="animate-[fadeIn_0.15s_ease-out] relative flex h-[min(90vh,720px)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-forest/10 bg-cream-card shadow-2xl">
+      <div className="animate-[fadeIn_0.15s_ease-out] relative flex h-[min(90dvh,720px)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-forest/10 bg-cream-card shadow-2xl">
         {/* ── header ── */}
         <header className="relative shrink-0 bg-linear-to-l from-forest to-forest-deep px-6 py-3 text-cream">
           <div className="flex items-center gap-4">
@@ -888,6 +890,8 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
                   <button
                     type="button"
                     onClick={() => setShowPassword((s) => !s)}
+                    aria-label={t("auth.togglePassword")}
+                    aria-pressed={showPassword}
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-clay transition hover:text-forest"
                   >
                     {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -1028,7 +1032,7 @@ export function UserFormDialog({ open, onClose, lockedRole }: Props) {
 
                   {/* المستوى: ثلاثة أزرار لا قائمة — كما في نافذة التخصص.
                       يضيّق التخصصات ولا يُحفظ، والنقر على المختار يُلغيه. */}
-                  <FieldBox label={t("admin.specializationLevel")} icon={GraduationCap}>
+                  <FieldBox label={t("admin.specializationLevel")} icon={GraduationCap} group>
                     <LevelPicker
                       value={level}
                       counts={levelCounts}

@@ -11,7 +11,9 @@
      Server unreachable: no logout — the session may well be fine
 =============================================================== */
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
+import i18next from "i18next";
 import { env } from "../../config/env";
+import { localizeServerMessage } from "./localize";
 import { takeLegacyRefreshToken, useAuthStore } from "../../store/auth.store";
 import {
   reportServerUp,
@@ -21,6 +23,9 @@ import {
 
 // Listened for by a SessionGuard (shows a "session expired" modal).
 export const SESSION_EXPIRED_EVENT = "session:expired";
+
+/** Why a session ended, carried as the `detail` of SESSION_EXPIRED_EVENT. */
+export type SessionEndReason = "token" | "revoked";
 
 export const client = axios.create({
   baseURL: env.VITE_API_URL,
@@ -97,6 +102,8 @@ client.interceptors.request.use(
       ? useAuthStore.getState().accessToken
       : await ensureAccessToken();
     if (token) config.headers.Authorization = `Bearer ${token}`;
+    // لغة الواجهة — ليكتب الخادم بها ما يستطيع.
+    if (i18next.language) config.headers["Accept-Language"] = i18next.language;
 
     if (config.data instanceof FormData) {
       delete config.headers["Content-Type"];
@@ -105,7 +112,7 @@ client.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error),
+  // بلا معالج رفض: لا معترض طلبٍ قبله يرفض، وaxios يمرّر الرفض بنفسه.
 );
 
 /** No answer at all, or the proxy saying the server is not there. */
@@ -144,6 +151,17 @@ client.interceptors.response.use(
       return client(originalRequest);
     }
 
+    // The account must be put right first: the server says which way, and the
+    // gate in front of every dashboard shows that screen (AccountSetupGate).
+    if (error.response?.status === 403) {
+      const code = (error.response.data as { errorCode?: string } | undefined)?.errorCode;
+      const { patchUser } = useAuthStore.getState();
+      if (code === "PASSWORD_CHANGE_REQUIRED") patchUser({ mustChangePassword: true });
+      if (code === "TWO_FACTOR_SETUP_REQUIRED") patchUser({ twoFactorSetupRequired: true, twoFactorEnabled: false });
+    }
+
+    // رسالة الخادم بلغة الواجهة — لكلّ من يقرؤها بعد هنا (الإشعارات ونوافذ الخطأ).
+    if (error.response) localizeServerMessage(error.response.data, error.response.status);
     return Promise.reject(error);
   },
 );

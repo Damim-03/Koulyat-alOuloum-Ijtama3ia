@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Quote, GraduationCap } from "lucide-react";
 import { useLanguage } from "../../../hooks/use-language";
 import { assetUrl } from "../../../lib/asset-url";
+import { DEFAULT_DIRECTOR_PHOTO } from "../lib/director-photo";
 import { useSiteDirectorMessage } from "../hooks/site-hook";
 import {
   defaultDirectorMessage,
@@ -9,10 +10,6 @@ import {
   resolveDirector,
 } from "../lib/site-content";
 import type { DirectorBlock, SiteLang } from "../../../types/site.types";
-
-/** الصورة ما لم ترفع الإدارة صورةً. */
-export const DEFAULT_DIRECTOR_PHOTO =
-  "https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=600&auto=format&fit=crop";
 
 /**
  * «كلمة رئيس القسم» كما حرّرتها الإدارة — أو النصّ الافتراضيّ إن لم تحفظ

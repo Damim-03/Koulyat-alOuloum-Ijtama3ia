@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { joinList } from "../../../../lib/join-list";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -33,6 +34,7 @@ import { matchesQuery } from "../../lib/structure-stats";
 import i18n from "../../../../i18n/i18n";
 import { LEVEL_STYLE, SPEC_LEVELS, specChain } from "./spec-utils";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
+import { stackOnPhone } from "../../../../lib/stack-table";
 
 /**
  * Every specialization of the platform, wherever it sits.
@@ -180,7 +182,7 @@ export function AdminAcademicStructurePage() {
       students(s) > 0 && t("admin.struct.n.students", { count: students(s) }),
       topics(s) > 0 && t("admin.struct.n.topics", { count: topics(s) }),
     ].filter(Boolean);
-    return parts.length ? t("admin.struct.blocked", { what: parts.join("، ") }) : null;
+    return parts.length ? t("admin.struct.blocked", { what: joinList(parts) }) : null;
   };
 
   const tiles: { icon: LucideIcon; label: string; value: number; tone?: "warn"; on?: boolean; onClick?: () => void }[] = [
@@ -207,7 +209,7 @@ export function AdminAcademicStructurePage() {
         <div className="relative">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-4">
-              <span className="grid size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft">
+              <span className="hidden size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft sm:grid">
                 <GraduationCap size={26} />
               </span>
               <div>
@@ -435,6 +437,8 @@ export function AdminAcademicStructurePage() {
         filiereId={editing?.filiereId ?? editing?.filiere?.id ?? ""}
       />
       <DeleteNodeDialog
+        kind="spec"
+        trail={removing ? [chainOf(removing).faculty?.name ?? "", chainOf(removing).dept?.name ?? "", chainOf(removing).filiere?.name ?? ""] : []}
         target={removing}
         title={t("admin.struct.deleteTitle.spec")}
         loading={deleteSpec.isPending}
@@ -511,7 +515,7 @@ function SpecTable({
   return (
     <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-[12.5px]" data-testid="spec-table">
+        <table ref={stackOnPhone} className="stack-sm w-full min-w-[860px] text-[12.5px]" data-testid="spec-table">
           <thead className="border-b border-forest/10 bg-cream-2/60">
             <tr className="text-start text-[11px] font-bold tracking-wide text-clay">
               <th className="w-12 px-4 py-3 text-center">#</th>

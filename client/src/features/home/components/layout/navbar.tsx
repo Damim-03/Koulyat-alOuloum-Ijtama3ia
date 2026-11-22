@@ -19,6 +19,7 @@ import { ThemeToggle } from "../../../../components/theme-toggle";
 import { PATHS } from "../../../../routes/paths";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { personName } from "../../../../lib/person-name";
+import { useShown } from "../../../../i18n/site-visibility";
 
 // ┌─────────────────────────────────────────────────────────┐
 // │  ضع صور اللوغو هنا:                                        │
@@ -121,8 +122,10 @@ function Emblem({
   // faculty one is 1.3:1. A square box would fit the wide mark by its width and
   // leave it a quarter shorter, so the logos are matched on HEIGHT and each
   // takes the width its own artwork needs.
-  const height = small ? "h-12" : "h-18";
-  const box = small ? "size-12" : "size-18";
+  // On a phone the two marks stay small, or they leave the name between them
+  // a column too narrow for it.
+  const height = small ? "h-10 sm:h-12" : "h-12 sm:h-18";
+  const box = small ? "size-10 sm:size-12" : "size-12 sm:size-18";
 
   if (src) {
     return (
@@ -171,6 +174,8 @@ function Avatar({
 
 export function Navbar() {
   const { t } = useTranslation();
+  // What the admin hid (واجهة الموقع ← النصوص).
+  const shown = useShown();
   const { dir, isRTL } = useLanguage();
   const { isAuthenticated, user, role, logout } = useAuth();
   // الرابط النشط يُقرأ من المسار لا من نقرةٍ محفوظة: كان حالةً تبدأ بـ«الرئيسية»
@@ -232,7 +237,11 @@ export function Navbar() {
       <div className="relative overflow-hidden bg-cream-2">
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-linear-to-r from-transparent via-gold/40 to-transparent" />
         <div
-          className={`relative mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 transition-all duration-500 lg:px-8 ${scrolled ? "h-16" : "h-24"}`}
+          className={`relative mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 transition-all duration-500 sm:gap-4 sm:px-5 lg:px-8 ${
+            // A phone's narrow column wraps the name, so there the bar grows
+            // with it instead of clipping its first line.
+            scrolled ? "min-h-16 py-1.5 sm:h-16 sm:py-0" : "min-h-24 py-2 sm:h-24 sm:py-0"
+          }`}
         >
           <LocaleLink to={PATHS.home}>
             <Emblem
@@ -242,31 +251,35 @@ export function Navbar() {
             />
           </LocaleLink>
 
-          <div className="flex flex-1 flex-col items-center text-center">
+          <div className="flex min-w-0 flex-1 flex-col items-center text-center">
             <h1
               dir="ltr"
-              className={`font-serif font-bold tracking-tight text-forest transition-all duration-500 ${scrolled ? "text-base lg:text-lg" : "text-lg lg:text-2xl"}`}
+              className={`font-serif leading-snug font-bold tracking-tight text-forest transition-all duration-500 ${scrolled ? "text-[13px] sm:text-base lg:text-lg" : "text-sm sm:text-lg lg:text-2xl"}`}
             >
               {t("brand.nameLatin")}
             </h1>
 
-            <div className="mt-1 flex items-center gap-3">
-              <span className="h-px w-8 bg-linear-to-r from-transparent to-gold/50" />
-              <p className="text-[11px] font-medium text-clay lg:text-[13px]">
-                {t("brand.system")}
-              </p>
-              <span className="h-px w-8 bg-linear-to-l from-transparent to-gold/50" />
-            </div>
+            {shown("header.system") && (
+              <div className="mt-1 flex items-center gap-3">
+                <span className="hidden h-px w-8 bg-linear-to-r from-transparent to-gold/50 sm:block" />
+                <p className="text-[11px] font-medium text-clay lg:text-[13px]">
+                  {t("brand.system")}
+                </p>
+                <span className="hidden h-px w-8 bg-linear-to-l from-transparent to-gold/50 sm:block" />
+              </div>
+            )}
 
-            <p
-              className={`overflow-hidden text-clay/70 transition-all duration-500 ${
-                scrolled
-                  ? "mt-0 max-h-0 text-[0px] opacity-0"
-                  : "mt-1 max-h-5 text-[11px] opacity-100"
-              }`}
-            >
-              {t("brand.nameAr")}
-            </p>
+            {shown("header.caption") && (
+              <p
+                className={`overflow-hidden text-clay/70 transition-all duration-500 ${
+                  scrolled
+                    ? "mt-0 max-h-0 text-[0px] opacity-0"
+                    : "mt-1 max-h-5 text-[11px] opacity-100"
+                }`}
+              >
+                {t("brand.nameAr")}
+              </p>
+            )}
           </div>
 
           <LocaleLink to={PATHS.home}>
@@ -310,6 +323,7 @@ export function Navbar() {
                 }`}
               />
             </LocaleLink>
+            {shown("nav.topics") && (
             <LocaleLink
               to={PATHS.topics}
               className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
@@ -328,6 +342,8 @@ export function Navbar() {
                 }`}
               />
             </LocaleLink>
+            )}
+            {shown("nav.about") && (
             <LocaleLink
               to={PATHS.about}
               className={`group relative rounded-md px-4 py-1.5 text-[13px] font-medium transition ${
@@ -346,12 +362,16 @@ export function Navbar() {
                 }`}
               />
             </LocaleLink>
+            )}
           </nav>
 
           <div className="hidden items-center gap-3 md:flex">
             {isAuthenticated ? (
               <div className="relative" ref={menuRef}>
                 <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
                   onClick={() => {
                     setMenuOpen((o) => !o);
                     if (spotlight) setSpotlight(false);
@@ -476,6 +496,7 @@ export function Navbar() {
               {t("common.home")}
             </LocaleLink>
 
+            {shown("nav.topics") && (
             <LocaleLink
               to={PATHS.topics}
               onClick={() => {
@@ -489,7 +510,9 @@ export function Navbar() {
             >
               {t("common.topics")}
             </LocaleLink>
+            )}
 
+            {shown("nav.about") && (
             <LocaleLink
               to={PATHS.about}
               onClick={() => {
@@ -503,6 +526,7 @@ export function Navbar() {
             >
               {t("common.about")}
             </LocaleLink>
+            )}
 
             <div className="px-3 py-2">
               <LanguageSwitcher variant="menu" />

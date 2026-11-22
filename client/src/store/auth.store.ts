@@ -19,6 +19,8 @@ interface AuthState {
 
   login: (user: AuthUser, tokens: AuthTokens) => void;
   setUser: (user: AuthUser) => void;
+  /** Changes a few fields of the signed-in user — the account's flags. */
+  patchUser: (patch: Partial<AuthUser>) => void;
   setAccessToken: (token: string) => void;
   logout: () => void;
 }
@@ -50,6 +52,8 @@ export const useAuthStore = create<AuthState>()(
         }),
 
       setUser: (user) => set({ user }),
+
+      patchUser: (patch) => set((s) => (s.user ? { user: { ...s.user, ...patch } } : {})),
 
       setAccessToken: (token) => set({ accessToken: token }),
 

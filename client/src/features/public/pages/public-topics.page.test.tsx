@@ -21,6 +21,11 @@ vi.mock("react-i18next", () => ({
 }));
 vi.mock("i18next", () => ({ t: (key: string) => key }));
 let role = "student";
+// The student's deadline to choose, and their project (their own flows tests): none here.
+vi.mock("../../student/hooks/Student-hook", () => ({
+  useStudentSelectionWindow: () => ({ data: null }),
+  useMyProject: () => ({ data: null, isPending: false }),
+}));
 vi.mock("../../../hooks/use-auth", () => ({
   useAuth: () => ({ isAuthenticated: true, role }),
 }));
@@ -51,7 +56,9 @@ const topic = (id: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-let listPage: Record<string, unknown>;
+let listPage: Record<string, unknown> | undefined;
+let listError = false;
+const refetchList = vi.fn();
 let lastParams: Record<string, unknown> = {};
 
 const facets = {
@@ -78,8 +85,8 @@ vi.mock("../hooks/public-hook", () => ({
       data: listPage,
       isFetching: false,
       isPlaceholderData: false,
-      isError: false,
-      refetch: vi.fn(),
+      isError: listError,
+      refetch: refetchList,
     };
   },
   usePublicDepartments: () => ({
@@ -125,6 +132,8 @@ describe("صفحة المواضيع", () => {
   beforeEach(() => {
     localStorage.clear();
     role = "student";
+    listError = false;
+    refetchList.mockClear();
     listPage = {
       items: [topic("t-1"), topic("t-2", { isAvailable: false, isReserved: true })],
       total: 20,
@@ -299,6 +308,22 @@ describe("صفحة المواضيع", () => {
       expect(url()).toContain("status=available");
     });
 
+    it("والتركيز محبوسٌ فيها: Tab من آخر زرٍّ إلى أوّله، وShift+Tab من أوّله إلى آخره", async () => {
+      renderAt();
+      await userEvent.click(screen.getByTestId("topic-card-t-2"));
+      const buttons = within(screen.getByRole("dialog")).getAllByRole("button");
+      const first = buttons[0]!;
+      const last = buttons.at(-1)!;
+      last.focus();
+      await userEvent.keyboard("{Tab}");
+      expect(first).toHaveFocus();
+      await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+      expect(last).toHaveFocus();
+      // و«حسناً» تُغلقها.
+      await userEvent.click(screen.getByRole("button", { name: "public.reservedDialog.ok" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
     it("وEscape يُغلقها ويعيد التركيز إلى البطاقة", async () => {
       renderAt();
       const card = screen.getByTestId("topic-card-t-2");
@@ -338,5 +363,75 @@ describe("صفحة المواضيع", () => {
     // صفحة الموضوع — والفلاتر تُسلَّم إليها في الحالة لتعود بها.
     expect(screen.getByTestId("url")).toBeInTheDocument();
     expect(screen.queryByTestId("topics-grid")).not.toBeInTheDocument();
+  });
+});
+
+describe("صفحة المواضيع: لوحة المفاتيح والمقاعد والصفحات", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    role = "student";
+    listError = false;
+    refetchList.mockClear();
+    listPage = {
+      items: [topic("t-1")],
+      total: 90,
+      page: 1,
+      limit: 9,
+      counts: { all: 90, available: 90, reserved: 0 },
+    };
+  });
+
+  it("«/» يأخذ إلى البحث من أيّ مكان، لا من داخل حقل؛ وEscape يمحو ما كُتب", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    const search = screen.getByTestId("topics-search");
+    await user.keyboard("/");
+    expect(search).toHaveFocus();
+    await user.type(search, "مرابط");
+    // داخل الحقل «/» حرفٌ يُكتب، لا قفزة.
+    await user.keyboard("/");
+    expect(search).toHaveValue("مرابط/");
+    await user.keyboard("{Escape}");
+    expect(search).toHaveValue("");
+    expect(url()).not.toContain("q=");
+  });
+
+  it("المقاعد: رقاقةٌ تُختار وتُلغى بالنقرة نفسها، و«أيّ عدد» يُلغيها", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    const two = screen.getByRole("button", { name: /public\.browse\.seats:\{"count":2\}/ });
+    await user.click(two);
+    expect(url()).toContain("size=2");
+    await user.click(two);
+    expect(url()).not.toContain("size=");
+    await user.click(two);
+    await user.click(screen.getByRole("button", { name: /public\.browse\.anySize/ }));
+    expect(url()).not.toContain("size=");
+  });
+
+  it("عشر صفحات ⇒ ١ … ٤ ٥ ٦ … ١٠، والرقم ينقل إليها", async () => {
+    const user = userEvent.setup();
+    renderAt("/ar/topics?page=5");
+    const nav = screen.getByRole("navigation", { name: "public.browse.pagination" });
+    const labels = within(nav).getAllByRole("button").map((b) => b.textContent);
+    // السابق، ثمّ الأرقام (والفجوات ليست أزراراً)، ثمّ التالي.
+    expect(labels).toEqual(["", "1", "4", "5", "6", "10", ""]);
+    expect(within(nav).getAllByText("…")).toHaveLength(2);
+    await user.click(within(nav).getByRole("button", { name: 'public.browse.pageN:{"n":6}' }));
+    expect(url()).toContain("page=6");
+  });
+
+  it("صفحةٌ بعد النهاية (رابطٌ قديم) ⇒ تُعاد إلى آخرها", () => {
+    listPage = { ...listPage!, total: 20 };
+    renderAt("/ar/topics?page=9");
+    expect(url()).toContain("page=3");
+  });
+
+  it("التحميل يتعذّر قبل أيّ بيانات ⇒ «إعادة» تطلب من جديد", async () => {
+    listPage = undefined;
+    listError = true;
+    renderAt();
+    await userEvent.click(screen.getByRole("button", { name: "admin.retry" }));
+    expect(refetchList).toHaveBeenCalled();
   });
 });

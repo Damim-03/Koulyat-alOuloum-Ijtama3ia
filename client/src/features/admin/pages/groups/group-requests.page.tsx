@@ -18,11 +18,15 @@ import {
   ChevronUp,
   ChevronDown,
   Trash2,
+  LayoutList,
+  Rows3,
 } from "lucide-react";
 import type { AdminGroupRequest } from "../../../../types/admin";
 import { DangerConfirm } from "../../../../components/dialog/danger-confirm";
 import i18n from "../../../../i18n/i18n";
+import { TopicRequestsBoard } from "./group-requests-by-topic";
 import {
+  useGroupRequestsByTopic,
   useGroupRequests,
   useAcceptGroupRequest,
   useRejectGroupRequest,
@@ -40,6 +44,7 @@ import { Select } from "../../../../components/ui/select";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
 import { personName as nameByLang } from "../../../../lib/person-name";
+import { isPhoneNow } from "../../../../hooks/use-media-query";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -55,13 +60,15 @@ function fmtDate(iso?: string) {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
-  accepted: "bg-emerald-100 text-emerald-700",
-  rejected: "bg-red-100 text-red-700",
+  pending: "bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300",
+  accepted: "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300",
+  rejected: "bg-red-100 text-red-700 dark:bg-red-400/15 dark:text-red-300",
 };
 const STATUS_FILTERS = ["", "pending", "accepted", "rejected"] as const;
 
 const PAGE_SIZE = 10;
+/** Topics carry all their requests, so fewer of them make a page. */
+const TOPIC_PAGE_SIZE = 6;
 const selectCls =
   "w-full rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30";
 
@@ -75,7 +82,23 @@ export function AdminGroupRequestsPage() {
   // ── filters ──
   const [search, setSearch] = useState("");
   // A link may arrive with its filter — the dashboard's "pending requests".
-  const [initial] = useSearchParams();
+  const [initial, setUrl] = useSearchParams();
+  /*
+   * Two views of the same requests. By topic (the default): each topic with
+   * its competing teams side by side — where a choice between them is made.
+   * As a list: every request on its own line, newest decisions first. The
+   * choice stays in the address, so a reload or a shared link keeps it.
+   */
+  const view = initial.get("view") === "list" ? "list" : "topics";
+  // The topic this page was opened for — from its "decide on the request".
+  const focus = initial.get("topic") ?? "";
+  const setView = (v: "list" | "topics") => {
+    const next = new URLSearchParams(initial);
+    if (v === "list") next.set("view", "list");
+    else next.delete("view");
+    setUrl(next, { replace: true });
+    setPage(1);
+  };
   const [status, setStatus] = useState(() => {
     const s = initial.get("status") ?? "";
     return (STATUS_FILTERS as readonly string[]).includes(s) ? s : "";
@@ -88,7 +111,8 @@ export function AdminGroupRequestsPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  // Open from a tablet up; on a phone the filters alone would fill the screen.
+  const [filtersOpen, setFiltersOpen] = useState(() => !isPhoneNow());
 
   const [debouncedSearch, setDebouncedSearch] = useState("");
   useEffect(() => {
@@ -97,7 +121,6 @@ export function AdminGroupRequestsPage() {
   }, [search]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1);
   }, [
     debouncedSearch,
@@ -114,7 +137,8 @@ export function AdminGroupRequestsPage() {
   const params = useMemo(
     () => ({
       page,
-      limit: PAGE_SIZE,
+      limit: view === "topics" ? TOPIC_PAGE_SIZE : PAGE_SIZE,
+      focus: view === "topics" && focus ? focus : undefined,
       search: debouncedSearch || undefined,
       status: status || undefined,
       professorId: professorId || undefined,
@@ -136,11 +160,16 @@ export function AdminGroupRequestsPage() {
       specializationId,
       dateFrom,
       dateTo,
+      view,
+      focus,
     ],
   );
 
+  // Only the view on screen is fetched.
+  const listQuery = useGroupRequests(params, view === "list");
+  const topicsQuery = useGroupRequestsByTopic(params, view === "topics");
   const { data, isLoading, isFetching, isError, refetch } =
-    useGroupRequests(params);
+    view === "topics" ? topicsQuery : listQuery;
   const accept = useAcceptGroupRequest();
   const reject = useRejectGroupRequest();
   const remove = useDeleteGroupRequest();
@@ -190,9 +219,12 @@ export function AdminGroupRequestsPage() {
     [specs, filiereId],
   );
 
-  const items = (data?.items ?? []) as AdminGroupRequest[];
+  const items = (view === "list" ? listQuery.data?.items ?? [] : []) as AdminGroupRequest[];
+  const topics = view === "topics" ? topicsQuery.data?.items ?? [] : [];
   const total = data?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // The focused topic heads page one on top of a full page; pages count the rest.
+  const pageTotal = view === "topics" ? topicsQuery.data?.pageTotal ?? total : total;
+  const totalPages = Math.max(1, Math.ceil(pageTotal / (view === "topics" ? TOPIC_PAGE_SIZE : PAGE_SIZE)));
 
   const activeFilters =
     (debouncedSearch ? 1 : 0) +
@@ -246,19 +278,19 @@ export function AdminGroupRequestsPage() {
           icon={Clock}
           value={pendCount}
           label={t("admin.pendingRequests", { defaultValue: t("stu.reqStatus.pending") })}
-          tint="bg-amber-100 text-amber-600"
+          tint="bg-amber-100 text-amber-600 dark:bg-amber-400/15 dark:text-amber-300"
         />
         <StatTile
           icon={CheckCircle2}
           value={accCount}
           label={t("admin.acceptedRequests", { defaultValue: t("status.accepted") })}
-          tint="bg-emerald-100 text-emerald-600"
+          tint="bg-emerald-100 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300"
         />
         <StatTile
           icon={XCircle}
           value={rejCount}
           label={t("admin.rejectedRequests", { defaultValue: t("status.rejected") })}
-          tint="bg-red-100 text-red-500"
+          tint="bg-red-100 text-red-500 dark:bg-red-400/15 dark:text-red-300"
         />
       </div>
 
@@ -491,13 +523,40 @@ export function AdminGroupRequestsPage() {
         </div>
       </div>
 
-      {/* count */}
-      <div className="mb-3 flex items-center gap-2 text-sm text-clay">
-        <ClipboardList size={15} />
-        <span>{t("admin.requestsCount", { count: total })}</span>
-        {isFetching && (
-          <span className="text-[11px] text-clay/70">{t("admin.refreshingSuffix")}</span>
-        )}
+      {/* count, and the view */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm text-clay">
+          <ClipboardList size={15} />
+          <span>
+            {view === "topics"
+              ? t("admin.grt.topicsCount", { count: total })
+              : t("admin.requestsCount", { count: total })}
+          </span>
+          {isFetching && (
+            <span className="text-[11px] text-clay/70">{t("admin.refreshingSuffix")}</span>
+          )}
+        </div>
+        <div role="tablist" className="inline-flex rounded-xl border border-forest/15 bg-cream-card p-1">
+          {(["topics", "list"] as const).map((v) => {
+            const Icon = v === "topics" ? Rows3 : LayoutList;
+            const on = view === v;
+            return (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => setView(v)}
+                data-testid={`requests-view-${v}`}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${
+                  on ? "bg-forest text-cream shadow-sm" : "text-clay hover:bg-forest/5 hover:text-forest"
+                }`}
+              >
+                <Icon size={14} /> {t(v === "topics" ? "admin.grt.viewTopics" : "admin.grt.viewList")}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* List */}
@@ -505,7 +564,7 @@ export function AdminGroupRequestsPage() {
         <LoadingArea className="py-20" />
       ) : isError ? (
         <ErrorRetry onRetry={() => refetch()} />
-      ) : items.length === 0 ? (
+      ) : (view === "topics" ? topics.length === 0 : items.length === 0) ? (
         <div className="grid place-items-center gap-2 rounded-2xl border border-forest/10 bg-cream-card py-16 text-center shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
           <div className="grid size-14 place-items-center rounded-full bg-forest/5 text-clay">
             <ClipboardList size={24} />
@@ -514,6 +573,8 @@ export function AdminGroupRequestsPage() {
             {t("admin.noGroupRequests", { defaultValue: t("admin.noRequests") })}
           </p>
         </div>
+      ) : view === "topics" ? (
+        <TopicRequestsBoard topics={topics} onOpenRequest={goToRequest} onDelete={(r) => setToDelete(r)} />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
           {/* ترويسة الأعمدة — للشاشات الواسعة وحدها. الضيّقة تقرأ الصفّ سطراً سطراً. */}
@@ -529,7 +590,7 @@ export function AdminGroupRequestsPage() {
           <ul className="divide-y divide-forest/10">
             {items.map((r: any) => {
               const members = r.members ?? [];
-              const st = STATUS_STYLES[r.status] ?? "bg-gray-100 text-gray-600";
+              const st = STATUS_STYLES[r.status] ?? "bg-forest/8 text-clay";
 
               /*
                * لا شرط هنا. الخادم يقول ما يجوز ولماذا لا، والشاشة تعرض حكمه.
@@ -620,7 +681,7 @@ export function AdminGroupRequestsPage() {
                       onClick={() => reject.mutate({ id: r.id })}
                       disabled={!canReject || reject.isPending}
                       title={whyNoReject}
-                      className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-400 px-2.5 py-1.5 text-[11px] font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-400 px-2.5 py-1.5 text-[11px] font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-300 dark:hover:bg-red-400/10"
                     >
                       <X size={12} />
                       {t("admin.reject", { defaultValue: t("pro.reject") })}
@@ -635,7 +696,7 @@ export function AdminGroupRequestsPage() {
                       <button
                         onClick={() => setToDelete(r)}
                         title={t("admin.delete")}
-                        className="grid size-7 shrink-0 place-items-center rounded-lg border border-red-400/40 text-red-500 transition hover:bg-red-50 hover:border-red-400"
+                        className="grid size-7 shrink-0 place-items-center rounded-lg border border-red-400/40 text-red-500 transition hover:bg-red-50 hover:border-red-400 dark:text-red-300 dark:hover:bg-red-400/10"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -653,7 +714,7 @@ export function AdminGroupRequestsPage() {
 
                   {/* السبب على سطره: حشرُه بين الأعمدة يضغطها ويُخفيه. */}
                   {r.status === "rejected" && r.rejectionReason && (
-                    <p className="mt-2 rounded-lg bg-red-50 px-3 py-1.5 text-[11px] text-red-600">
+                    <p className="mt-2 rounded-lg bg-red-50 px-3 py-1.5 text-[11px] text-red-700 ring-1 ring-red-200/70 dark:bg-red-400/10 dark:text-red-200 dark:ring-red-400/20">
                       <span className="font-semibold">{t("admin.rejectionReasonColon")}</span>{" "}
                       {r.rejectionReason}
                     </p>
@@ -777,10 +838,16 @@ function StatTile({
 }
 
 function Chip({ label, onClear }: { label: string; onClear: () => void }) {
+  const { t } = useTranslation();
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-forest/8 px-2.5 py-1 text-[11px] text-forest">
       {label}
-      <button onClick={onClear} className="text-clay hover:text-red-500">
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={`${t("admin.proj.removeFilter")}: ${label}`}
+        className="text-clay hover:text-red-500"
+      >
         <X size={12} />
       </button>
     </span>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { AlertTriangle, Ban, Trash2, X, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Ban, ChevronLeft, Trash2, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { AlertAction, AlertShell } from "./alert-shell";
 
 /** سطرٌ في بطاقة المحذوف: ما يعرّفه. */
 export interface DangerFact {
@@ -59,6 +59,9 @@ export function DangerConfirm({
   avatar,
   facts = [],
   impacts = [],
+  impactsTitle,
+  impactsAlways = false,
+  trail = [],
   block,
   warning,
   confirmLabel,
@@ -79,6 +82,12 @@ export function DangerConfirm({
   avatar?: ReactNode;
   facts?: DangerFact[];
   impacts?: DangerImpact[];
+  /** عنوان القائمة — «سيُحذف معه» إن غاب. */
+  impactsTitle?: string;
+  /** القائمة ظاهرةٌ ولو مُنع الحذف — حين تكون هي سبب المنع. */
+  impactsAlways?: boolean;
+  /** موقعه في الهيكل، من الأعلى إليه: الكلية › القسم › الشعبة… */
+  trail?: string[];
   block?: DangerBlock | null;
   /** سطر «لا يمكن التراجع» — يُمرَّر لأنّ صيغته تختلف بين الكيانات. */
   warning?: string;
@@ -90,189 +99,146 @@ export function DangerConfirm({
   const { t } = useTranslation();
   const cancelRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !loading) onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, loading, onClose]);
-
   // التركيز يبدأ على «إلغاء» لا على «حذف»: مسافةٌ أو Enter في لحظة سهوٍ
   // تُنفّذ الزرّ المركَّز، وأخفُّ الاحتمالين أن يكون الإلغاء.
   useEffect(() => {
     if (open) cancelRef.current?.focus?.();
   }, [open]);
 
-  if (!open) return null;
-
   const blocked = !!block;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-60 grid place-items-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-    >
-      <div
-        onClick={() => !loading && onClose()}
-        className="absolute inset-0 bg-forest-deep/50 backdrop-blur-sm"
-      />
-
-      <div className="animate-[fadeIn_0.15s_ease-out] relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-brick/20 bg-cream-card shadow-2xl">
-        {/* ── رأسٌ بلون الإجراء، فلا يُخلط بنافذة حفظ ── */}
-        <div className="flex items-center gap-3 border-b border-brick/15 bg-brick/8 px-5 py-4">
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brick/15 text-brick">
-            <Icon size={19} />
-          </span>
-          <h3 className="min-w-0 flex-1 font-serif text-base font-bold text-forest">
-            {title}
-          </h3>
-          <button
-            type="button"
-            onClick={() => !loading && onClose()}
-            aria-label={t("pro.cancel")}
-            className="grid size-8 shrink-0 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+  return (
+    <AlertShell
+      open={open}
+      tone="danger"
+      icon={Icon}
+      kicker={blocked ? t("alert.kickerBlocked") : t("alert.kickerDanger")}
+      title={title}
+      onClose={onClose}
+      busy={loading}
+      size="lg"
+      actions={
+        <>
+          <AlertAction ref={cancelRef} variant="ghost" onClick={onClose} disabled={loading}>
+            {cancelLabel ?? t("pro.cancel")}
+          </AlertAction>
+          <AlertAction
+            tone="danger"
+            icon={Icon}
+            onClick={onConfirm}
+            loading={loading}
+            disabled={blocked}
+            title={blocked ? block?.message : undefined}
           >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {/* ── بطاقة المحذوف ── */}
-          <div className="flex items-start gap-3 rounded-xl border border-forest/12 bg-cream-2 p-3">
-            {avatar && <div className="shrink-0">{avatar}</div>}
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="min-w-0 font-serif text-base font-bold text-forest">
-                  {name}
-                </p>
-                {kicker && (
-                  <span className="rounded-full bg-forest/8 px-2 py-0.5 text-[11px] font-semibold text-clay">
-                    {kicker}
-                  </span>
-                )}
-              </div>
-
-              {facts.length > 0 && (
-                <dl className="mt-2.5 grid grid-cols-1 gap-x-5 gap-y-1.5 sm:grid-cols-2">
-                  {facts.map((f) => (
-                    <div key={f.label} className="flex items-center gap-1.5">
-                      <f.icon size={12} className="shrink-0 text-clay/70" />
-                      <dt className="shrink-0 text-[11px] text-clay/80">
-                        {f.label}
-                      </dt>
-                      <dd
-                        dir={f.dir}
-                        className="min-w-0 truncate text-[12px] font-semibold text-forest"
-                      >
-                        {f.value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+            {confirmLabel ?? t("admin.deletePermanently")}
+          </AlertAction>
+        </>
+      }
+    >
+      {/* ── بطاقة المحذوف: مَن هذا بالضبط ── */}
+      <div className="relative overflow-hidden rounded-2xl border border-brick/20 bg-cream-2 p-4 shadow-[0_10px_30px_-22px_rgba(168,68,45,0.8)]">
+        <div aria-hidden className="absolute inset-y-0 start-0 w-1 bg-linear-to-b from-brick/70 to-brick/20" />
+        <div className="flex items-start gap-3">
+          {avatar && <div className="shrink-0">{avatar}</div>}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="min-w-0 font-serif text-lg font-bold text-forest">{name}</p>
+              {kicker && (
+                <span className="rounded-full bg-brick/10 px-2.5 py-0.5 text-[11px] font-bold text-brick ring-1 ring-brick/20">
+                  {kicker}
+                </span>
               )}
             </div>
-          </div>
 
-          {/* ── المانع، إن وُجد ── */}
-          {block && (
-            <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-brick/30 bg-brick/8 p-3">
-              <Ban size={16} className="mt-0.5 shrink-0 text-brick" />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-brick">
-                  {block.message}
-                </p>
-                {block.hint && (
-                  <p className="mt-1 text-[12px] leading-relaxed text-clay">
-                    {block.hint}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── ما يسقط مع المحذوف ── */}
-          {!blocked && impacts.length > 0 && (
-            <>
-              <p className="mb-2 mt-4 text-[11px] font-bold text-clay">
-                {t("admin.deletedAlongWith")}
-              </p>
-              <ul className="space-y-1.5">
-                {impacts.map((im) => (
-                  <li
-                    key={im.label}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px] ${
-                      im.heavy
-                        ? "border-brick/25 bg-brick/8 text-brick"
-                        : "border-forest/10 bg-cream-2/60 text-clay"
-                    }`}
-                  >
-                    <im.icon
-                      size={14}
-                      className={`mt-0.5 shrink-0 self-start ${im.heavy ? "text-brick" : "text-clay/70"}`}
-                    />
-                    <span className="min-w-0 flex-1">
-                      {im.label}
-                      {im.detail && (
-                        <span className="mt-0.5 block truncate text-[11px] text-clay/75">
-                          {im.detail}
-                        </span>
-                      )}
-                    </span>
-                    {im.value !== undefined && (
-                      <span
-                        dir="ltr"
-                        className={`mt-0.5 shrink-0 self-start rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                          im.heavy
-                            ? "bg-brick/15 text-brick"
-                            : "bg-forest/8 text-forest"
-                        }`}
-                      >
-                        {im.value}
-                      </span>
-                    )}
+            {trail.length > 0 && (
+              <ol className="mt-2 flex flex-wrap items-center gap-1 text-[12px] text-clay" aria-label={t("alert.trail")}>
+                {trail.map((step, i) => (
+                  <li key={`${i}-${step}`} className="flex items-center gap-1">
+                    {i > 0 && <ChevronLeft size={13} className="shrink-0 text-gold ltr:rotate-180" />}
+                    <span className="rounded-md bg-forest/6 px-1.5 py-0.5 font-semibold text-forest/80">{step}</span>
                   </li>
                 ))}
-              </ul>
-            </>
-          )}
+              </ol>
+            )}
 
-          {children && <div className="mt-4">{children}</div>}
-
-          {!blocked && warning && (
-            <p className="mt-4 flex items-start gap-1.5 text-[12px] leading-relaxed text-brick">
-              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-              {warning}
-            </p>
-          )}
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-forest/10 bg-cream-2/40 px-5 py-3">
-          <button
-            ref={cancelRef}
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="rounded-xl border border-forest/20 px-5 py-2.5 text-sm font-semibold text-forest transition hover:bg-forest/5 disabled:opacity-60"
-          >
-            {cancelLabel ?? t("pro.cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={loading || blocked}
-            title={blocked ? block?.message : undefined}
-            className="inline-flex items-center gap-2 rounded-xl bg-brick px-5 py-2.5 text-sm font-semibold text-cream transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Icon size={16} />
-            {loading ? "…" : (confirmLabel ?? t("admin.deletePermanently"))}
-          </button>
+            {facts.length > 0 && (
+              <dl className="mt-3 grid grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-2">
+                {facts.map((f) => (
+                  <div key={f.label} className="flex items-center gap-1.5">
+                    <f.icon size={13} className="shrink-0 text-clay/70" />
+                    <dt className="shrink-0 text-[11.5px] text-clay/80">{f.label}</dt>
+                    <dd dir={f.dir} className="min-w-0 truncate text-[12.5px] font-semibold text-forest">
+                      {f.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </div>
         </div>
       </div>
-    </div>,
-    document.body,
+
+      {/* ── المانع، إن وُجد: لماذا لا يُحذف الآن، وما يُفعل أوّلاً ── */}
+      {block && (
+        <div className="mt-3 flex items-start gap-3 rounded-2xl border border-brick/30 bg-brick/8 p-4">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brick/15 text-brick">
+            <Ban size={17} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-brick">{block.message}</p>
+            {block.hint && <p className="mt-1 text-[12.5px] leading-relaxed text-clay">{block.hint}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* ── ما يسقط مع المحذوف ── */}
+      {(!blocked || impactsAlways) && impacts.length > 0 && (
+        <>
+          <p className="mt-5 mb-2 flex items-center gap-2 text-[11.5px] font-bold text-clay">
+            <span className="h-px flex-1 bg-forest/10" />
+            {impactsTitle ?? t("admin.deletedAlongWith")}
+            <span className="h-px flex-1 bg-forest/10" />
+          </p>
+          <ul className="space-y-1.5">
+            {impacts.map((im) => (
+              <li
+                key={im.label}
+                className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-[13px] ${
+                  im.heavy ? "border-brick/25 bg-brick/8 text-brick" : "border-forest/10 bg-cream-2/60 text-clay"
+                }`}
+              >
+                <im.icon
+                  size={15}
+                  className={`mt-0.5 shrink-0 self-start ${im.heavy ? "text-brick" : "text-clay/70"}`}
+                />
+                <span className="min-w-0 flex-1">
+                  {im.label}
+                  {im.detail && <span className="mt-0.5 block truncate text-[11px] text-clay/75">{im.detail}</span>}
+                </span>
+                {im.value !== undefined && (
+                  <span
+                    dir="ltr"
+                    className={`mt-0.5 shrink-0 self-start rounded-full px-2.5 py-0.5 font-serif text-[12px] font-bold ${
+                      im.heavy ? "bg-brick/15 text-brick" : "bg-forest/8 text-forest"
+                    }`}
+                  >
+                    {im.value}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {children && <div className="mt-4">{children}</div>}
+
+      {!blocked && warning && (
+        <p className="mt-4 flex items-start gap-2 rounded-xl bg-brick/6 px-3 py-2.5 text-[12.5px] leading-relaxed font-semibold text-brick ring-1 ring-brick/15">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          {warning}
+        </p>
+      )}
+    </AlertShell>
   );
 }

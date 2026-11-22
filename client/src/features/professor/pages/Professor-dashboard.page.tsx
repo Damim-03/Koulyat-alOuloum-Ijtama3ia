@@ -370,7 +370,10 @@ function ProfileHero({ data }: { data: ProfessorDashboard }) {
       {/* the figures — each one opens what it counts */}
       <div className="relative mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {tiles.map(({ icon: Icon, value, label, to, tone, alarm }) => {
-          const cls = `group flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${
+          // Two tiles abreast on a phone leave a label beside its icon ~30px —
+          // "مذكرات تحت الإشراف" broke letter by letter. There the icon sits
+          // above the figure instead.
+          const cls = `group flex flex-col items-start gap-2 rounded-2xl border px-4 py-3 transition sm:flex-row sm:items-center sm:gap-3 ${
             alarm
               ? "border-[#f0a48f]/40 bg-[#f0a48f]/10 hover:bg-[#f0a48f]/15"
               : "border-white/10 bg-white/5 hover:border-gold/40 hover:bg-white/8"

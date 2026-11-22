@@ -52,8 +52,7 @@ export const PROFESSOR_SPEC: ImportSpec<ProfessorKey> = {
   columns: PROFESSOR_COLUMNS,
   anchor: "universityEmail",
   autoUnknown: AUTO_UNKNOWN,
-  nounOne: "أستاذ",
-  nounCount: "أستاذاً",
+  noun: "professor",
 };
 
 /** السلّم الرسميّ للرتب — كما تقترحه نافذة الإضافة (constants/academic-ranks). */
@@ -79,5 +78,5 @@ export interface DepartmentForLabel {
 export function departmentLabels<D extends DepartmentForLabel>(deps: D[]): Map<string, D> {
   const count = new Map<string, number>();
   for (const d of deps) count.set(d.name, (count.get(d.name) ?? 0) + 1);
-  return new Map(deps.map((d) => [(count.get(d.name) ?? 0) > 1 ? `${d.name} (${d.faculty.name})` : d.name, d]));
+  return new Map(deps.map((d) => [count.get(d.name)! > 1 ? `${d.name} (${d.faculty.name})` : d.name, d]));
 }

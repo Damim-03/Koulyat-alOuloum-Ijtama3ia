@@ -1,4 +1,7 @@
+import { nameSearchFilter } from "../../core/search/name-search";
 import { prisma } from "../../core/prisma/client";
+import { resolveTopicExtras, topicExtrasSelect } from "../../core/topic/topic-extras";
+import { passwordChangedMail } from "../auth/email-links";
 import {
   computeTopicStatus,
   setTopicDecision,
@@ -10,7 +13,7 @@ import {
   OCCUPANCY_INCLUDE,
   type TopicDecision,
   type TopicActionKey,
-  CAP_ATTEMPTS,
+  COUNTED_ON_CAP,
 } from "../../core/topic/topic-status";
 import bcrypt from "bcryptjs";
 import { revokeAllSessions } from "../../core/auth/sessions";
@@ -18,6 +21,7 @@ import { closeUserSessions } from "../../core/auth/refresh-sessions";
 import { clearFailures, throttleKey } from "../../core/auth/login-throttle";
 import { disconnectSessions } from "../../core/realtime/realtime";
 import { studentAcademicWhere } from "./student-filters";
+import { topicListWhere } from "./topic-filters";
 import { config } from "../../core/config/app.config";
 import {
   NotFoundException,
@@ -70,10 +74,14 @@ import {
 } from "./admin.validation";
 import { Prisma, Role } from "../../generated/prisma";
 import { assertYearOpen } from "../../core/academic/year-open";
+import { assertTeamSize } from "../../core/academic/team-size";
 import {
   createNotification,
   createNotifications,
 } from "../notification/notification.service";
+import { listOf, tr } from "../../core/i18n";
+import type { MessageKey } from "../../core/i18n";
+import type { NotifyText } from "../notification/notification.service";
 
 // Cost factor is configurable and defaults to 12. bcrypt stores the cost in
 // the hash, so raising it does not invalidate existing passwords.
@@ -132,22 +140,23 @@ const professorUserSelect = {
 };
 
 // Resolve the userId of a topic's supervising professor (for notifications).
-const getTopicProfessorUserId = async (topicId: string) => {
-  const t = await prisma.graduationTopic.findUnique({
-    where: { id: topicId },
-    select: { professor: { select: { userId: true } } },
-  });
-  return t?.professor.userId ?? null;
-};
+// The caller has just read the topic, and every topic has a professor.
+const getTopicProfessorUserId = async (topicId: string) =>
+  (
+    await prisma.graduationTopic.findUniqueOrThrow({
+      where: { id: topicId },
+      select: { professor: { select: { userId: true } } },
+    })
+  ).professor.userId;
 
-// Resolve a student's userId (for notifications).
-const getStudentUserId = async (studentId: string) => {
-  const s = await prisma.student.findUnique({
-    where: { id: studentId },
-    select: { userId: true },
-  });
-  return s?.userId ?? null;
-};
+// Resolve a student's userId (for notifications) — a request's leader, who exists.
+const getStudentUserId = async (studentId: string) =>
+  (
+    await prisma.student.findUniqueOrThrow({
+      where: { id: studentId },
+      select: { userId: true },
+    })
+  ).userId;
 
 //
 // ════════ STATS ════════
@@ -426,7 +435,8 @@ export const getDashboardService = async () => {
   const healthMap = new Map(
     healthGrouped.map((g) => [g.status, g._count._all]),
   );
-  const activeUsers = healthMap.get("active") ?? 0;
+  // من يقرأ اللوحة مسؤولٌ نشط (authMiddleware) — فللنشطين صفٌّ دائماً.
+  const activeUsers = healthMap.get("active")!;
   const suspendedUsers = healthMap.get("suspended") ?? 0;
   const systemHealth = {
     totalAccounts: activeUsers + suspendedUsers,
@@ -498,24 +508,27 @@ export const createTopicService = async (data: CreateTopicDTO) => {
   ]);
   if (!professor)
     throw new NotFoundException(
-      "Professor not found",
+      tr("notFound.professor"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (!specialization)
     throw new NotFoundException(
-      "Specialization not found",
+      tr("notFound.specialization"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (!academicYear)
     throw new NotFoundException(
-      "Academic year not found",
+      tr("notFound.academicYear"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   await assertYearOpen(academicYear.id);
+  await assertTeamSize(academicYear.id, specializationId, maxStudents);
+  const extras = await resolveTopicExtras(data, { professorId, specializationId });
 
   // لا مجموعة ولا أعضاء: الموضوع يُنشأ وحده، والطلبة يصلونه عبر طلب مجموعة.
   const topic = await prisma.graduationTopic.create({
     data: {
+      ...extras,
       title,
       description,
       requirements,
@@ -523,6 +536,10 @@ export const createTopicService = async (data: CreateTopicDTO) => {
       maxStudents,
       maxRequests,
       status: publish ? "open" : "approved",
+      // النشر بتاريخه، لا بالحالة وحدها: الحالة إسقاطٌ يُعاد حسابه
+      // (core/topic/topic-status)، وبلا `publishedAt` يعود «مقبولاً» عند
+      // أوّل إعادة حساب — رفضِ طلبٍ عليه مثلاً — فيختفي عن الطلبة.
+      publishedAt: publish ? new Date() : null,
       professorId,
       specializationId,
       academicYearId,
@@ -533,8 +550,8 @@ export const createTopicService = async (data: CreateTopicDTO) => {
   await createNotification({
     userId: professor.userId,
     type: "general",
-    title: "أُسنِد إليك موضوع جديد",
-    message: `أنشأت الإدارة موضوعاً تحت إشرافك: «${topic.title}».`,
+    title: { key: "notif.topicCreatedForYou.title" },
+    message: { key: "notif.topicCreatedForYou.message", params: { title: topic.title } },
     link: "/professor/topics",
   });
 
@@ -566,20 +583,21 @@ export const createAssignedTopicService = async (
   ]);
   if (!professor)
     throw new NotFoundException(
-      "Professor not found",
+      tr("notFound.professor"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (!specialization)
     throw new NotFoundException(
-      "Specialization not found",
+      tr("notFound.specialization"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (!academicYear)
     throw new NotFoundException(
-      "Academic year not found",
+      tr("notFound.academicYear"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   await assertYearOpen(academicYear.id);
+  await assertTeamSize(academicYear.id, specializationId, maxStudents);
 
   // 2) تأكّد من وجود كل الطلبة.
   const students = await prisma.student.findMany({
@@ -588,7 +606,7 @@ export const createAssignedTopicService = async (
   });
   if (students.length !== memberStudentIds.length)
     throw new BadRequestException(
-      "بعض الطلبة غير موجودين",
+      tr("assigned.studentsMissing"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -598,14 +616,16 @@ export const createAssignedTopicService = async (
   });
   if (already)
     throw new BadRequestException(
-      "أحد الطلبة المُسنَدين لديه مذكرة بالفعل",
+      tr("assigned.studentHasProject"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
   // 4) أنشئ الموضوع + المجموعة + الأعضاء (مع المرسِل) — في معاملة واحدة.
+  const extras = await resolveTopicExtras(data, { professorId, specializationId });
   const topic = await prisma.$transaction(async (tx) => {
     const created = await tx.graduationTopic.create({
       data: {
+        ...extras,
         title,
         description,
         requirements,
@@ -644,8 +664,8 @@ export const createAssignedTopicService = async (
     await createNotification({
       userId: s.userId,
       type: "general",
-      title: "تم إسنادكم إلى موضوع",
-      message: `أسندت الإدارة لكم موضوع: «${topic.title}».`,
+      title: { key: "notif.assignedToTopic.title" },
+      message: { key: "notif.assignedToTopic.message", params: { title: topic.title } },
       link: "/student/project",
     });
   }
@@ -678,7 +698,7 @@ export const updateAssignedTopicService = async (
   });
   if (!topic)
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -694,7 +714,7 @@ export const updateAssignedTopicService = async (
     const p = await prisma.professor.findUnique({ where: { id: professorId } });
     if (!p)
       throw new NotFoundException(
-        "Professor not found",
+        tr("notFound.professor"),
         ErrorCodeEnum.RESOURCE_NOT_FOUND,
       );
   }
@@ -704,7 +724,7 @@ export const updateAssignedTopicService = async (
     });
     if (!s)
       throw new NotFoundException(
-        "Specialization not found",
+        tr("notFound.specialization"),
         ErrorCodeEnum.RESOURCE_NOT_FOUND,
       );
   }
@@ -714,13 +734,24 @@ export const updateAssignedTopicService = async (
     });
     if (!y)
       throw new NotFoundException(
-        "Academic year not found",
+        tr("notFound.academicYear"),
         ErrorCodeEnum.RESOURCE_NOT_FOUND,
       );
     await assertYearOpen(academicYearId);
   }
 
   const effectiveMax = maxStudents ?? topic.maxStudents;
+  // The rule of its year and level, when its number changes or it moves; kept as it is, in place, it stands.
+  if (maxStudents !== undefined || academicYearId || specializationId) {
+    const inPlace =
+      (!academicYearId || academicYearId === topic.academicYearId) && (!specializationId || specializationId === topic.specializationId);
+    await assertTeamSize(
+      academicYearId ?? topic.academicYearId,
+      specializationId ?? topic.specializationId,
+      effectiveMax,
+      inPlace ? topic.maxStudents : undefined,
+    );
+  }
   const currentGroup = topic.projectGroup;
   const currentIds = new Set(
     (currentGroup?.members ?? []).map((m) => m.studentId),
@@ -733,7 +764,7 @@ export const updateAssignedTopicService = async (
   if (maxStudents !== undefined && !memberStudentIds) {
     if (currentIds.size > maxStudents)
       throw new BadRequestException(
-        "الحدّ الأقصى أقلّ من عدد الطلبة المُسنَدين حالياً",
+        tr("assigned.maxBelowMembers"),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
   }
@@ -747,25 +778,25 @@ export const updateAssignedTopicService = async (
     // group with no leader at all, since isLeader is set by comparison.
     if (memberStudentIds.length === 0)
       throw new BadRequestException(
-        "يجب أن تبقى المجموعة تضمّ طالباً واحداً على الأقل",
+        tr("assigned.keepOne"),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
 
     if (!leaderStudentId || !memberStudentIds.includes(leaderStudentId))
       throw new BadRequestException(
-        "المرسِل يجب أن يكون ضمن الطلبة المُسنَدين",
+        tr("assigned.leaderInGroup"),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
 
     if (new Set(memberStudentIds).size !== memberStudentIds.length)
       throw new BadRequestException(
-        "يوجد طالب مكرّر في القائمة",
+        tr("assigned.duplicateStudent"),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
 
     if (memberStudentIds.length > effectiveMax)
       throw new BadRequestException(
-        "عدد الطلبة يتجاوز الحدّ الأقصى",
+        tr("assigned.tooMany"),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
 
@@ -775,7 +806,7 @@ export const updateAssignedTopicService = async (
     });
     if (students.length !== memberStudentIds.length)
       throw new BadRequestException(
-        "بعض الطلبة غير موجودين",
+        tr("assigned.studentsMissing"),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
 
@@ -790,17 +821,25 @@ export const updateAssignedTopicService = async (
       });
       if (clash)
         throw new BadRequestException(
-          "أحد الطلبة الجدد لديه مذكرة بالفعل",
+          tr("assigned.newStudentHasProject"),
           ErrorCodeEnum.VALIDATION_ERROR,
         );
     }
   }
+
+  // The co-supervisor, short description and type, checked against the topic as it will be.
+  const extras = await resolveTopicExtras(
+    { coSupervisorId: data.coSupervisorId, summary: data.summary, typeId: data.typeId },
+    { professorId: professorId ?? topic.professorId, specializationId: specializationId ?? topic.specializationId },
+    topic,
+  );
 
   // 4) طبّق كل شيء في معاملة واحدة.
   await prisma.$transaction(async (tx) => {
     await tx.graduationTopic.update({
       where: { id },
       data: {
+        ...extras,
         ...(title !== undefined ? { title } : {}),
         ...(description !== undefined ? { description } : {}),
         ...(requirements !== undefined ? { requirements } : {}),
@@ -839,7 +878,7 @@ export const updateAssignedTopicService = async (
       // leader silently stayed as it was.
       if (!currentIds.has(leaderStudentId))
         throw new BadRequestException(
-          "المرسِل يجب أن يكون ضمن أعضاء المجموعة",
+          tr("assigned.leaderInMembers"),
           ErrorCodeEnum.VALIDATION_ERROR,
         );
 
@@ -873,8 +912,8 @@ export const updateAssignedTopicService = async (
       await createNotification({
         userId: s.userId,
         type: "general",
-        title: "تم إسنادكم إلى موضوع",
-        message: `أسندت الإدارة لكم موضوع: «${title ?? topic.title}».`,
+        title: { key: "notif.assignedToTopic.title" },
+        message: { key: "notif.assignedToTopic.message", params: { title: title ?? topic.title } },
         link: "/student/project",
       });
     }
@@ -886,34 +925,8 @@ export const updateAssignedTopicService = async (
 //
 // ════════ USERS ════════
 //
-/**
- * Name search, one word at a time.
- *
- * Each word must appear in the first name or the last name, and the caller
- * does not have to know which is which: "خالد مرابط" and "مرابط خالد" both find the same
- * person, and two letters of each ("خا مر") are enough. Matching every word
- * rather than any of them keeps a two-word query from widening the results.
- */
-const nameSearchFilter = (
-  search: string,
-  /** Places the name fields where the model keeps them: at the top level for
-   *  User, under `user` for the records that point at one. */
-  wrap: (f: Record<string, unknown>) => Record<string, unknown> = (f) => f,
-) => {
-  const words = search.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return null;
-  return {
-    AND: words.map((word) => ({
-      // باللاتينية أيضاً: هي الاسم الذي لا يغيب عن طالب.
-      OR: [
-        wrap({ firstName: { contains: word } }),
-        wrap({ lastName: { contains: word } }),
-        wrap({ firstNameLatin: { contains: word } }),
-        wrap({ lastNameLatin: { contains: word } }),
-      ],
-    })),
-  };
-};
+// Name search, one word at a time — shared with the professors' search (core/search/name-search).
+export { nameSearchFilter };
 
 export const listUsersService = async (q: ListUsersDTO) => {
   const where: Record<string, unknown> = {};
@@ -1024,7 +1037,7 @@ export const getUserByIdService = async (id: string) => {
   });
   if (!user)
     throw new NotFoundException(
-      "User not found",
+      tr("notFound.user"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   return user;
@@ -1033,7 +1046,7 @@ export const getUserByIdService = async (id: string) => {
 export const createUserService = async (data: CreateUserDTO) => {
   if (!data.email && !data.username) {
     throw new BadRequestException(
-      "Either email or username is required",
+      tr("user.emailOrUsername"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
@@ -1045,6 +1058,8 @@ export const createUserService = async (data: CreateUserDTO) => {
       email: data.email,
       username: data.username,
       password: hashed,
+      // Handed out by the administration: replaced by its owner before use.
+      mustChangePassword: true,
       role: data.role as Role,
       gender: data.gender,
       // undefined leaves the column at its default (false).
@@ -1065,11 +1080,36 @@ export const updateUserService = async (id: string, data: UpdateUserDTO) => {
   return user;
 };
 
+/**
+ * The administration must never lock itself out. Every administrator is equal
+ * here — any one may suspend or delete another — so two things are refused:
+ * doing it to yourself (a slip of the mouse ends your own access, and with it
+ * the means to undo it), and doing it to the last active administrator, after
+ * which only someone with a shell on the server (`create-admin`) could get
+ * back in.
+ */
+const assertAdministrationKeepsAnAdmin = async (
+  target: { id: string; role: string; status: string },
+  actorId: string,
+) => {
+  if (target.role !== "admin") return;
+  if (target.id === actorId)
+    throw new BadRequestException(tr("user.notYourself"), ErrorCodeEnum.VALIDATION_ERROR);
+  if (target.status !== "active") return;
+  const others = await prisma.user.count({
+    where: { role: "admin", status: "active", NOT: { id: target.id } },
+  });
+  if (others === 0)
+    throw new BadRequestException(tr("user.lastAdmin"), ErrorCodeEnum.VALIDATION_ERROR);
+};
+
 export const updateUserStatusService = async (
   id: string,
   data: UpdateUserStatusDTO,
+  actorId: string,
 ) => {
-  await getUserByIdService(id);
+  const target = await getUserByIdService(id);
+  if (data.status !== "active") await assertAdministrationKeepsAnAdmin(target, actorId);
   const user = await prisma.user.update({
     where: { id },
     data: { status: data.status },
@@ -1104,7 +1144,7 @@ export const resetUserPasswordService = async (
 ) => {
   const user = await getUserByIdService(id);
   const hashed = await bcrypt.hash(data.password, SALT_ROUNDS);
-  await prisma.user.update({ where: { id }, data: { password: hashed } });
+  await prisma.user.update({ where: { id }, data: { password: hashed, mustChangePassword: true } });
 
   await revokeAllSessions(id);
   await closeUserSessions(id);
@@ -1125,19 +1165,22 @@ export const resetUserPasswordService = async (
       user.role === "admin" && ids?.email && throttleKey("admin", ids.email),
     ].filter((k): k is string => !!k),
   );
+  // Its owner learns of it by email, if their address is proven.
+  void passwordChangedMail(id, { byAdmin: true });
   return { message: "Password reset" };
 };
 
-export const deleteUserService = async (id: string) => {
+export const deleteUserService = async (id: string, actorId: string) => {
   const user = await getUserByIdService(id);
+  await assertAdministrationKeepsAnAdmin(user, actorId);
   if (user.student)
     throw new BadRequestException(
-      "هذا الحساب طالب؛ احذفه من إدارة الطلبة لتُنظَّف بياناته المرتبطة.",
+      tr("user.isStudent"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   if (user.professor)
     throw new BadRequestException(
-      "هذا الحساب أستاذ؛ احذفه من إدارة الأساتذة.",
+      tr("user.isProfessor"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   await prisma.user.delete({ where: { id } });
@@ -1280,7 +1323,7 @@ export const getStudentByIdService = async (id: string) => {
   });
   if (!student)
     throw new NotFoundException(
-      "Student not found",
+      tr("notFound.student"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   return student;
@@ -1292,7 +1335,7 @@ export const createStudentService = async (data: CreateStudentDTO) => {
   });
   if (exists)
     throw new BadRequestException(
-      "Registration number already exists",
+      tr("student.registrationTaken"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -1316,6 +1359,8 @@ export const createStudentService = async (data: CreateStudentDTO) => {
           avatarUrl: data.avatarUrl,
           gender: data.gender,
           password: hashed,
+          // Handed out (a birth date, typically): replaced by its owner before use.
+          mustChangePassword: true,
           role: "student" as Role,
           isVerified: data.isVerified,
         },
@@ -1344,7 +1389,7 @@ export const updateStudentService = async (
     });
     if (clash)
       throw new BadRequestException(
-        "Registration number already exists",
+        tr("student.registrationTaken"),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
   }
@@ -1398,11 +1443,16 @@ export const deleteStudentService = async (id: string) => {
   });
   if (!student)
     throw new NotFoundException(
-      "Student not found",
+      tr("notFound.student"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
   await prisma.$transaction(async (tx) => {
+    // المواضيع التي يتقدّم إليها بطلبٍ معلّق: يُعاد عدّ سقفها بعد الحذف.
+    const pendingOn = await tx.groupRequest.findMany({
+      where: { leaderStudentId: id, status: "pending" },
+      select: { topicId: true },
+    });
     // ملفّات الطالب المرفوعة
     await tx.submission.deleteMany({ where: { uploadedById: student.userId } });
     // طلبات الالتحاق الفردية
@@ -1416,6 +1466,7 @@ export const deleteStudentService = async (id: string) => {
     // أخيرًا الطالب ثم حسابه (الإشعارات تتعاقب عبر onDelete: Cascade)
     await tx.student.delete({ where: { id } });
     await tx.user.delete({ where: { id: student.userId } });
+    for (const topicId of new Set(pendingOn.map((r) => r.topicId))) await computeTopicStatus(tx, topicId);
   });
   return { message: "Student deleted" };
 };
@@ -1476,7 +1527,8 @@ export const listProfessorsService = async (q: ListProfessorsDTO) => {
   }
 
   // Optional exact-tag match over the grade array (if you wire a UI filter).
-  if (q.grade) where.grade = { has: q.grade };
+  // `grade` عمود JSON (مصفوفةٌ منذ الانتقال إلى MySQL) — و`has` لمصفوفات PostgreSQL وحدها.
+  if (q.grade) where.grade = { path: "$", array_contains: [q.grade] };
 
   const [items, total] = await Promise.all([
     prisma.professor.findMany({
@@ -1506,14 +1558,14 @@ export const getProfessorByIdService = async (id: string) => {
         orderBy: { createdAt: "desc" },
         include: {
           specialization: { select: { id: true, name: true } },
-          _count: { select: { groupRequests: { where: CAP_ATTEMPTS } } },
+          _count: { select: { groupRequests: { where: COUNTED_ON_CAP } } },
         },
       },
     },
   });
   if (!professor)
     throw new NotFoundException(
-      "Professor not found",
+      tr("notFound.professor"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   return professor;
@@ -1536,20 +1588,20 @@ export const createAcademicStructureService = async (
   // ── 1. الرموز المطلوبة في هذه العملية ──
   const newCodes: { code: string; label: string }[] = [];
   if (data.faculty.kind === "new")
-    newCodes.push({ code: data.faculty.code, label: "الكلية" });
+    newCodes.push({ code: data.faculty.code, label: tr("structure.label.faculty") });
   for (const d of data.departments)
-    newCodes.push({ code: d.code, label: `القسم «${d.name}»` });
+    newCodes.push({ code: d.code, label: tr("structure.label.department", { name: d.name }) });
   for (const d of data.domains)
-    newCodes.push({ code: d.code, label: `الميدان «${d.name}»` });
+    newCodes.push({ code: d.code, label: tr("structure.label.domain", { name: d.name }) });
   for (const f of data.filieres)
-    newCodes.push({ code: f.code, label: `الشعبة «${f.name}»` });
+    newCodes.push({ code: f.code, label: tr("structure.label.filiere", { name: f.name }) });
 
   // تكرار داخل الحمولة نفسها
   const seen = new Set<string>();
   for (const { code, label } of newCodes) {
     if (seen.has(code))
       throw new BadRequestException(
-        `الرمز «${code}» مكرّر أكثر من مرّة في النموذج (${label})`,
+        tr("structure.codeRepeated", { code, label }),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
     seen.add(code);
@@ -1581,7 +1633,7 @@ export const createAcademicStructureService = async (
     );
     if (taken.length)
       throw new BadRequestException(
-        `رموز مستعملة بالفعل: ${[...new Set(taken)].join("، ")}`,
+        tr("structure.codesTaken", { list: listOf([...new Set(taken)]) }),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
   }
@@ -1598,7 +1650,7 @@ export const createAcademicStructureService = async (
 
     if (!faculty)
       throw new NotFoundException(
-        "الكلية غير موجودة",
+        tr("notFound.faculty"),
         ErrorCodeEnum.RESOURCE_NOT_FOUND,
       );
 
@@ -1620,7 +1672,7 @@ export const createAcademicStructureService = async (
       const id = created.get(ref.value);
       if (!id)
         throw new BadRequestException(
-          `${what} يشير إلى عنصر غير موجود في النموذج`,
+          tr("structure.danglingRef", { what }),
           ErrorCodeEnum.VALIDATION_ERROR,
         );
       return id;
@@ -1635,7 +1687,7 @@ export const createAcademicStructureService = async (
           departmentId: resolve(
             d.department,
             departmentIds,
-            `الميدان «${d.name}»`,
+            tr("structure.label.domain", { name: d.name }),
           ),
         },
       });
@@ -1651,10 +1703,10 @@ export const createAcademicStructureService = async (
           departmentId: resolve(
             f.department,
             departmentIds,
-            `الشعبة «${f.name}»`,
+            tr("structure.label.filiere", { name: f.name }),
           ),
           domainId: f.domain
-            ? resolve(f.domain, domainIds, `الشعبة «${f.name}»`)
+            ? resolve(f.domain, domainIds, tr("structure.label.filiere", { name: f.name }))
             : null,
         },
       });
@@ -1695,7 +1747,7 @@ export const createUniversityDomainService = async (
   });
   if (exists)
     throw new BadRequestException(
-      "هذا النطاق مضاف بالفعل",
+      tr("emailDomain.exists"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -1716,7 +1768,7 @@ export const setDefaultUniversityDomainService = async (id: string) => {
   const domain = await prisma.universityDomain.findUnique({ where: { id } });
   if (!domain)
     throw new NotFoundException(
-      "النطاق غير موجود",
+      tr("notFound.emailDomain"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -1738,7 +1790,7 @@ export const deleteUniversityDomainService = async (id: string) => {
   const domain = await prisma.universityDomain.findUnique({ where: { id } });
   if (!domain)
     throw new NotFoundException(
-      "النطاق غير موجود",
+      tr("notFound.emailDomain"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -1746,7 +1798,7 @@ export const deleteUniversityDomainService = async (id: string) => {
   const total = await prisma.universityDomain.count();
   if (total <= 1)
     throw new BadRequestException(
-      "لا يمكن حذف النطاق الوحيد المتبقّي",
+      tr("emailDomain.lastOne"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -1756,7 +1808,7 @@ export const deleteUniversityDomainService = async (id: string) => {
   });
   if (inUse > 0)
     throw new BadRequestException(
-      `لا يمكن حذف النطاق: يستعمله ${inUse} أستاذ/أساتذة`,
+      tr("emailDomain.inUse", { what: tr("count.professors", { count: inUse }) }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -1782,10 +1834,8 @@ const assertAllowedUniversityDomain = async (email: string) => {
   });
   throw new BadRequestException(
     all.length
-      ? `نطاق البريد غير مسموح به. النطاقات المسموح بها: ${all
-          .map((d) => `@${d.domain}`)
-          .join("، ")}`
-      : "لا توجد نطاقات جامعية مسجّلة — أضِف نطاقاً أوّلاً",
+      ? tr("emailDomain.notAllowed", { list: listOf(all.map((d) => `@${d.domain}`)) })
+      : tr("emailDomain.none"),
     ErrorCodeEnum.VALIDATION_ERROR,
   );
 };
@@ -1833,7 +1883,7 @@ const generateUniqueEmployeeNumber = async (attempts = 10): Promise<string> => {
     if (!taken) return candidate;
   }
   throw new BadRequestException(
-    "تعذّر توليد رقم وظيفي فريد، أعد المحاولة",
+    tr("professor.employeeNumberFailed"),
     ErrorCodeEnum.VALIDATION_ERROR,
   );
 };
@@ -1852,7 +1902,7 @@ export const createProfessorService = async (data: CreateProfessorDTO) => {
   });
   if (exists)
     throw new BadRequestException(
-      "Employee number or university email already exists",
+      tr("professor.idsTaken"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -1874,6 +1924,8 @@ export const createProfessorService = async (data: CreateProfessorDTO) => {
           email: data.email,
           gender: data.gender,
           password: hashed,
+          // Handed out (a birth date, typically): replaced by its owner before use.
+          mustChangePassword: true,
           role: "professor" as Role,
           isVerified: data.isVerified,
         },
@@ -1931,12 +1983,12 @@ export const deleteProfessorService = async (id: string) => {
   });
   if (!professor)
     throw new NotFoundException(
-      "Professor not found",
+      tr("notFound.professor"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (professor._count.topics > 0)
     throw new BadRequestException(
-      `لا يمكن حذف الأستاذ لارتباطه بـ ${professor._count.topics} موضوع. أعِد إسناد المواضيع أو أرشفتها أولاً.`,
+      tr("professor.deleteBlocked", { what: tr("count.topics", { count: professor._count.topics }) }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -1999,7 +2051,7 @@ export const createFacultyService = async (data: CreateFacultyDTO) => {
   });
   if (exists)
     throw new BadRequestException(
-      "Faculty code already exists",
+      tr("structure.codeTaken.faculty"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   return prisma.faculty.create({ data });
@@ -2012,7 +2064,7 @@ export const updateFacultyService = async (
   const found = await prisma.faculty.findUnique({ where: { id } });
   if (!found)
     throw new NotFoundException(
-      "Faculty not found",
+      tr("notFound.faculty"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   return prisma.faculty.update({ where: { id }, data });
@@ -2025,12 +2077,12 @@ export const deleteFacultyService = async (id: string) => {
   });
   if (!found)
     throw new NotFoundException(
-      "Faculty not found",
+      tr("notFound.faculty"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (found._count.departments > 0)
     throw new BadRequestException(
-      `لا يمكن حذف الكلية لارتباطها بـ ${found._count.departments} قسم. احذف الأقسام أو انقلها أولاً.`,
+      tr("structure.deleteBlocked.faculty", { what: tr("count.departments", { count: found._count.departments }) }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   await prisma.faculty.delete({ where: { id } });
@@ -2053,7 +2105,7 @@ export const createDomainService = async (data: CreateDomainDTO) => {
   const exists = await prisma.domain.findUnique({ where: { code: data.code } });
   if (exists)
     throw new BadRequestException(
-      "Domain code already exists",
+      tr("structure.codeTaken.domain"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   return prisma.domain.create({ data, include: { department: true } });
@@ -2066,7 +2118,7 @@ export const updateDomainService = async (
   const found = await prisma.domain.findUnique({ where: { id } });
   if (!found)
     throw new NotFoundException(
-      "Domain not found",
+      tr("notFound.domain"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   return prisma.domain.update({
@@ -2083,14 +2135,14 @@ export const deleteDomainService = async (id: string) => {
   });
   if (!found)
     throw new NotFoundException(
-      "Domain not found",
+      tr("notFound.domain"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   // `Filiere.domainId` is optional and set to NULL on delete, so without this
   // the domain's filieres would silently lose it — refused, like a department.
   if (found._count.filieres > 0)
     throw new BadRequestException(
-      `لا يمكن حذف الميدان لارتباطه بـ ${found._count.filieres} شعبة. احذف الشعب أو انقلها أولاً.`,
+      tr("structure.deleteBlocked.domain", { what: tr("count.filieres", { count: found._count.filieres }) }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   await prisma.domain.delete({ where: { id } });
@@ -2130,7 +2182,7 @@ export const createDepartmentService = async (data: CreateDepartmentDTO) => {
   });
   if (exists)
     throw new BadRequestException(
-      "Department code already exists",
+      tr("structure.codeTaken.department"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   return prisma.department.create({ data, include: { faculty: true } });
@@ -2143,7 +2195,7 @@ export const updateDepartmentService = async (
   const found = await prisma.department.findUnique({ where: { id } });
   if (!found)
     throw new NotFoundException(
-      "Department not found",
+      tr("notFound.department"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   return prisma.department.update({
@@ -2162,17 +2214,17 @@ export const deleteDepartmentService = async (id: string) => {
   });
   if (!found)
     throw new NotFoundException(
-      "Department not found",
+      tr("notFound.department"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   const blockers: string[] = [];
-  if (found._count.domains > 0) blockers.push(`${found._count.domains} ميدان`);
-  if (found._count.filieres > 0) blockers.push(`${found._count.filieres} شعبة`);
+  if (found._count.domains > 0) blockers.push(tr("count.domains", { count: found._count.domains }));
+  if (found._count.filieres > 0) blockers.push(tr("count.filieres", { count: found._count.filieres }));
   if (found._count.professors > 0)
-    blockers.push(`${found._count.professors} أستاذ`);
+    blockers.push(tr("count.professors", { count: found._count.professors }));
   if (blockers.length)
     throw new BadRequestException(
-      `لا يمكن حذف القسم لارتباطه بـ ${blockers.join(" و ")}.`,
+      tr("structure.deleteBlocked.department", { what: listOf(blockers) }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   await prisma.department.delete({ where: { id } });
@@ -2206,7 +2258,7 @@ export const createFiliereService = async (data: CreateFiliereDTO) => {
   });
   if (exists)
     throw new BadRequestException(
-      "Filiere code already exists",
+      tr("structure.codeTaken.filiere"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -2219,14 +2271,14 @@ export const createFiliereService = async (data: CreateFiliereDTO) => {
     });
     if (!domain)
       throw new NotFoundException(
-        "Domain not found",
+        tr("notFound.domain"),
         ErrorCodeEnum.RESOURCE_NOT_FOUND,
       );
     departmentId = domain.departmentId;
   }
   if (!departmentId)
     throw new BadRequestException(
-      "departmentId or domainId is required",
+      tr("structure.parentRequired"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -2249,7 +2301,7 @@ export const updateFiliereService = async (
   const found = await prisma.filiere.findUnique({ where: { id } });
   if (!found)
     throw new NotFoundException(
-      "Filiere not found",
+      tr("notFound.filiere"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -2262,7 +2314,7 @@ export const updateFiliereService = async (
     });
     if (!domain)
       throw new NotFoundException(
-        "Domain not found",
+        tr("notFound.domain"),
         ErrorCodeEnum.RESOURCE_NOT_FOUND,
       );
     departmentId = domain.departmentId;
@@ -2288,12 +2340,12 @@ export const deleteFiliereService = async (id: string) => {
   });
   if (!found)
     throw new NotFoundException(
-      "Filiere not found",
+      tr("notFound.filiere"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (found._count.specializations > 0)
     throw new BadRequestException(
-      `لا يمكن حذف الشعبة لارتباطها بـ ${found._count.specializations} تخصص.`,
+      tr("structure.deleteBlocked.filiere", { what: tr("count.specializations", { count: found._count.specializations }) }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   await prisma.filiere.delete({ where: { id } });
@@ -2329,7 +2381,7 @@ export const updateSpecializationService = async (
   const found = await prisma.specialization.findUnique({ where: { id } });
   if (!found)
     throw new NotFoundException(
-      "Specialization not found",
+      tr("notFound.specialization"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   return prisma.specialization.update({
@@ -2346,15 +2398,15 @@ export const deleteSpecializationService = async (id: string) => {
   });
   if (!found)
     throw new NotFoundException(
-      "Specialization not found",
+      tr("notFound.specialization"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   const blockers: string[] = [];
-  if (found._count.students > 0) blockers.push(`${found._count.students} طالب`);
-  if (found._count.topics > 0) blockers.push(`${found._count.topics} موضوع`);
+  if (found._count.students > 0) blockers.push(tr("count.students", { count: found._count.students }));
+  if (found._count.topics > 0) blockers.push(tr("count.topics", { count: found._count.topics }));
   if (blockers.length)
     throw new BadRequestException(
-      `لا يمكن حذف التخصص لارتباطه بـ ${blockers.join(" و ")}.`,
+      tr("structure.deleteBlocked.specialization", { what: listOf(blockers) }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   await prisma.specialization.delete({ where: { id } });
@@ -2376,7 +2428,7 @@ export const createAcademicYearService = async (
   });
   if (exists)
     throw new BadRequestException(
-      "Academic year already exists",
+      tr("year.exists"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -2396,7 +2448,7 @@ export const updateAcademicYearService = async (
   const found = await prisma.academicYear.findUnique({ where: { id } });
   if (!found)
     throw new NotFoundException(
-      "Academic year not found",
+      tr("notFound.academicYear"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -2415,13 +2467,13 @@ export const activateAcademicYearService = async (id: string) => {
   const found = await prisma.academicYear.findUnique({ where: { id } });
   if (!found)
     throw new NotFoundException(
-      "Academic year not found",
+      tr("notFound.academicYear"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   // A closed year is a record; it becomes current only by being reopened.
   if (found.archivedAt)
     throw new BadRequestException(
-      `السنة «${found.title}» مؤرشفة — أعد فتحها من صفحة الأرشيف قبل تفعيلها.`,
+      tr("year.archivedCantActivate", { title: found.title }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   await prisma.$transaction([
@@ -2438,25 +2490,25 @@ export const deleteAcademicYearService = async (id: string) => {
   });
   if (!found)
     throw new NotFoundException(
-      "Academic year not found",
+      tr("notFound.academicYear"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (found.isActive)
     throw new BadRequestException(
-      "لا يمكن حذف السنة الجامعية النشطة. فعِّل سنة أخرى أولاً.",
+      tr("year.activeCantDelete"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   if (found.archivedAt)
     throw new BadRequestException(
-      "هذه السنة محفوظة في الأرشيف — حذفها يمحو سجلّها. أعد فتحها أوّلاً إن كنت متأكّداً.",
+      tr("year.archivedCantDelete"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   const blockers: string[] = [];
-  if (found._count.students > 0) blockers.push(`${found._count.students} طالب`);
-  if (found._count.topics > 0) blockers.push(`${found._count.topics} موضوع`);
+  if (found._count.students > 0) blockers.push(tr("count.students", { count: found._count.students }));
+  if (found._count.topics > 0) blockers.push(tr("count.topics", { count: found._count.topics }));
   if (blockers.length)
     throw new BadRequestException(
-      `لا يمكن حذف السنة الجامعية لارتباطها بـ ${blockers.join(" و ")}.`,
+      tr("year.deleteBlocked", { what: listOf(blockers) }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   await prisma.academicYear.delete({ where: { id } });
@@ -2467,24 +2519,7 @@ export const deleteAcademicYearService = async (id: string) => {
 // ════════ TOPICS ════════
 //
 export const listTopicsService = async (q: ListTopicsDTO) => {
-  const where: Record<string, unknown> = {};
-  if (q.status) where.status = q.status;
-  if (q.professorId) where.professorId = q.professorId;
-  if (q.academicYearId) where.academicYearId = q.academicYearId;
-  if (q.specializationId) where.specializationId = q.specializationId;
-  else if (q.filiereId) where.specialization = { filiereId: q.filiereId };
-  else if (q.departmentId)
-    where.specialization = { filiere: { departmentId: q.departmentId } };
-  else if (q.facultyId)
-    where.specialization = {
-      filiere: { department: { facultyId: q.facultyId } },
-    };
-  if (q.search) {
-    where.OR = [
-      { title: { contains: q.search } },
-      { description: { contains: q.search } },
-    ];
-  }
+  const where = topicListWhere(q);
 
   const [rows, total] = await Promise.all([
     prisma.graduationTopic.findMany({
@@ -2493,7 +2528,10 @@ export const listTopicsService = async (q: ListTopicsDTO) => {
         professor: { include: { user: { select: userSelect } } },
         specialization: true,
         academicYear: true,
-        _count: { select: { groupRequests: { where: CAP_ATTEMPTS } } },
+        // The co-supervisor and the type (core/topic/topic-extras); the summary is a column.
+        coSupervisor: topicExtrasSelect.coSupervisor,
+        type: topicExtrasSelect.type,
+        _count: { select: { groupRequests: { where: COUNTED_ON_CAP } } },
         // الإشغال يأتي مع الصفّ في نفس الاستعلام، فلا استعلام لكل موضوع.
         ...OCCUPANCY_INCLUDE,
       },
@@ -2533,15 +2571,25 @@ export const listTopicsService = async (q: ListTopicsDTO) => {
  * already taken — a proposal stays on it once chosen); "after" is the memoirs
  * that have students, with their names, leader first. Rows run by supervisor,
  * then title, so a professor's memoirs read together.
+ *
+ * Each row carries what the department's official list prints beside the
+ * title: the co-supervisor, the short description (or, without one, the
+ * opening of the full one), and the type — its code numbers the rows (AI01…)
+ * and its colour marks them. The faculty and department carry their Latin
+ * names, for a list printed in English or French.
  */
 export const topicTitlesListService = async (q: TopicTitlesListDTO) => {
   const where: Prisma.GraduationTopicWhereInput = {};
   if (q.academicYearId) where.academicYearId = q.academicYearId;
   if (q.professorId) where.professorId = q.professorId;
+  const spec: Prisma.SpecializationWhereInput = {};
   if (q.specializationId) where.specializationId = q.specializationId;
-  else if (q.filiereId) where.specialization = { filiereId: q.filiereId };
-  else if (q.departmentId) where.specialization = { filiere: { departmentId: q.departmentId } };
-  else if (q.facultyId) where.specialization = { filiere: { department: { facultyId: q.facultyId } } };
+  else if (q.filiereId) spec.filiereId = q.filiereId;
+  else if (q.departmentId) spec.filiere = { departmentId: q.departmentId };
+  else if (q.facultyId) spec.filiere = { department: { facultyId: q.facultyId } };
+  // One level at a time when asked: a licence list and a master's are two lists.
+  if (q.level) spec.level = q.level;
+  if (Object.keys(spec).length) where.specialization = spec;
   if (q.mode === "after") where.projectGroup = { members: { some: {} } };
   else where.status = { in: ["approved", "open", "full"] };
 
@@ -2554,7 +2602,11 @@ export const topicTitlesListService = async (q: TopicTitlesListDTO) => {
         title: true,
         status: true,
         maxStudents: true,
+        summary: true,
+        description: true,
         professor: { select: { id: true, grade: true, universityEmail: true, user: { select: person } } },
+        coSupervisor: { select: { id: true, grade: true, universityEmail: true, user: { select: person } } },
+        type: { select: { id: true, name: true, code: true, color: true, sortOrder: true } },
         specialization: {
           select: {
             id: true,
@@ -2564,7 +2616,15 @@ export const topicTitlesListService = async (q: TopicTitlesListDTO) => {
               select: {
                 id: true,
                 name: true,
-                department: { select: { id: true, name: true, faculty: { select: { id: true, name: true } } } },
+                department: {
+                  select: {
+                    id: true,
+                    name: true,
+                    nameLatin: true,
+                    // Its logo heads the list beside the university's.
+                    faculty: { select: { id: true, name: true, nameLatin: true, iconUrl: true } },
+                  },
+                },
               },
             },
           },
@@ -2584,8 +2644,12 @@ export const topicTitlesListService = async (q: TopicTitlesListDTO) => {
       : Promise.resolve(null),
   ]);
 
-  const key = (u?: { lastName: string | null; firstName: string | null } | null) => `${u?.lastName ?? ""} ${u?.firstName ?? ""}`;
-  const groups = new Map<string, { specialization: { id: string; name: string; level: string }; filiere: { id: string; name: string } | null; department: { id: string; name: string } | null; faculty: { id: string; name: string } | null; rows: unknown[] }>();
+  // By name — the Latin one for a professor without an Arabic name, so each one's topics still read together.
+  type Person = { lastName: string | null; firstName: string | null; lastNameLatin: string | null; firstNameLatin: string | null };
+  const key = (u?: Person | null) =>
+    `${u?.lastName || u?.lastNameLatin || ""} ${u?.firstName || u?.firstNameLatin || ""}`;
+  type Named = { id: string; name: string; nameLatin: string | null };
+  const groups = new Map<string, { specialization: { id: string; name: string; level: string }; filiere: { id: string; name: string } | null; department: Named | null; faculty: Named | null; rows: unknown[] }>();
   const sorted = [...rows].sort(
     (a, b) =>
       a.specialization.name.localeCompare(b.specialization.name, "ar") ||
@@ -2594,13 +2658,14 @@ export const topicTitlesListService = async (q: TopicTitlesListDTO) => {
   );
   for (const t of sorted) {
     const s = t.specialization;
-    const dept = s.filiere?.department ?? null;
+    // التخصص في شعبة، والشعبة في قسم، والقسم في كلية — علاقاتٌ إلزامية.
+    const dept = s.filiere.department;
     if (!groups.has(s.id))
       groups.set(s.id, {
         specialization: { id: s.id, name: s.name, level: s.level },
-        filiere: s.filiere ? { id: s.filiere.id, name: s.filiere.name } : null,
-        department: dept ? { id: dept.id, name: dept.name } : null,
-        faculty: dept?.faculty ?? null,
+        filiere: { id: s.filiere.id, name: s.filiere.name },
+        department: { id: dept.id, name: dept.name, nameLatin: dept.nameLatin },
+        faculty: dept.faculty,
         rows: [],
       });
     groups.get(s.id)!.rows.push({
@@ -2609,6 +2674,16 @@ export const topicTitlesListService = async (q: TopicTitlesListDTO) => {
       status: t.status,
       maxStudents: t.maxStudents,
       supervisor: { id: t.professor.id, grade: t.professor.grade, ...t.professor.user, email: t.professor.universityEmail },
+      coSupervisor: t.coSupervisor && {
+        id: t.coSupervisor.id,
+        grade: t.coSupervisor.grade,
+        ...t.coSupervisor.user,
+        email: t.coSupervisor.universityEmail,
+      },
+      summary: t.summary,
+      // Without a short description, the list may print the full one's opening.
+      excerpt: t.summary ? null : excerptOf(t.description),
+      type: t.type,
       students: (t.projectGroup?.members ?? []).map((m) => ({
         registrationNumber: m.student.registrationNumber,
         isLeader: m.isLeader,
@@ -2620,6 +2695,14 @@ export const topicTitlesListService = async (q: TopicTitlesListDTO) => {
   return { mode: q.mode, year, groups: [...groups.values()] };
 };
 
+/** The opening of a description, to the last whole word within 300 characters. */
+const excerptOf = (text: string | null | undefined, max = 300) => {
+  const flat = (text ?? "").replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat || null;
+  const cut = flat.slice(0, max - 1);
+  return `${cut.slice(0, cut.lastIndexOf(" ") > max / 2 ? cut.lastIndexOf(" ") : cut.length)}…`;
+};
+
 export const getTopicByIdService = async (id: string) => {
   const topic = await prisma.graduationTopic.findUnique({
     where: { id },
@@ -2627,6 +2710,9 @@ export const getTopicByIdService = async (id: string) => {
       professor: { include: { user: { select: userSelect } } },
       specialization: true,
       academicYear: true,
+      // The co-supervisor and the type (core/topic/topic-extras); the summary is a column.
+      coSupervisor: topicExtrasSelect.coSupervisor,
+      type: topicExtrasSelect.type,
       // `projectGroup: true` returned the group row and nothing else, so the
       // detail page could not name the students it was reporting a count of.
       projectGroup: {
@@ -2637,8 +2723,8 @@ export const getTopicByIdService = async (id: string) => {
           },
         },
       },
-      // إجماليُّ المحاولات — عليه يُقاس سقفُ الطلبات على الصفحة.
-      _count: { select: { groupRequests: { where: CAP_ATTEMPTS } } },
+      // الطلباتُ المعلّقة — عليها يُقاس سقفُ الطلبات على الصفحة.
+      _count: { select: { groupRequests: { where: COUNTED_ON_CAP } } },
       // A pending request now blocks publishing, rejecting and archiving, so
       // the page has to show what it is being blocked by. Without this the
       // screen said "no group has formed yet", offered three buttons, and all
@@ -2647,9 +2733,10 @@ export const getTopicByIdService = async (id: string) => {
       // ولا يُوسَّع هذا المرشِّح ليشمل المرفوضة: الصفحة تحسب منه «الموضوع
       // محجوز» وتُطفئ أزرار النشر والرفض والأرشفة. محاولةٌ رُفضت قبل شهر
       // كانت ستُطفئها جميعاً. والمرفوضةُ تأتي في `pastRequests` منفصلةً.
+      // وعدّة فرقٍ قد تنتظر معاً، بترتيب وصولها: الأسبقُ أوّلاً.
       groupRequests: {
         where: { status: "pending" },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: "asc" },
         include: {
           leader: { select: { id: true, registrationNumber: true } },
           members: {
@@ -2669,7 +2756,7 @@ export const getTopicByIdService = async (id: string) => {
   });
   if (!topic)
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -2680,9 +2767,8 @@ export const getTopicByIdService = async (id: string) => {
   /*
    * المحاولاتُ السابقة — للقراءة لا للقرار.
    *
-   * صارت تُحفظ يوم كفّ الرفضُ عن الحذف، وبها وحدها يُفهم عدّادُ السقف:
-   * «٢ / ٣» يقول إنّ الموضوع اقترب من الإغلاق ولا يقول مَن حاول ولا لماذا
-   * رُدّ — والقرارُ الثالث يُتّخذ على غير سياق.
+   * صارت تُحفظ يوم كفّ الرفضُ عن الحذف: مَن تقدّم إلى هذا الموضوع قبلُ،
+   * ولماذا رُدّ — أو أنّه أُلغي لأنّ فريقاً آخر اختير.
    */
   const pastRequests = await prisma.groupRequest.findMany({
     where: { topicId: id, status: "rejected" },
@@ -2716,6 +2802,7 @@ export const getTopicByIdService = async (id: string) => {
       groupMemberCount: occ.groupMemberCount,
       hasPendingRequest: !!occ.pendingRequestId,
       pendingRequestMemberCount: occ.pendingRequestMemberCount,
+      pendingRequestCount: occ.pendingRequestCount,
       hasAcceptedRequest: !!occ.acceptedRequestId,
     },
     actions: topicActions(topic, occ),
@@ -2725,12 +2812,10 @@ export const getTopicByIdService = async (id: string) => {
 /**
  * Refuses to move a topic while a team is still waiting on it.
  *
- * A pending request holds a real claim: it reserves the topic (see
- * `GroupRequest.activeTopicId`), so the topic is already spoken for even
- * though no group has formed yet. Publishing it puts a topic on the students'
- * list that nobody else can take; rejecting or archiving it strands the team's
- * request on a topic that no longer exists as an option — pending forever,
- * still holding the reservation.
+ * A pending request holds a real claim: the team is waiting for an answer on
+ * this topic. Publishing it would put a topic under a professor's proposal on
+ * the students' list; rejecting or archiving it strands the teams' requests
+ * on a topic that no longer exists as an option — pending forever.
  *
  * The request is decided first, on the screen built for it. Rejecting a
  * request deletes it and frees the topic, so this is never a dead end.
@@ -2751,7 +2836,7 @@ const gateTopicAction = async (id: string, action: TopicActionKey) => {
   const topic = await prisma.graduationTopic.findUnique({ where: { id } });
   if (!topic)
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -2770,7 +2855,7 @@ const gateTopicAction = async (id: string, action: TopicActionKey) => {
 
   if (!allowed)
     throw new BadRequestException(
-      actions.blockedReasons[action] ?? "هذا الإجراء غير متاح على هذا الموضوع.",
+      actions.blockedReasons[action]!, // كلّ إجراءٍ ممنوع يُسجَّل سببه معه
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -2793,14 +2878,13 @@ export const approveTopicService = async (id: string) => {
   // Approval is a decision on a proposal, so it starts from an undecided one.
   const topic = await setTopicStatus(id, "approve", "approved");
   const userId = await getTopicProfessorUserId(topic.id);
-  if (userId)
-    await createNotification({
-      userId,
-      type: "topic_approved",
-      title: "تمت الموافقة على موضوعك",
-      message: `تمت الموافقة على الموضوع: «${topic.title}».`,
-      link: "/professor/topics",
-    });
+  await createNotification({
+    userId,
+    type: "topic_approved",
+    title: { key: "notif.topicApproved.title" },
+    message: { key: "notif.topicApproved.message", params: { title: topic.title } },
+    link: "/professor/topics",
+  });
   return topic;
 };
 
@@ -2867,16 +2951,15 @@ export const rejectTopicService = async (id: string, data: RejectTopicDTO) => {
   // would not undo any of that — it would only mislabel it. Archive it instead.
   const topic = await setTopicStatus(id, "reject", "rejected", data.reason);
   const userId = await getTopicProfessorUserId(topic.id);
-  if (userId)
-    await createNotification({
-      userId,
-      type: "topic_rejected",
-      title: "تم رفض موضوعك",
-      message: data.reason
-        ? `تم رفض الموضوع «${topic.title}». السبب: ${data.reason}`
-        : `تم رفض الموضوع «${topic.title}».`,
-      link: "/professor/topics",
-    });
+  await createNotification({
+    userId,
+    type: "topic_rejected",
+    title: { key: "notif.topicRejected.title" },
+    message: data.reason
+      ? { key: "notif.topicRejected.messageReason", params: { title: topic.title, reason: data.reason } }
+      : { key: "notif.topicRejected.message", params: { title: topic.title } },
+    link: "/professor/topics",
+  });
   return topic;
 };
 
@@ -3092,8 +3175,7 @@ export const listProjectsService = async (q: ListProjectsDTO) => {
   for (const id of ids) progressByGroup.set(id, blank());
 
   for (const m of plan) {
-    const acc = progressByGroup.get(m.groupId);
-    if (!acc) continue;
+    const acc = progressByGroup.get(m.groupId)!; // مراحل مجموعات هذه الصفحة وحدها
     acc.total += 1;
     if (m.status === "completed") acc.completed += 1;
     else if (m.status === "overdue" || m.deadline < now) acc.overdue += 1;
@@ -3110,7 +3192,7 @@ export const listProjectsService = async (q: ListProjectsDTO) => {
   return {
     items: items.map((p) => ({
       ...p,
-      progress: progressByGroup.get(p.id) ?? blank(),
+      progress: progressByGroup.get(p.id)!,
     })),
     total,
     stats: {
@@ -3200,7 +3282,7 @@ export const getProjectByIdService = async (id: string) => {
   });
   if (!group)
     throw new NotFoundException(
-      "Project not found",
+      tr("notFound.project"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -3253,7 +3335,7 @@ export const changeSupervisorService = async (
   });
   if (!group)
     throw new NotFoundException(
-      "Project not found",
+      tr("notFound.project"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -3262,12 +3344,12 @@ export const changeSupervisorService = async (
   });
   if (!prof)
     throw new NotFoundException(
-      "Professor not found",
+      tr("notFound.professor"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (group.topic.professorId === data.professorId)
     throw new BadRequestException(
-      "هذا الأستاذ هو المشرف الحالي على المذكرة",
+      tr("project.sameSupervisor"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3288,21 +3370,18 @@ export const changeSupervisorService = async (
       {
         userId: prof.userId,
         type: "general",
-        title: "أُسند إليك الإشراف على مذكرة",
-        message: `أسندت إليك الإدارة الإشراف على «${group.topic.title}».`,
+        title: { key: "notif.supervisionAssigned.title" },
+        message: { key: "notif.supervisionAssigned.message", params: { title: group.topic.title } },
         link: `/professor/groups/${id}`,
       },
-      ...(previous && previous.userId !== prof.userId
-        ? [
-            {
-              userId: previous.userId,
-              type: "general" as const,
-              title: "نُقل الإشراف على مذكرة",
-              message: `نقلت الإدارة الإشراف على «${group.topic.title}» إلى أستاذٍ آخر.`,
-              link: "/professor/groups",
-            },
-          ]
-        : []),
+      // المشرف السابق موجود (الموضوع لا يخلو من أستاذ)، وغير الجديد — رُدّ «المشرف نفسه» أعلاه.
+      {
+        userId: previous!.userId,
+        type: "general",
+        title: { key: "notif.supervisionMoved.title" },
+        message: { key: "notif.supervisionMoved.message", params: { title: group.topic.title } },
+        link: "/professor/groups",
+      },
     ]);
   } catch {
     // A notification must never fail the write it is reporting.
@@ -3318,7 +3397,7 @@ export const assignStudentService = async (
   const group = await prisma.projectGroup.findUnique({ where: { id } });
   if (!group)
     throw new NotFoundException(
-      "Project not found",
+      tr("notFound.project"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -3327,7 +3406,7 @@ export const assignStudentService = async (
   });
   if (!student)
     throw new NotFoundException(
-      "Student not found",
+      tr("notFound.student"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -3336,7 +3415,7 @@ export const assignStudentService = async (
   });
   if (existing)
     throw new BadRequestException(
-      "Student already in this project",
+      tr("project.studentAlreadyIn"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3346,7 +3425,7 @@ export const assignStudentService = async (
   });
   if (elsewhere)
     throw new BadRequestException(
-      "هذا الطالب عضو في مذكرة أخرى بالفعل",
+      tr("project.studentInOther"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3360,7 +3439,7 @@ export const assignStudentService = async (
   ]);
   if (topic && count >= topic.maxStudents)
     throw new BadRequestException(
-      `المذكرة مكتملة: الحدّ الأقصى لهذا الموضوع ${topic.maxStudents} طلبة.`,
+      tr("project.full", { max: topic.maxStudents }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3376,16 +3455,16 @@ export const assignStudentService = async (
   // الطالب يجد مشروعاً في فضائه لم يطلبه — فليعرف من أين جاء.
   try {
     const topicTitle = (
-      await prisma.graduationTopic.findUnique({
+      await prisma.graduationTopic.findUniqueOrThrow({
         where: { id: group.topicId },
         select: { title: true },
       })
-    )?.title;
+    ).title;
     await createNotification({
       userId: student.userId,
       type: "general",
-      title: "أُضفت إلى مذكرة",
-      message: `أضافتك الإدارة إلى فريق «${topicTitle ?? ""}».`,
+      title: { key: "notif.addedToProject.title" },
+      message: { key: "notif.addedToProject.message", params: { title: topicTitle } },
       link: "/student/project",
     });
   } catch {
@@ -3413,12 +3492,12 @@ export const setProjectLeaderService = async (
   });
   if (!group)
     throw new NotFoundException(
-      "Project not found",
+      tr("notFound.project"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (!group.members.some((m) => m.studentId === studentId))
     throw new BadRequestException(
-      "القائد يجب أن يكون أحد أعضاء المذكرة",
+      tr("project.leaderMustBeMember"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3441,14 +3520,13 @@ export const setProjectLeaderService = async (
  * ينهي الطلب المقبول الذي أنشأ المجموعة، ثم يُعيد حساب حالة الموضوع.
  *
  * المجموعة والطلب الذي أنشأها واقعة واحدة مسجَّلة مرّتين: المجموعة تحمل
- * الطلبة، والطلب يحمل الحجز — `activeTopicId` وفهرسه الفريد هو ما يمنع فريقاً
- * ثانياً من أخذ الموضوع. وحذف المجموعة دون إنهاء الطلب كان يترك الحجز قائماً
- * فوق لا شيء: الموضوع يقول «معتمد» وهو محجوب عن كل طالب، ويرفض كل فريق جديد،
- * ولا شاشة تستطيع تحريره. وحتى نشره لم يكن يُجدي — يصير `open` ويبقى غير مرئي.
+ * الطلبة، والطلب المقبول يحجز الموضوع. وحذف المجموعة دون إنهاء الطلب كان
+ * يترك الحجز قائماً فوق لا شيء: الموضوع يقول «معتمد» وهو محجوب عن كل طالب،
+ * ويرفض كل فريق جديد، ولا شاشة تستطيع تحريره.
  *
- * يُعلَّم الطلب `rejected` لا يُحذف: هذا ما يُفرِغ `activeTopicId` (الفهرس لا
- * يقارن NULL)، ويُبقي للفريق أثر ما طلبوه وما آل إليه. والسبب المسجَّل يقول
- * إن المجموعة فُسخت، فلا تُقرأ «مرفوض» على أنها ردّ على طلبهم.
+ * يُعلَّم الطلب `rejected` لا يُحذف: هذا ما يُفرِج عن الموضوع، ويُبقي للفريق
+ * أثر ما طلبوه وما آل إليه. والسبب المسجَّل يقول إن المجموعة فُسخت، فلا
+ * تُقرأ «مرفوض» على أنها ردّ على طلبهم.
  */
 const releaseTopicOccupancy = async (
   tx: Prisma.TransactionClient,
@@ -3459,11 +3537,7 @@ const releaseTopicOccupancy = async (
     where: { topicId, status: "accepted" },
     data: {
       status: "rejected",
-      activeTopicId: null,
       rejectionReason: reason,
-      // فعلٌ إداريّ لا قرارٌ على الفريق: لا يشغل خانةً من سقف الموضوع.
-      // والإدارةُ إنّما فسخت المشروع لِيُتداول الموضوع من جديد.
-      countsAgainstCap: false,
     },
   });
   return computeTopicStatus(tx, topicId);
@@ -3484,13 +3558,13 @@ export const removeProjectMemberService = async (
   });
   if (!group)
     throw new NotFoundException(
-      "Project not found",
+      tr("notFound.project"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   const target = group.members.find((m) => m.studentId === studentId);
   if (!target)
     throw new BadRequestException(
-      "الطالب ليس عضواً في هذه المذكرة",
+      tr("project.notMember"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3505,7 +3579,7 @@ export const removeProjectMemberService = async (
    */
   if (remaining === 0)
     throw new BadRequestException(
-      "هذا آخر عضو في المذكرة، وإزالته تعني فسخ المذكرة كلّها. استعمل «فسخ المذكرة» — فهو يسجّل السبب ويُعلم الطلبة ويُعيد الموضوع للتداول.",
+      tr("project.lastMember"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3517,12 +3591,12 @@ export const removeProjectMemberService = async (
     // إخراج القائد يترك المجموعة بلا قائد، وهي حالة لا تعرف الشاشة كيف تعرضها
     // ولا الخادم من يخاطب. أقدم الباقين يخلفه، والإدارة تغيّره بعدها إن شاءت.
     if (target.isLeader) {
-      const heir = group.members.find((m) => m.studentId !== studentId);
-      if (heir)
-        await tx.projectMember.update({
-          where: { groupId_studentId: { groupId, studentId: heir.studentId } },
-          data: { isLeader: true },
-        });
+      // يبقى عضوٌ واحدٌ على الأقلّ — رُدّت إزالة الأخير أعلاه.
+      const heir = group.members.find((m) => m.studentId !== studentId)!;
+      await tx.projectMember.update({
+        where: { groupId_studentId: { groupId, studentId: heir.studentId } },
+        data: { isLeader: true },
+      });
     }
   });
 
@@ -3538,14 +3612,14 @@ export const removeProjectMemberService = async (
         select: { title: true },
       }),
     ]);
-    if (who)
-      await createNotification({
-        userId: who.userId,
-        type: "general",
-        title: "أُخرجت من مذكرة",
-        message: `أخرجتك الإدارة من فريق «${topic?.title ?? ""}».`,
-        link: "/student/requests",
-      });
+    // خرجت عضويته وحدها: الطالب والموضوع باقيان.
+    await createNotification({
+      userId: who!.userId,
+      type: "general",
+      title: { key: "notif.removedFromProject.title" },
+      message: { key: "notif.removedFromProject.message", params: { title: topic!.title } },
+      link: "/student/requests",
+    });
   } catch {
     // A notification must never fail the write it is reporting.
   }
@@ -3584,7 +3658,7 @@ export const dissolveProjectService = async (
   });
   if (!group)
     throw new NotFoundException(
-      "Project not found",
+      tr("notFound.project"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -3593,11 +3667,11 @@ export const dissolveProjectService = async (
   });
 
   const blockers: string[] = [];
-  if (submissions > 0) blockers.push(`${submissions} تسليماً من الطلبة`);
-  if (group.defense) blockers.push("مناقشة مبرمجة");
+  if (submissions > 0) blockers.push(tr("count.submissions", { count: submissions }));
+  if (group.defense) blockers.push(tr("project.scheduledDefense"));
   if (blockers.length)
     throw new BadRequestException(
-      `لا يمكن فسخ هذه المذكرة: عليها ${blockers.join(" و")}. احذف ذلك أوّلاً من شاشته إن كنت متأكّداً — لا تُفسَخ مذكرة تحمل عملاً قائماً في خطوة واحدة.`,
+      tr("project.dissolveBlocked", { what: listOf(blockers) }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3623,8 +3697,10 @@ export const dissolveProjectService = async (
     await createNotification({
       userId,
       type: "general",
-      title: "فُسخت مجموعتكم",
-      message: `فُسخت مجموعتكم على موضوع «${group.topic.title}». السبب: ${reason}`,
+      title: { key: "notif.groupDissolved.title" },
+      message: data.reason?.trim()
+        ? { key: "notif.groupDissolved.messageReason", params: { title: group.topic.title, reason } }
+        : { key: "notif.groupDissolved.message", params: { title: group.topic.title } },
       link: "/student/requests",
     });
   }
@@ -3654,7 +3730,7 @@ const requireGroup = async (groupId: string) => {
   });
   if (!group)
     throw new NotFoundException(
-      "Project not found",
+      tr("notFound.project"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   return group;
@@ -3662,7 +3738,7 @@ const requireGroup = async (groupId: string) => {
 
 export const listGroupMilestonesService = async (
   groupId: string,
-  q: ListMilestonesDTO = {},
+  q: ListMilestonesDTO,
 ) => {
   await requireGroup(groupId);
 
@@ -3721,7 +3797,7 @@ export const createGroupMilestoneService = async (
 
   // The supervisor owns this timeline too; they should not discover a change
   // to it by accident.
-  await notifySupervisorOfMilestone(groupId, "أضافت الإدارة مرحلة جديدة");
+  await notifySupervisorOfMilestone(groupId, "notif.milestoneAdded.title");
 
   return milestone;
 };
@@ -3733,7 +3809,7 @@ export const updateGroupMilestoneService = async (
   const existing = await prisma.milestone.findUnique({ where: { id } });
   if (!existing)
     throw new NotFoundException(
-      "Milestone not found",
+      tr("notFound.milestone"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -3752,7 +3828,7 @@ export const updateGroupMilestoneService = async (
 
   await notifySupervisorOfMilestone(
     existing.groupId,
-    "عدّلت الإدارة مرحلة في مذكرتكم",
+    "notif.milestoneUpdated.title",
   );
 
   return milestone;
@@ -3765,7 +3841,7 @@ export const deleteGroupMilestoneService = async (id: string) => {
   });
   if (!existing)
     throw new NotFoundException(
-      "Milestone not found",
+      tr("notFound.milestone"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -3773,21 +3849,21 @@ export const deleteGroupMilestoneService = async (id: string) => {
   // and say so, rather than destroying submissions as a side effect.
   if (existing._count.submissions > 0)
     throw new BadRequestException(
-      "لا يمكن حذف مرحلة تحتوي على تسليمات؛ احذف التسليمات أولاً.",
+      tr("milestone.hasSubmissions"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
   await prisma.milestone.delete({ where: { id } });
   await notifySupervisorOfMilestone(
     existing.groupId,
-    "حذفت الإدارة مرحلة من مذكرتكم",
+    "notif.milestoneDeleted.title",
   );
 
   return { message: "Milestone deleted" };
 };
 
 /** Tells the supervising professor that administration touched the timeline. */
-const notifySupervisorOfMilestone = async (groupId: string, title: string) => {
+const notifySupervisorOfMilestone = async (groupId: string, title: MessageKey) => {
   try {
     const group = await prisma.projectGroup.findUnique({
       where: { id: groupId },
@@ -3797,14 +3873,15 @@ const notifySupervisorOfMilestone = async (groupId: string, title: string) => {
         },
       },
     });
-    const userId = group?.topic?.professor?.userId;
-    if (!userId) return;
+    // المجموعة قائمة، ولموضوعها أستاذٌ دائماً.
+    const { topic } = group!;
+    const userId = topic.professor.userId;
 
     await createNotification({
       userId,
       type: "general",
-      title,
-      message: `المذكرة: «${group?.topic?.title ?? ""}».`,
+      title: { key: title },
+      message: { key: "notif.milestone.message", params: { title: topic.title } },
       // كان «/professor/projects» — مسارٌ لا وجود له، فيفتح الإشعار صفحةً فارغة.
       link: `/professor/groups/${groupId}`,
     });
@@ -3822,7 +3899,7 @@ const notifySupervisorOfMilestone = async (groupId: string, title: string) => {
  */
 const defenseAudience = async (defenseId: string) => {
   try {
-    const d = await prisma.defense.findUnique({
+    const d = await prisma.defense.findUniqueOrThrow({
       where: { id: defenseId },
       select: {
         date: true,
@@ -3839,25 +3916,21 @@ const defenseAudience = async (defenseId: string) => {
         committee: { select: { professor: { select: { userId: true } } } },
       },
     });
-    if (!d) return null;
-
     const recipients = new Map<string, string>();
     for (const m of d.group.members)
       recipients.set(m.student.userId, "/student/project");
-    const sup = d.group.topic.professor?.userId;
-    if (sup) recipients.set(sup, `/professor/groups/${d.group.id}`);
+    recipients.set(d.group.topic.professor.userId, `/professor/groups/${d.group.id}`);
     for (const c of d.committee)
       if (!recipients.has(c.professor.userId))
         recipients.set(c.professor.userId, "/professor");
 
-    const when = d.date.toLocaleString("ar-DZ", {
-      dateStyle: "full",
-      timeStyle: "short",
-      timeZone: "Africa/Algiers",
-    });
+    // اليوم يُكتب بلغة كلّ قارئ وبتوقيت الجامعة (catalog/notifications).
     return {
       recipients,
-      message: `«${d.group.topic.title}» — ${when}، القاعة ${d.room}.`,
+      message: {
+        key: "notif.defense.message",
+        params: { title: d.group.topic.title, date: d.date.toISOString(), room: d.room },
+      } satisfies NotifyText,
     };
   } catch {
     return null;
@@ -3866,7 +3939,7 @@ const defenseAudience = async (defenseId: string) => {
 
 const notifyDefense = async (
   audience: Awaited<ReturnType<typeof defenseAudience>>,
-  title: string,
+  title: MessageKey,
   type: "defense_scheduled" | "defense_graded" | "general" = "defense_scheduled",
 ) => {
   if (!audience) return;
@@ -3876,7 +3949,7 @@ const notifyDefense = async (
         userId,
         link,
         type,
-        title,
+        title: { key: title },
         message: audience.message,
       })),
     );
@@ -3891,7 +3964,7 @@ export const createDefenseService = async (data: CreateDefenseDTO) => {
   });
   if (!group)
     throw new NotFoundException(
-      "Project not found",
+      tr("notFound.project"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -3900,7 +3973,7 @@ export const createDefenseService = async (data: CreateDefenseDTO) => {
   });
   if (exists)
     throw new BadRequestException(
-      "Defense already scheduled for this project",
+      tr("defense.alreadyScheduled"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -3932,7 +4005,7 @@ export const createDefenseService = async (data: CreateDefenseDTO) => {
 
   // The team, their supervisor and the jury learn the date from the
   // platform, not from a corridor.
-  await notifyDefense(await defenseAudience(defense.id), "بُرمجت مناقشة مذكرة");
+  await notifyDefense(await defenseAudience(defense.id), "notif.defenseScheduled.title");
   return defense;
 };
 
@@ -3943,7 +4016,7 @@ export const updateDefenseService = async (
   const found = await prisma.defense.findUnique({ where: { id } });
   if (!found)
     throw new NotFoundException(
-      "Defense not found",
+      tr("notFound.defense"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -3993,17 +4066,17 @@ export const updateDefenseService = async (
     data.status !== undefined && data.status !== found.status;
 
   if (statusChanged && data.status === "cancelled")
-    await notifyDefense(await defenseAudience(id), "أُلغيت المناقشة", "general");
+    await notifyDefense(await defenseAudience(id), "notif.defenseCancelled.title", "general");
   else if (statusChanged && data.status === "completed")
     await notifyDefense(
       await defenseAudience(id),
-      "اختُتمت المناقشة",
+      "notif.defenseCompleted.title",
       "defense_graded",
     );
   else if (moved || (statusChanged && data.status === "scheduled"))
-    await notifyDefense(await defenseAudience(id), "تغيّر موعد المناقشة");
+    await notifyDefense(await defenseAudience(id), "notif.defenseMoved.title");
   else if (data.committee)
-    await notifyDefense(await defenseAudience(id), "تحدّثت لجنة المناقشة");
+    await notifyDefense(await defenseAudience(id), "notif.defenseCommittee.title");
 
   return defense;
 };
@@ -4012,14 +4085,14 @@ export const deleteDefenseService = async (id: string) => {
   const found = await prisma.defense.findUnique({ where: { id } });
   if (!found)
     throw new NotFoundException(
-      "Defense not found",
+      tr("notFound.defense"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   // Gathered first: once the row is gone there is no one left to ask.
   const audience =
     found.status === "scheduled" ? await defenseAudience(id) : null;
   await prisma.defense.delete({ where: { id } });
-  await notifyDefense(audience, "أُلغي موعد المناقشة", "general");
+  await notifyDefense(audience, "notif.defenseDeleted.title", "general");
   return { message: "Defense deleted" };
 };
 
@@ -4037,28 +4110,28 @@ export const removeGroupRequestMemberService = async (
   });
   if (!request)
     throw new NotFoundException(
-      "Group request not found",
+      tr("notFound.groupRequest"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (request.status === "accepted")
     throw new BadRequestException(
-      "لا يمكن تعديل الأعضاء بعد الموافقة",
+      tr("request.membersLocked"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   if (request.leaderStudentId === studentId)
     throw new BadRequestException(
-      "لا يمكن إزالة المرسِل؛ غيّر المرسِل أولاً",
+      tr("request.cantRemoveLeader"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   const member = request.members.find((m) => m.studentId === studentId);
   if (!member)
     throw new BadRequestException(
-      "الطالب ليس عضواً في هذا الطلب",
+      tr("request.notMember"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   if (request.members.length <= 1)
     throw new BadRequestException(
-      "لا يمكن ترك الطلب بلا أعضاء",
+      tr("request.keepOne"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -4076,17 +4149,17 @@ export const setGroupRequestLeaderService = async (
   });
   if (!request)
     throw new NotFoundException(
-      "Group request not found",
+      tr("notFound.groupRequest"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (request.status === "accepted")
     throw new BadRequestException(
-      "لا يمكن تغيير المرسِل بعد الموافقة",
+      tr("request.leaderLocked"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   if (!request.members.some((m) => m.studentId === studentId))
     throw new BadRequestException(
-      "المرسِل يجب أن يكون أحد الأعضاء",
+      tr("request.leaderMustBeMember"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -4097,7 +4170,12 @@ export const setGroupRequestLeaderService = async (
   return getGroupRequestService(requestId);
 };
 
-export const listGroupRequestsService = async (q: ListQueryDTO) => {
+/**
+ * The filters of the group-requests page, shared by its two views — the flat
+ * list and the topics with their requests — so both answer to the same
+ * search, status, professor, academic chain and dates.
+ */
+const groupRequestFilters = (q: ListQueryDTO) => {
   const {
     status: statusFilter,
     professorId,
@@ -4175,6 +4253,68 @@ export const listGroupRequestsService = async (q: ListQueryDTO) => {
     };
   }
 
+  return { where, whereAnyStatus };
+};
+
+/** The three statuses, zeros included: the strip never loses a number. */
+const statusCounts = (grouped: { status: string; _count: { _all: number } }[]) => {
+  const byStatus = new Map(grouped.map((g) => [g.status, g._count._all]));
+  return {
+    pending: byStatus.get("pending") ?? 0,
+    accepted: byStatus.get("accepted") ?? 0,
+    rejected: byStatus.get("rejected") ?? 0,
+    all: [...byStatus.values()].reduce((a, b) => a + b, 0),
+  };
+};
+
+type Placement = { topicId: string; topic: string; name: string };
+
+/**
+ * أين وُضع كلّ طالبٍ من هؤلاء: المشروعُ الذي هو فيه، بموضوعه.
+ *
+ * طالبٌ له مشروع لا يُقبل في طلبٍ آخر — فتُقرأ مواضعُ أعضاء كلّ طلبٍ يُعرض
+ * أو يُقبل، بنداءٍ واحدٍ للصفحة كلّها.
+ */
+const placementsOf = async (
+  db: Prisma.TransactionClient | typeof prisma,
+  studentIds: string[],
+): Promise<Map<string, Placement>> => {
+  if (!studentIds.length) return new Map();
+  const rows = await db.projectMember.findMany({
+    where: { studentId: { in: [...new Set(studentIds)] } },
+    select: {
+      studentId: true,
+      student: { select: { user: { select: { firstName: true, lastName: true } } } },
+      group: { select: { topic: { select: { id: true, title: true } } } },
+    },
+  });
+  return new Map(
+    rows.map((r) => [
+      r.studentId,
+      {
+        topicId: r.group.topic.id,
+        topic: r.group.topic.title,
+        name: [r.student.user.firstName, r.student.user.lastName].filter(Boolean).join(" "),
+      },
+    ]),
+  );
+};
+
+/** أوّلُ عضوٍ في الطلب له مشروعٌ على موضوعٍ غير موضوعه — لجدول القواعد. */
+const placedIn = (
+  placements: Map<string, Placement>,
+  request: { topicId: string; members: { studentId: string }[] },
+) => {
+  for (const m of request.members) {
+    const p = placements.get(m.studentId);
+    if (p && p.topicId !== request.topicId) return { name: p.name, topic: p.topic };
+  }
+  return null;
+};
+
+export const listGroupRequestsService = async (q: ListQueryDTO) => {
+  const { where, whereAnyStatus } = groupRequestFilters(q);
+
   const [items, total, grouped] = await Promise.all([
     prisma.groupRequest.findMany({
       where,
@@ -4210,6 +4350,10 @@ export const listGroupRequestsService = async (q: ListQueryDTO) => {
    * بينما ثلاثةٌ من شروط الخادم الأربعة لا تصلها أصلاً — فتعرض أزراراً
    * لإجراءاتٍ مستحيلة.
    */
+  const placements = await placementsOf(
+    prisma,
+    items.flatMap((r) => r.members.map((m) => m.studentId)),
+  );
   const withActions = items.map((r) => ({
     ...r,
     actions: requestActions({
@@ -4220,20 +4364,121 @@ export const listGroupRequestsService = async (q: ListQueryDTO) => {
         maxStudents: r.topic.maxStudents,
         hasGroup: !!r.topic.projectGroup,
       },
+      placed: placedIn(placements, r),
     }),
   }));
 
   // الحالات الثلاث معلنةٌ ولو بأصفار: شريطٌ يختفي منه رقمٌ تتزحزح بقيّته،
   // والصفر خبرٌ لا غياب.
-  const byStatus = new Map(grouped.map((g) => [g.status, g._count._all]));
-  const counts = {
-    pending: byStatus.get("pending") ?? 0,
-    accepted: byStatus.get("accepted") ?? 0,
-    rejected: byStatus.get("rejected") ?? 0,
-    all: [...byStatus.values()].reduce((a, b) => a + b, 0),
-  };
+  const counts = statusCounts(grouped);
 
   return { items: withActions, total, counts, page: q.page, limit: q.limit };
+};
+
+/**
+ * The same requests, gathered under their topics.
+ *
+ * Several teams now ask for one topic at once and the administration picks
+ * one — so the decision is made per topic, with its competing teams side by
+ * side, not request by request in a flat list where a topic's teams sit pages
+ * apart. Pages count topics, so a topic's requests are never split between
+ * two. The topics with the most teams waiting come first.
+ *
+ * Inside each topic: the requests that pass the filters, oldest first (the
+ * order they arrived in), each with what may be done with it; and the topic's
+ * own count per status — all of its requests, so "3 rejected" stays true
+ * while the list shows only the pending ones.
+ *
+ * `focus` is the topic the page was opened for, from its own page ("decide on
+ * the request"). Among many topics with one team waiting it could fall on any
+ * page, and the reader would never find it; so it heads the first page and is
+ * left out of the rest — never shown twice. `total` counts it once; the pages
+ * are counted on the others (`pageTotal`).
+ */
+export const listGroupRequestsByTopicService = async (q: ListQueryDTO) => {
+  const { where, whereAnyStatus } = groupRequestFilters(q);
+  const topicWhere = { groupRequests: { some: where } } as Prisma.GraduationTopicWhereInput;
+  const focus = q.focus;
+  const listWhere: Prisma.GraduationTopicWhereInput = focus
+    ? { AND: [topicWhere, { id: { not: focus } }] }
+    : topicWhere;
+
+  const select = {
+    id: true,
+    title: true,
+    status: true,
+    maxStudents: true,
+    maxRequests: true,
+    pendingRequestCount: true,
+    professor: { include: { user: { select: userSelect } } },
+    specialization: { select: { id: true, name: true } },
+    projectGroup: { select: { id: true } },
+    groupRequests: {
+      where: where as Prisma.GroupRequestWhereInput,
+      orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+      include: {
+        leader: { include: { user: { select: userSelect } } },
+        members: {
+          include: { student: { include: { user: { select: userSelect } } } },
+        },
+      },
+    },
+  } satisfies Prisma.GraduationTopicSelect;
+
+  const [focused, focusMatches, topics, pageTotal, grouped] = await Promise.all([
+    focus && q.page === 1
+      ? prisma.graduationTopic.findFirst({ where: { id: focus, groupRequests: { some: {} } }, select })
+      : null,
+    focus ? prisma.graduationTopic.count({ where: { AND: [topicWhere, { id: focus }] } }) : 0,
+    prisma.graduationTopic.findMany({
+      where: listWhere,
+      orderBy: [{ pendingRequestCount: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
+      skip: (q.page - 1) * q.limit,
+      take: q.limit,
+      select,
+    }),
+    prisma.graduationTopic.count({ where: listWhere }),
+    prisma.groupRequest.groupBy({
+      by: ["status"],
+      where: whereAnyStatus,
+      _count: { _all: true },
+    }),
+  ]);
+  const total = pageTotal + focusMatches;
+  const shown = focused ? [focused, ...topics] : topics;
+
+  const perTopic = shown.length
+    ? await prisma.groupRequest.groupBy({
+        by: ["topicId", "status"],
+        where: { topicId: { in: shown.map((t) => t.id) } },
+        _count: { _all: true },
+      })
+    : [];
+
+  const placements = await placementsOf(
+    prisma,
+    shown.flatMap((t) => t.groupRequests.flatMap((r) => r.members.map((m) => m.studentId))),
+  );
+  const items = shown.map(({ groupRequests, ...topic }) => ({
+    ...topic,
+    focused: topic.id === focus,
+    counts: statusCounts(perTopic.filter((g) => g.topicId === topic.id)),
+    requests: groupRequests.map((r) => ({
+      ...r,
+      actions: requestActions({
+        status: r.status,
+        memberCount: r.members.length,
+        topic: {
+          status: topic.status,
+          maxStudents: topic.maxStudents,
+          hasGroup: !!topic.projectGroup,
+        },
+        placed: placedIn(placements, r),
+      }),
+    })),
+  }));
+
+  return { items, total, pageTotal, counts: statusCounts(grouped), page: q.page, limit: q.limit };
 };
 
 /**
@@ -4256,7 +4501,7 @@ export const getGroupRequestService = async (id: string) => {
           academicYear: true,
           projectGroup: { select: { id: true } },
           _count: {
-            select: { groupRequests: { where: { countsAgainstCap: true } } },
+            select: { groupRequests: { where: COUNTED_ON_CAP } },
           },
         },
       },
@@ -4276,7 +4521,7 @@ export const getGroupRequestService = async (id: string) => {
   });
   if (!request)
     throw new NotFoundException(
-      "Group request not found",
+      tr("notFound.groupRequest"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -4321,6 +4566,9 @@ export const getGroupRequestService = async (id: string) => {
       .map((o) => o.request),
   }));
 
+  // العضوُ الذي له مشروعٌ على موضوعٍ آخر يُطفئ «قبول» — من الصفوف نفسها.
+  const placedMember = members.find((m) => m.project && m.project.topic.id !== request.topicId);
+
   // نفس الجدول الذي تقرأه القائمة، فلا تختلف صفحة التفصيل عنها في ما تعرضه.
   return {
     ...request,
@@ -4333,6 +4581,14 @@ export const getGroupRequestService = async (id: string) => {
         maxStudents: request.topic.maxStudents,
         hasGroup: !!request.topic.projectGroup,
       },
+      placed: placedMember
+        ? {
+            name: [placedMember.student.user.firstName, placedMember.student.user.lastName]
+              .filter(Boolean)
+              .join(" "),
+            topic: placedMember.project!.topic.title,
+          }
+        : null,
     }),
   };
 };
@@ -4347,10 +4603,12 @@ export const acceptGroupRequestService = async (id: string) => {
   });
   if (!request)
     throw new NotFoundException(
-      "Group request not found",
+      tr("notFound.groupRequest"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   const topic = request.topic;
+  const memberIds = request.members.map((m) => m.studentId);
+  const team = new Set(memberIds);
 
   /*
    * الحارس هو جدول القواعد نفسه الذي تقرأه الشاشة. وكان هنا أربعة فحوصٍ
@@ -4365,6 +4623,7 @@ export const acceptGroupRequestService = async (id: string) => {
       maxStudents: topic.maxStudents,
       hasGroup: !!topic.projectGroup,
     },
+    placed: placedIn(await placementsOf(prisma, memberIds), request),
   });
   if (!gate.canAccept)
     throw new BadRequestException(
@@ -4373,6 +4632,24 @@ export const acceptGroupRequestService = async (id: string) => {
     );
 
   const result = await prisma.$transaction(async (tx) => {
+    /*
+     * أعضاءُ الطلب مقفلون حتى نهاية المعاملة. قبولان معاً لطلبين يشتركان في
+     * طالب — على موضوعين مختلفين، فلا يجمعهما شيءٌ آخر — كان كلٌّ منهما يقرأ
+     * «لا مشروع له» قبل أن يكتب الآخر، فيصير له مشروعان. الآن يصطفّان هنا،
+     * ويقرأ الثاني ما كتبه الأوّل فيُردّ.
+     *
+     * والقفلُ أوّلُ ما في المعاملة عمداً: لقطةُ القراءة تؤخذ عند أوّل قراءةٍ
+     * عادية، فتأتي بعده فترى ما كتبه السابق.
+     */
+    if (memberIds.length)
+      await tx.$queryRaw`SELECT id FROM Student WHERE id IN (${Prisma.join(memberIds)}) ORDER BY id FOR UPDATE`;
+    const placedNow = placedIn(await placementsOf(tx, memberIds), request);
+    if (placedNow)
+      throw new BadRequestException(
+        tr("gate.memberPlaced", placedNow),
+        ErrorCodeEnum.VALIDATION_ERROR,
+      );
+
     const fresh = await tx.graduationTopic.findUnique({
       where: { id: topic.id },
       include: { projectGroup: true },
@@ -4385,12 +4662,12 @@ export const acceptGroupRequestService = async (id: string) => {
         fresh.status !== "full")
     )
       throw new BadRequestException(
-        "هذا الموضوع لم يعد متاحاً",
+        tr("request.topicGone"),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
     if (fresh.projectGroup)
       throw new BadRequestException(
-        "تمّت الموافقة على مجموعة أخرى لهذا الموضوع بالفعل",
+        tr("request.otherAccepted"),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
 
@@ -4417,19 +4694,77 @@ export const acceptGroupRequestService = async (id: string) => {
       data: { status: "accepted" },
     });
 
-    // The group now exists, so the projection reads `full` on its own. The
-    // literal that used to be written here is what erased "was it published?"
-    // and left every exit from `full` guessing.
-    await computeTopicStatus(tx, topic.id);
-
-    // The losing requests stop being live, which releases their hold on the
-    // reservation column. (The accepted one keeps it: `accepted` is live.)
-    await tx.groupRequest.updateMany({
-      where: { topicId: topic.id, status: "pending", id: { not: request.id } },
-      data: { status: "rejected", activeTopicId: null },
+    // Two kinds of pending request end here, each told why:
+    //
+    //  - the other teams that asked for this topic at the same time — the
+    //    topic is taken, so they can choose another;
+    //  - the requests, on other topics, of anyone in this team — a student
+    //    is in one project only. Mostly the team's own lower priorities; or
+    //    a request another team sent with one of these students in it.
+    //
+    // Left pending, the second kind could be accepted too, and its members
+    // would end in two projects. Each also holds a place under its topic's
+    // cap, so releasing it gives that topic back to other teams.
+    const others = await tx.groupRequest.findMany({
+      where: {
+        status: "pending",
+        id: { not: request.id },
+        OR: [{ topicId: topic.id }, { members: { some: { studentId: { in: memberIds } } } }],
+      },
+      select: {
+        id: true,
+        topicId: true,
+        topic: { select: { title: true } },
+        members: {
+          select: {
+            studentId: true,
+            student: { select: { userId: true, user: { select: { firstName: true, lastName: true } } } },
+          },
+        },
+      },
     });
+    const superseded = others.filter((o) => o.topicId === topic.id);
+    const released = others
+      .filter((o) => o.topicId !== topic.id)
+      .map((o) => ({
+        ...o,
+        sameTeam: o.members.every((m) => team.has(m.studentId)),
+        names: o.members
+          .filter((m) => team.has(m.studentId))
+          .map((m) => [m.student.user.firstName, m.student.user.lastName].filter(Boolean).join(" "))
+          .join("، "),
+      }));
 
-    return updated;
+    if (superseded.length)
+      await tx.groupRequest.updateMany({
+        where: { id: { in: superseded.map((o) => o.id) } },
+        data: { status: "rejected", rejectionReason: tr("request.supersededReason") },
+      });
+    for (const r of released)
+      await tx.groupRequest.update({
+        where: { id: r.id },
+        data: {
+          status: "rejected",
+          rejectionReason: r.sameTeam
+            ? tr("request.teamPlacedReason", { title: topic.title })
+            : tr("request.memberPlacedReason", { names: r.names, title: topic.title }),
+        },
+      });
+
+    // The group now exists, so the projection reads `full` on its own — and
+    // the pending count drops to nothing with the others released. The
+    // literal that used to be written here is what erased "was it
+    // published?" and left every exit from `full` guessing. The topics the
+    // released requests were on each lose one from their pending count.
+    await computeTopicStatus(tx, topic.id);
+    for (const topicId of new Set(released.map((r) => r.topicId)))
+      await computeTopicStatus(tx, topicId);
+
+    return {
+      updated,
+      supersededUserIds: [...new Set(superseded.flatMap((o) => o.members.map((m) => m.student.userId)))],
+      released,
+    };
   });
 
   // إشعار كلّ عضو في الفريق بالموافقة.
@@ -4443,13 +4778,43 @@ export const acceptGroupRequestService = async (id: string) => {
     await createNotification({
       userId,
       type: "general",
-      title: "تمت الموافقة على مجموعتكم",
-      message: `تمت الموافقة على مجموعتكم لموضوع: «${topic.title}».`,
+      title: { key: "notif.groupAccepted.title" },
+      message: { key: "notif.groupAccepted.message", params: { title: topic.title } },
       link: "/student/project",
     });
   }
 
-  return result;
+  // And every member of the teams released by this choice.
+  for (const userId of result.supersededUserIds) {
+    await createNotification({
+      userId,
+      type: "general",
+      title: { key: "notif.groupSuperseded.title" },
+      message: { key: "notif.groupSuperseded.message", params: { title: topic.title } },
+      link: "/topics",
+    });
+  }
+
+  // And every member of the requests cancelled on other topics: this team's
+  // own members are told their team was accepted; anyone else, who left.
+  for (const r of result.released) {
+    for (const m of r.members) {
+      await createNotification({
+        userId: m.student.userId,
+        type: "general",
+        title: { key: "notif.groupReleased.title" },
+        message: team.has(m.studentId)
+          ? { key: "notif.groupReleased.message", params: { accepted: topic.title, title: r.topic.title } }
+          : {
+              key: "notif.groupMemberPlaced.message",
+              params: { names: r.names, accepted: topic.title, title: r.topic.title },
+            },
+        link: "/student/requests",
+      });
+    }
+  }
+
+  return result.updated;
 };
 
 /**
@@ -4484,15 +4849,15 @@ export const deleteGroupRequestService = async (id: string) => {
   });
   if (!request)
     throw new NotFoundException(
-      "Group request not found",
+      tr("notFound.groupRequest"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
   if (request.status !== "rejected")
     throw new BadRequestException(
       request.status === "accepted"
-        ? "لا يُحذف طلبٌ قامت عليه مذكرة. افسخ المذكرة أوّلاً من صفحة «المذكرات»."
-        : "لا يُحذف طلبٌ ما يزال بانتظار القرار. ابتّ فيه — قبولاً أو رفضاً — فالفريق ينتظر جواباً.",
+        ? tr("request.deleteAccepted")
+        : tr("request.deletePending"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -4511,7 +4876,7 @@ export const rejectGroupRequestService = async (
   });
   if (!request)
     throw new NotFoundException(
-      "Group request not found",
+      tr("notFound.groupRequest"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -4555,8 +4920,7 @@ export const rejectGroupRequestService = async (
      *   ٣. أثرُ المحاولة. لا تعرف الإدارة أنّ هذا الموضوع رُفض عليه فريقان
      *      قبل الثالث، ولا لماذا.
      *
-     * و`activeTopicId: null` هو ما يُفرِج عن الموضوع — الفهرسُ الفريد لا
-     * يقارن NULL — فيعود قابلاً للتداول كما كان بعد الحذف تماماً.
+     * والرفضُ يُفرِج عن خانة الفريق من سقف الموضوع، فيتقدّم إليه غيرُه.
      *
      * والأعضاء يبقون في `GroupRequestMember` بدل أن يذهبوا بالـ cascade،
      * وهم جزءُ الأثر: «مَن طلبه» لا يقلّ عن «لماذا رُفض».
@@ -4565,36 +4929,26 @@ export const rejectGroupRequestService = async (
       where: { id },
       data: {
         status: "rejected",
-        activeTopicId: null,
         rejectionReason: rejectionReason ?? null,
-        /*
-         * والمرفوضُ لا يشغل خانةً من سقف الموضوع.
-         *
-         * الموضوعُ بعد الرفض حُرٌّ كما كان: لا فريقَ عليه ولا حجز. فخانةٌ
-         * محجوزةٌ لمحاولةٍ انتهت تُضيّق على من يأتي بعدها بلا مقابل —
-         * والأثرُ محفوظٌ في الصفّ نفسه لمن أراد قراءته.
-         */
-        countsAgainstCap: false,
       },
     });
 
-    // ثم أعِد حساب الحالة من الإشغال الباقي. كان هنا فرعٌ يكتب "open"
+    // ثم أعِد حساب الحالة وعدّاد السقف من الإشغال الباقي. كان هنا فرعٌ يكتب "open"
     // حرفياً، وبشرط أن يكون الموضوع `full` — فكان الباب الآخر (فسخ
     // المجموعة) يكتب "approved" لنفس الموقف. البابان الآن يمرّان من هنا.
     await computeTopicStatus(tx, topicId);
   });
 
   // أعلِم مرسِل الفريق بالرفض.
-  if (leaderUserId)
-    await createNotification({
-      userId: leaderUserId,
-      type: "general",
-      title: "تم رفض طلب مجموعتكم",
-      message: rejectionReason
-        ? `تم رفض طلب مجموعتكم. السبب: ${rejectionReason}`
-        : "تم رفض طلب مجموعتكم على الموضوع.",
-      link: "/student/requests",
-    });
+  await createNotification({
+    userId: leaderUserId,
+    type: "general",
+    title: { key: "notif.groupRejected.title" },
+    message: rejectionReason
+      ? { key: "notif.groupRejected.messageReason", params: { reason: rejectionReason } }
+      : { key: "notif.groupRejected.message" },
+    link: "/student/requests",
+  });
 
   return { id, topicId, status: "rejected" as const };
 };

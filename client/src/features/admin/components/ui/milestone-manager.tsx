@@ -496,6 +496,7 @@ export function MilestoneManager({ groupId }: { groupId: string }) {
       </p>
 
       <ConfirmDialog
+        icon={Trash2}
         open={!!confirmDelete}
         tone="danger"
         title={t("admin.deleteMilestone")}

@@ -1,8 +1,22 @@
 import { z } from "zod";
 import { entityId } from "../../core/validation/id";
+import { zmsg } from "../../core/i18n/zod";
+import { tr } from "../../core/i18n";
+import { MAX_FILES } from "./attachments";
 
 const subject = z.string().trim().max(200).optional();
-const body = z.string().trim().min(1, { message: "اكتب نصّ الرسالة" }).max(5000);
+/**
+ * A message may be a file alone: then its text may be empty. The files are
+ * drafts uploaded first (./attachments); how many one message carries is
+ * checked again where they are claimed.
+ */
+const optionalBody = z.string().trim().max(5000).optional().default("");
+const attachmentIds = z
+  .array(entityId)
+  .max(MAX_FILES, { error: () => tr("messages.tooManyFiles", { max: MAX_FILES }) })
+  .optional();
+const textOrFiles = (v: { body: string; attachmentIds?: string[] }) => v.body.length > 0 || (v.attachmentIds?.length ?? 0) > 0;
+const textOrFilesIssue = { ...zmsg("messages.bodyOrFile"), path: ["body"] };
 
 /**
  * A query-string boolean. `z.coerce.boolean()` turned the string "false" into
@@ -13,19 +27,29 @@ const booleanish = z
   .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
   .transform((v) => v === true || v === "true" || v === "1");
 
-export const sendMessageSchema = z.object({
-  recipientIds: z.array(entityId).min(1).max(200),
-  subject,
-  body,
-});
+export const sendMessageSchema = z
+  .object({
+    recipientIds: z.array(entityId).min(1).max(200),
+    subject,
+    body: optionalBody,
+    attachmentIds,
+  })
+  .refine(textOrFiles, textOrFilesIssue);
 export type SendMessageDTO = z.infer<typeof sendMessageSchema>;
 
-export const replyMessageSchema = z.object({
-  body,
-  /** Also to the other recipients of the message answered (direct only). */
-  all: z.boolean().optional(),
-});
+export const replyMessageSchema = z
+  .object({
+    body: optionalBody,
+    attachmentIds,
+    /** Also to the other recipients of the message answered (direct only). */
+    all: z.boolean().optional(),
+  })
+  .refine(textOrFiles, textOrFilesIssue);
 export type ReplyMessageDTO = z.infer<typeof replyMessageSchema>;
+
+/** New text for a message already sent; whether it may be empty depends on its files. */
+export const editMessageSchema = z.object({ body: z.string().trim().max(5000) });
+export type EditMessageDTO = z.infer<typeof editMessageSchema>;
 
 /**
  * Who a broadcast reaches. The academic filters narrow students (and, for
@@ -46,7 +70,9 @@ const audienceShape = {
 export const audienceSchema = z.object(audienceShape);
 export type AudienceDTO = z.infer<typeof audienceSchema>;
 
-export const broadcastMessageSchema = z.object({ ...audienceShape, subject, body });
+export const broadcastMessageSchema = z
+  .object({ ...audienceShape, subject, body: optionalBody, attachmentIds })
+  .refine(textOrFiles, textOrFilesIssue);
 export type BroadcastMessageDTO = z.infer<typeof broadcastMessageSchema>;
 
 export const listMessagesSchema = z.object({

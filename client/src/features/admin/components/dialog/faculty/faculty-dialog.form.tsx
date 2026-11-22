@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
-import { Building2, Type, Hash, Save } from "lucide-react";
+import { Building2, Type, Hash, Save, Languages } from "lucide-react";
 import { FormDialog, Field, inputClass } from "../../form/form-dialog";
 import { CoverImageField } from "../../form/cover-image-field";
 import {
@@ -53,6 +53,7 @@ export function FacultyFormDialog({ open, onClose, faculty }: Props) {
         faculty
           ? {
               name: faculty.name,
+              nameLatin: faculty.nameLatin ?? "",
               // ورمزُ ما قبل هذا التغيير يُستبدل عند أوّل تعديل:
               // انظر `isStampedCode`.
               code: isStampedCode(faculty.code)
@@ -63,11 +64,15 @@ export function FacultyFormDialog({ open, onClose, faculty }: Props) {
             }
           : {
               name: "",
+              nameLatin: "",
               // انظر تعليق «الرمز يُصكّ عند الفتح» في حوار القسم.
               code: generateCode("F", faculties ?? []),
               coverUrl: "",
               iconUrl: "",
             },
+        // `keepFieldsRef` — see MilestoneFormDialog: a plain reset under the
+        // React Compiler can leave the fields unregistered, and typing is lost.
+        { keepFieldsRef: true },
       );
     }
     /*
@@ -168,6 +173,16 @@ export function FacultyFormDialog({ open, onClose, faculty }: Props) {
             {...register("name")}
             className={inputClass}
             placeholder={t("admin.facultyNamePlaceholder")}
+          />
+        </Field>
+
+        <Field label={t("nameLatin.label")} icon={Languages} note={t("admin.optional")} hint={t("nameLatin.hint")}>
+          <input
+            {...register("nameLatin")}
+            dir="ltr"
+            maxLength={191}
+            className={inputClass}
+            placeholder={t("nameLatin.facultyPlaceholder")}
           />
         </Field>
 

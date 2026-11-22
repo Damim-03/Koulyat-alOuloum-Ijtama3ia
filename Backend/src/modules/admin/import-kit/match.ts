@@ -7,6 +7,8 @@
  * وما طابق على هذه الصورة وحدها يُقبل ويُنبَّه عليه، ليعرف المسؤول ما سيُحفظ.
  */
 
+import { tr } from "../../../core/i18n";
+
 /** أرقامٌ عربية وفارسية ← لاتينية. */
 export const latinDigits = (s: string) =>
   s
@@ -31,7 +33,6 @@ export const loose = (s: string) =>
 
 /** عدد التعديلات بين نصّين — لاقتراح «هل تقصد…؟». */
 function distance(a: string, b: string): number {
-  if (a === b) return 0;
   const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
   for (let i = 1; i <= a.length; i++) {
     let diag = prev[0]!;
@@ -66,14 +67,17 @@ export function closest(input: string, options: string[]): string | undefined {
   return best.d <= limit ? best.s : undefined;
 }
 
-/** «هل تقصد «X»؟» جاهزةً للإلحاق برسالة، أو فارغة. */
+/** «هل تقصد «X»؟» جاهزةً للإلحاق برسالة، أو فارغة — بلغة الطلب. */
 export const didYouMean = (input: string, options: string[]) => {
   const c = closest(input, options);
-  return c ? ` هل تقصد «${c}»؟` : "";
+  return c ? tr("imp.didYouMean", { value: c }) : "";
 };
 
-/** قائمةٌ مختصرة للرسائل: أوّل n، ثم «و3 غيرها». */
+/** فاصل القوائم بلغة الطلب: «، » · «, ». */
+export const sep = () => tr("imp.sep");
+
+/** قائمةٌ مختصرة للرسائل: أوّل n، ثم «و3 غيرها» — بلغة الطلب. */
 export function listOf(items: string[], n = 6): string {
-  const shown = items.slice(0, n).map((s) => `«${s}»`);
-  return items.length > n ? `${shown.join("، ")} و${items.length - n} غيرها` : shown.join("، ");
+  const shown = items.slice(0, n).map((s) => `«${s}»`).join(sep());
+  return items.length > n ? shown + tr("imp.andMore", { count: items.length - n }) : shown;
 }

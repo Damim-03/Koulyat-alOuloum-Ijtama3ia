@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { topicExtrasShape } from "../../core/topic/topic-extras";
+import { zmsg } from "../../core/i18n/zod";
 
 // A single helpful reference for students: a title + a valid URL.
 //
@@ -6,35 +8,37 @@ import { z } from "zod";
 // `javascript:` and `data:` included — and these links are rendered as anchors
 // for students and staff to click.
 const referenceSchema = z.object({
-  title: z.string().trim().min(1, "عنوان المرجع مطلوب"),
+  title: z.string().trim().min(1, zmsg("v.referenceTitleRequired")),
   url: z
     .string()
     .trim()
     .max(2048)
-    .url("رابط غير صحيح")
-    .refine((u) => /^https?:\/\//i.test(u), "الرابط يبدأ بـ http:// أو https://"),
+    .url(zmsg("v.urlInvalid"))
+    .refine((u) => /^https?:\/\//i.test(u), zmsg("v.urlScheme")),
 });
 
 // ─── TOPICS ────────────────────────────────────────────────────
 export const createTopicSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  description: z.string().min(1, "Description is required"),
+  title: z.string().min(1, zmsg("v.titleRequired")),
+  description: z.string().min(1, zmsg("v.descriptionRequired")),
   maxStudents: z.number().min(1).max(10),
   /**
-   * سقفُ المحاولات على الموضوع — بما فيها المرفوضة. و`null` بلا سقف.
+   * كم فريقاً يتقدّم إلى الموضوع معاً قبل أن يُغلق. و`null` بلا سقف.
    */
   maxRequests: z.number().int().min(1).max(50).nullable().optional(),
-  specializationId: z.string().min(1, "Specialization is required"),
-  academicYearId: z.string().min(1, "Academic year is required"),
+  specializationId: z.string().min(1, zmsg("v.specializationRequired")),
+  academicYearId: z.string().min(1, zmsg("v.academicYearRequired")),
   // Rich project details — sent by the professor, reviewed by admin.
   requirements: z.array(z.string().trim().min(1)).optional().default([]),
   objectives: z.array(z.string().trim().min(1)).optional().default([]),
   // Reference links (articles, videos…) that help students.
   references: z
     .array(referenceSchema)
-    .max(20, "عدد كبير من المراجع")
+    .max(20, zmsg("v.tooManyReferences"))
     .optional()
     .default([]),
+  // The co-supervisor, short description and type (core/topic/topic-extras).
+  ...topicExtrasShape,
 });
 
 /**
@@ -47,9 +51,9 @@ export const createTopicSchema = z.object({
 export const createTopicWithGroupSchema = createTopicSchema.extend({
   memberRegistrationNumbers: z
     .array(z.string().trim().min(1))
-    .min(1, "أضف طالباً واحداً على الأقل")
+    .min(1, zmsg("v.addOneStudent"))
     .max(10),
-  leaderRegistrationNumber: z.string().trim().min(1, "اختر المرسِل"),
+  leaderRegistrationNumber: z.string().trim().min(1, zmsg("v.chooseSender")),
 });
 export type CreateTopicWithGroupDTO = z.infer<
   typeof createTopicWithGroupSchema
@@ -60,14 +64,14 @@ export const updateTopicSchema = z.object({
   description: z.string().min(1).optional(),
   maxStudents: z.number().min(1).max(10).optional(),
   /**
-   * سقفُ المحاولات على الموضوع — بما فيها المرفوضة. و`null` بلا سقف.
+   * كم فريقاً يتقدّم إلى الموضوع معاً قبل أن يُغلق. و`null` بلا سقف.
    */
   maxRequests: z.number().int().min(1).max(50).nullable().optional(),
   requirements: z.array(z.string().trim().min(1)).optional(),
   objectives: z.array(z.string().trim().min(1)).optional(),
   references: z
     .array(referenceSchema)
-    .max(20, "عدد كبير من المراجع")
+    .max(20, zmsg("v.tooManyReferences"))
     .optional(),
   // The edit dialog has always offered these two, and zod dropped them
   // silently — the professor moved a topic to another specialization, was
@@ -76,6 +80,7 @@ export const updateTopicSchema = z.object({
   // `updateTopicService` checks that each id exists before writing.
   specializationId: z.string().trim().min(1).optional(),
   academicYearId: z.string().trim().min(1).optional(),
+  ...topicExtrasShape,
 });
 
 // ─── APPLICATIONS ──────────────────────────────────────────────
@@ -86,15 +91,25 @@ export const updateTopicSchema = z.object({
  * `q` is required and at least two characters: an empty query must not turn
  * this into a roster listing.
  */
+/**
+ * A registration number, or letters of the names in any order — one letter is
+ * enough; or nothing, to list the specialization's students.
+ */
+/** The year whose topic limit is asked; none: the current year. */
+export const topicQuotaQuerySchema = z.object({
+  academicYearId: z.string().trim().min(1).optional(),
+});
+
 export const searchStudentsSchema = z.object({
-  q: z.string().trim().min(2, "اكتب حرفين على الأقل"),
+  q: z.string().trim().max(120).optional().default(""),
   specializationId: z.string().trim().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 export type SearchStudentsDTO = z.infer<typeof searchStudentsSchema>;
 
 // ─── MILESTONES ────────────────────────────────────────────────
 export const createMilestoneSchema = z.object({
-  title: z.string().min(1, "Title is required"),
+  title: z.string().min(1, zmsg("v.titleRequired")),
   description: z.string().optional(),
   deadline: z.coerce.date(),
   order: z.number().int().min(1),

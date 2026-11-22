@@ -41,7 +41,8 @@ export type Resource =
   | "messages"
   | "notifications"
   | "university-domains"
-  | "dashboard";
+  | "dashboard"
+  | "sessions";
 
 export interface ChangePayload {
   resource: Resource | string;
@@ -106,23 +107,67 @@ export const emitEvent = (userIds: string[], event: string, payload: unknown) =>
 export const isOnline = (userId: string) =>
   (io?.sockets.adapter.rooms.get(room.user(userId))?.size ?? 0) > 0;
 
-/** The realtime server, for modules that listen to client events. */
-export const realtimeServer = () => io;
+const sidOf = (s: { data: unknown }) => (s.data as { sid?: string }).sid;
 
 /**
  * Cuts live connections: every one of an account's, or only those of the
  * given sessions. A socket is authenticated once, at its handshake, so without
  * this a signed-out or suspended session kept hearing change events until the
  * tab closed.
+ *
+ * Each is told `session:revoked` first, so the page on the other end signs out
+ * the moment it happens — not at its next request, minutes later. `except`
+ * spares one session: the device that changed the password carries on.
  */
-export const disconnectSessions = async (userId: string, sids?: (string | undefined)[]) => {
+export const disconnectSessions = async (
+  userId: string,
+  sids?: (string | undefined)[],
+  except?: string,
+) => {
   if (!io) return;
   try {
     const sockets = await io.in(room.user(userId)).fetchSockets();
     for (const s of sockets) {
-      if (!sids || sids.includes((s.data as { sid?: string }).sid)) s.disconnect(true);
+      const sid = sidOf(s);
+      if (except && sid === except) continue;
+      if (sids && !sids.includes(sid)) continue;
+      s.emit("session:revoked", {});
+      s.disconnect(true);
     }
   } catch {
     // A failed disconnect must never fail the sign-out that asked for it.
   }
+  // Anyone looking at the account's list of devices sees it change.
+  emitToUsers([userId], "sessions", "deleted");
+};
+
+/**
+ * Re-labels the live connections of one session as another's — when a
+ * session is replaced but its device carries on (a password change), so that
+ * signing the new session out later reaches this connection too.
+ */
+export const moveSessionSockets = async (userId: string, from: string | undefined, to: string) => {
+  if (!io || !from) return;
+  try {
+    const sockets = await io.in(room.user(userId)).fetchSockets();
+    for (const s of sockets) if (sidOf(s) === from) (s.data as { sid?: string }).sid = to;
+  } catch {
+    // Best effort: at worst this connection is cut by a later sign-out-all.
+  }
+};
+
+/** The sessions of an account that have a live connection right now. */
+export const liveSessionIds = async (userId: string): Promise<Set<string>> => {
+  const live = new Set<string>();
+  if (!io) return live;
+  try {
+    const sockets = await io.in(room.user(userId)).fetchSockets();
+    for (const s of sockets) {
+      const sid = sidOf(s);
+      if (sid) live.add(sid);
+    }
+  } catch {
+    // Presence is a nicety; an empty set just shows nobody as online.
+  }
+  return live;
 };

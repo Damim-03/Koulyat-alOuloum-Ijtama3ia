@@ -18,6 +18,7 @@ const make = (over: {
   topicStatus?: string;
   maxStudents?: number;
   hasGroup?: boolean;
+  placed?: { name: string; topic: string } | null;
 } = {}) =>
   requestActions({
     status: over.status ?? "pending",
@@ -27,6 +28,7 @@ const make = (over: {
       maxStudents: over.maxStudents ?? 3,
       hasGroup: over.hasGroup ?? false,
     },
+    placed: over.placed ?? null,
   });
 
 describe("متى يجوز القبول", () => {
@@ -80,6 +82,29 @@ describe("متى يجوز القبول", () => {
     expect(a.blockedReasons.accept).toContain("5");
     expect(a.blockedReasons.accept).toContain("3");
     expect(a.blockedCodes.accept?.params).toEqual({ members: 5, max: 3 });
+  });
+
+  /**
+   * طالبٌ واحد لمشروعٍ واحد. فريقٌ طلب موضوعين بأولويتين فقُبل الأوّل:
+   * الثاني لا يُقبل بعده، وإلّا صار أعضاؤه في مشروعين.
+   */
+  it("وعضوٌ له مشروعٌ على موضوعٍ آخر ⇒ يُمنع، والسبب يسمّيه ويسمّي مشروعه", () => {
+    const a = make({ placed: { name: "أيمن بلقاسم", topic: "الهجرة الداخلية" } });
+    expect(a.canAccept).toBe(false);
+    expect(a.blockedReasons.accept).toContain("أيمن بلقاسم");
+    expect(a.blockedReasons.accept).toContain("الهجرة الداخلية");
+    expect(a.blockedCodes.accept).toEqual({
+      code: "memberPlaced",
+      params: { name: "أيمن بلقاسم", topic: "الهجرة الداخلية" },
+    });
+    // والرفضُ باقٍ: هو ما تبقّى للإدارة مع هذا الطلب.
+    expect(a.canReject).toBe(true);
+  });
+
+  it("والموضوعُ المأخوذ يسبق العضوَ الموضوع — وتجاوزُ السعة يأتي بعده", () => {
+    const placed = { name: "س", topic: "ع" };
+    expect(make({ placed, hasGroup: true }).blockedCodes.accept?.code).toBe("topicTaken");
+    expect(make({ placed, memberCount: 9 }).blockedCodes.accept?.code).toBe("memberPlaced");
   });
 
   it("والعدد المساوي للسعة مقبول — الحدّ يشمل نفسه", () => {
@@ -149,6 +174,7 @@ describe("وشكل الجدول", () => {
       make({ status: "accepted" }),
       make({ topicStatus: "archived" }),
       make({ hasGroup: true }),
+      make({ placed: { name: "س", topic: "ع" } }),
       make({ memberCount: 9, maxStudents: 2 }),
       make({ status: "accepted", hasGroup: true }),
     ]) {

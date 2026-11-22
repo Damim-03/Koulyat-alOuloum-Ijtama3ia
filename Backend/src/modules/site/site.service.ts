@@ -10,6 +10,7 @@ import type {
   SlidePlacementDTO,
   UpdateHomeSlideDTO,
 } from "./site.validation";
+import { tr } from "../../core/i18n";
 
 /**
  * سقفُ الشرائح في كلّ موضع، مُفعَّلةً ومعطَّلة.
@@ -26,14 +27,15 @@ const normalizeCaption = (v: string | null | undefined) =>
   v === undefined ? undefined : v ? v : null;
 
 const notFound = () =>
-  new NotFoundException("الصورة غير موجودة", ErrorCodeEnum.RESOURCE_NOT_FOUND);
+  new NotFoundException(tr("notFound.image"), ErrorCodeEnum.RESOURCE_NOT_FOUND);
 
 //
 // ─── للزائر ──────────────────────────────────────────────────
 //
 
 /** المفعَّلة وحدها في موضعها، بترتيبها، وبما يُعرض فقط. */
-export const listPublicHomeSlidesService = (placement: SlidePlacementDTO = "home") =>
+// الموضع من المخطّط دائماً، و«home» افتراضيّه هناك (slidePlacement).
+export const listPublicHomeSlidesService = (placement: SlidePlacementDTO) =>
   prisma.homeSlide.findMany({
     where: { placement, isActive: true },
     orderBy: ORDER,
@@ -44,7 +46,7 @@ export const listPublicHomeSlidesService = (placement: SlidePlacementDTO = "home
 // ─── للإدارة ─────────────────────────────────────────────────
 //
 
-export const listHomeSlidesService = (placement: SlidePlacementDTO = "home") =>
+export const listHomeSlidesService = (placement: SlidePlacementDTO) =>
   prisma.homeSlide.findMany({ where: { placement }, orderBy: ORDER });
 
 export const createHomeSlideService = async (data: CreateHomeSlideDTO) => {
@@ -66,15 +68,15 @@ export const createHomeSlideService = async (data: CreateHomeSlideDTO) => {
  */
 export const createHomeSlidesService = (data: CreateHomeSlidesBatchDTO) =>
   prisma.$transaction(async (tx) => {
-    const placement = data.placement ?? "home";
+    const { placement } = data;
     const count = await tx.homeSlide.count({ where: { placement } });
     const room = MAX_HOME_SLIDES - count;
 
     if (data.slides.length > room)
       throw new BadRequestException(
         room <= 0
-          ? `بلغت الحدّ الأقصى (${MAX_HOME_SLIDES} صورة) — احذف صورةً قبل إضافة أخرى`
-          : `المساحة المتبقّية ${room} من ${MAX_HOME_SLIDES} — اختر عدداً أقلّ من الصور`,
+          ? tr("site.slidesFull", { max: MAX_HOME_SLIDES })
+          : tr("site.slidesRoom", { room, max: MAX_HOME_SLIDES }),
         ErrorCodeEnum.VALIDATION_ERROR,
       );
 
@@ -127,7 +129,7 @@ export const updateHomeSlideService = async (
  */
 export const reorderHomeSlidesService = async (
   ids: string[],
-  placement: SlidePlacementDTO = "home",
+  placement: SlidePlacementDTO,
 ) => {
   const existing = await prisma.homeSlide.findMany({
     where: { placement },
@@ -142,7 +144,7 @@ export const reorderHomeSlidesService = async (
 
   if (!sameSet)
     throw new BadRequestException(
-      "تغيّرت قائمة الصور منذ فتحها — أعد تحميل الصفحة ثمّ رتّبها",
+      tr("site.slidesChanged"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 

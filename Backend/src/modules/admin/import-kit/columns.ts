@@ -14,7 +14,14 @@
 export type ColumnKind = "req" | "opt" | "auto";
 
 /** شريط الخطوة فوق العناوين، كخطوات نافذة الإضافة. */
-export type ColumnGroup = "personal" | "academic" | "professional";
+export type ColumnGroup =
+  | "personal"
+  | "academic"
+  | "professional"
+  | "supervisor"
+  | "topic"
+  | "decision"
+  | "students";
 
 export interface ImportColumn<K extends string = string> {
   key: K;
@@ -29,6 +36,10 @@ export const GROUP_LABEL: Record<ColumnGroup, string> = {
   personal: "البيانات الشخصية",
   academic: "البيانات الجامعية",
   professional: "البيانات المهنية",
+  supervisor: "الأستاذ المشرف",
+  topic: "الموضوع",
+  decision: "القرار",
+  students: "الطلبة المُسنَدون",
 };
 
 /** ما يعرفه المحلِّل عن ملفٍّ بعينه: ورقته، وأعمدته، والعمود الذي يدلّ على صفّ العناوين. */
@@ -39,9 +50,8 @@ export interface ImportSpec<K extends string = string> {
   anchor: K;
   /** ما تكتبه صيغ الأعمدة التلقائية حين لا تجد ما تشتقّ منه — ليس قيمةً كتبها المسؤول. */
   autoUnknown: string;
-  /** للرسائل: «لا يحتوي على أيّ طالب» · «فيه 1200 طالباً». */
-  nounOne: string;
-  nounCount: string;
+  /** ما يُعدّ في الملف — للرسائل («لا يحتوي على أيّ طالب»)، بلغة الطلب. */
+  noun: "student" | "professor" | "topic";
 }
 
 export const MAX_IMPORT_ROWS = 1000;

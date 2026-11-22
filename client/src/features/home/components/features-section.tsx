@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { ListChecks, UsersRound, Milestone } from "lucide-react";
 import { Reveal } from "./reveal";
+import { useShown } from "../../../i18n/site-visibility";
 
 const ICONS = [ListChecks, UsersRound, Milestone];
 const ACCENTS = [
@@ -14,9 +15,21 @@ interface Item {
   desc: string;
 }
 
+/** The grid follows the cards the admin kept, so one or two still sit centred. */
+const GRID: Record<number, string> = {
+  1: "mx-auto max-w-md",
+  2: "mx-auto max-w-4xl md:grid-cols-2",
+};
+
 export function FeaturesSection() {
   const { t } = useTranslation();
-  const items = t("features.items", { returnObjects: true }) as Item[];
+  const shown = useShown();
+  // Each card keeps its place (icon, colour) when another is hidden.
+  const items = (t("features.items", { returnObjects: true }) as Item[])
+    .map((item, i) => ({ ...item, i }))
+    .filter(({ i }) => shown(`home.feature.${i + 1}`));
+
+  if (!shown("home.features")) return null;
 
   return (
     <section id="features" className="bg-cream px-5 py-20 font-body lg:px-8">
@@ -25,17 +38,20 @@ export function FeaturesSection() {
           <h2 className="mb-3 font-serif text-3xl font-bold text-forest md:text-4xl">
             {t("features.title")}
           </h2>
-          <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-clay">
-            {t("features.desc")}
-          </p>
+          {shown("home.featuresDesc") && (
+            <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-clay">
+              {t("features.desc")}
+            </p>
+          )}
         </Reveal>
 
-        <div className="grid gap-5 md:grid-cols-3">
-          {items.map((item, i) => {
+        <div className={`grid gap-5 ${GRID[items.length] ?? "md:grid-cols-3"}`}>
+          {items.map((item, n) => {
+            const i = item.i;
             const Icon = ICONS[i % ICONS.length];
             const a = ACCENTS[i % ACCENTS.length];
             return (
-              <Reveal key={item.title} delay={i * 120} className="h-full">
+              <Reveal key={i} delay={n * 120} className="h-full">
                 <div className="group relative h-full overflow-hidden rounded-2xl border border-forest/10 bg-cream-card p-7 transition hover:-translate-y-1 hover:shadow-[0_20px_50px_rgba(38,66,61,0.12)]">
                   <div
                     className={`absolute -left-10 -top-10 size-32 rounded-full ${a.blob} transition-transform duration-500 group-hover:scale-125`}

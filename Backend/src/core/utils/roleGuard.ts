@@ -5,6 +5,7 @@ import { JwtUser } from "../middleware/auth.middleware";
 import { PermissionType, RoleType } from "../enums/role.enum";
 
 import { RolePermissions } from "../enums/role.enum";
+import { tr } from "../i18n";
 
 export const roleGuard =
   (requiredPermissions: PermissionType[], mode: "ALL" | "ANY" = "ANY") =>
@@ -13,7 +14,7 @@ export const roleGuard =
 
     if (!user) {
       return res.status(401).json({
-        message: "Unauthorized",
+        message: tr("auth.unauthorized"),
       });
     }
 
@@ -25,7 +26,7 @@ export const roleGuard =
 
     if (!permissions) {
       return res.status(403).json({
-        message: "Invalid role",
+        message: tr("access.invalidRole"),
       });
     }
 
@@ -44,7 +45,7 @@ export const roleGuard =
 
     if (!hasPermission) {
       return res.status(403).json({
-        message: "You do not have permission to access this resource",
+        message: tr("access.forbidden"),
       });
     }
 
@@ -69,13 +70,13 @@ export const adminOnly =
 
     if (!user) {
       return res.status(401).json({
-        message: "Unauthorized",
+        message: tr("auth.unauthorized"),
       });
     }
 
     if (user.role !== "admin") {
       return res.status(403).json({
-        message: "Forbidden: only an administrator can access this resource",
+        message: tr("access.adminOnly"),
       });
     }
 
@@ -102,7 +103,7 @@ export const requireRole =
     const user = (req as Request & { user?: JwtUser }).user;
 
     if (!user) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.status(401).json({ message: tr("auth.unauthorized") });
     }
 
     if (allowed.includes(user.role as RoleType)) {
@@ -110,6 +111,6 @@ export const requireRole =
     }
 
     return res.status(403).json({
-      message: "You do not have permission to access this resource",
+      message: tr("access.forbidden"),
     });
   };

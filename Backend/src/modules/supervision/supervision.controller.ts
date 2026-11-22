@@ -6,6 +6,7 @@ import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import {
   documentIdParamSchema,
   listDocumentsSchema,
+  printBodySchema,
   topicIdParamSchema,
   verifyParamSchema,
 } from "./supervision.validation";
@@ -14,13 +15,15 @@ import {
   issueSupervisionDocumentService,
   listSupervisionDocumentsService,
   previewSupervisionDocumentService,
+  printSupervisionDocumentService,
   revokeSupervisionDocumentService,
   verifySupervisionDocumentService,
 } from "./supervision.service";
+import { tr } from "../../core/i18n";
 
 const invalid = (next: NextFunction) =>
   next(
-    new BadRequestException("Validation error", ErrorCodeEnum.VALIDATION_ERROR),
+    new BadRequestException(tr("request.validation"), ErrorCodeEnum.VALIDATION_ERROR),
   );
 
 const actorOf = (req: Request) => ({
@@ -84,6 +87,28 @@ export const getSupervisionDocumentController = async (
     const document = await getSupervisionDocumentService(
       parsed.data.id,
       actorOf(req),
+    );
+    return res.status(HTTPSTATUS.OK).json({ document });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── الطباعة ───────────────────────────────────────────────────
+export const printSupervisionDocumentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const params = documentIdParamSchema.safeParse(req.params);
+  const body = printBodySchema.safeParse(req.body ?? {});
+  if (!params.success || !body.success) return invalid(next);
+
+  try {
+    const document = await printSupervisionDocumentService(
+      params.data.id,
+      actorOf(req),
+      body.data.version,
     );
     return res.status(HTTPSTATUS.OK).json({ document });
   } catch (error) {

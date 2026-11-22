@@ -225,6 +225,8 @@ export function DepartmentDetailPage() {
       <DomainFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} domain={editing} departmentId={departmentId} />
       <DepartmentFormDialog open={editSelf} onClose={() => setEditSelf(false)} department={department ?? null} facultyId={facultyId} />
       <DeleteNodeDialog
+        kind="domain"
+        trail={[faculty?.name ?? "", department?.name ?? ""]}
         target={removing}
         title={t("admin.struct.deleteTitle.domain")}
         loading={deleteDomain.isPending}
@@ -232,6 +234,8 @@ export function DepartmentDetailPage() {
         onClose={() => setRemoving(null)}
       />
       <DeleteNodeDialog
+        kind="department"
+        trail={[faculty?.name ?? ""]}
         target={removeSelf && department ? department : null}
         title={t("admin.struct.deleteTitle.department")}
         loading={deleteDepartment.isPending}

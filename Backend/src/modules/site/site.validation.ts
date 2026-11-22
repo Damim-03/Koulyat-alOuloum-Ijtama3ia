@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { entityId } from "../../core/validation/id";
 import { imageUrl } from "../../core/validation/image-url";
+import { zmsg } from "../../core/i18n/zod";
+import { tr } from "../../core/i18n";
 
 /**
  * صورةُ الشريحة من رفع الإدارة وحده.
@@ -104,14 +106,14 @@ const newsLink = z
     } catch {
       return false;
     }
-  }, "Invalid link")
+  }, zmsg("v.invalidLink"))
   .transform((v) => (v === undefined ? undefined : v ? v : null));
 
 /** يومٌ بصيغة `YYYY-MM-DD` — كما يرسله حقل التاريخ. */
 const newsDate = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date")
-  .refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), "Invalid date");
+  .regex(/^\d{4}-\d{2}-\d{2}$/, zmsg("v.invalidDate"))
+  .refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), zmsg("v.invalidDate"));
 
 export const createNewsSchema = z.object({
   text: z.string().trim().min(1).max(300),
@@ -254,3 +256,86 @@ export const loginPageSchema = z.object({
 });
 
 export type LoginPageDTO = z.infer<typeof loginPageSchema>;
+
+//
+// ─── نصوص الموقع ─────────────────────────────────────────────
+//
+
+/**
+ * مفتاح نصٍّ في الواجهة كما تسمّيه ملفّات الترجمة: «hero.title»،
+ * «features.items.0.title». والواجهة لا تستبدل إلّا نصّاً موجوداً بمفتاحه،
+ * فمفتاحٌ لا تعرفه يُحفظ ولا يُستعمل.
+ */
+const TEXT_KEY = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+){0,6}$/;
+const FORBIDDEN_SEGMENT = new Set(["__proto__", "prototype", "constructor"]);
+export const MAX_SITE_TEXTS = 400;
+
+const isHttpUrl = (v: string) => {
+  try {
+    const u = new URL(v);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * نصوص لغةٍ واحدة: مفتاحٌ ← نصّ. والفارغ يُحذف — النصّ الافتراضيّ يعود.
+ *
+ * وما آخر مقطعٍ من مفتاحه `url` يصير `href` في صفحةٍ يفتحها كلّ زائر، فلا
+ * يُقبل منه إلّا http(s)؛ وما آخره `email` بريدٌ صالح (رابط `mailto:`).
+ */
+const siteTextMap = z
+  .record(
+    z
+      .string()
+      .max(96)
+      .regex(TEXT_KEY)
+      .refine((k) => !k.split(".").some((s) => FORBIDDEN_SEGMENT.has(s))),
+    z.string().trim().max(1500),
+  )
+  .default({})
+  .superRefine((map, ctx) => {
+    const keys = Object.keys(map);
+    if (keys.length > MAX_SITE_TEXTS)
+      ctx.addIssue({ code: "custom", message: `max ${MAX_SITE_TEXTS}` });
+    for (const k of keys) {
+      const v = map[k]!;
+      if (!v) continue;
+      const last = k.slice(k.lastIndexOf(".") + 1);
+      if (last === "url" && !isHttpUrl(v))
+        ctx.addIssue({ code: "custom", path: [k], message: tr("v.invalidLink") });
+      if (last === "email" && !z.string().email().safeParse(v).success)
+        ctx.addIssue({ code: "custom", path: [k], message: tr("v.invalidEmail") });
+    }
+  })
+  .transform((map) => Object.fromEntries(Object.entries(map).filter(([, v]) => v)));
+
+/**
+ * ما أخفته الإدارة من الموقع: معرّفات عناصر («home.news»، «footer.phone»،
+ * «sidebar.admin.dash.archive»). والإخفاء للّغات كلّها، والواجهة وحدها تعرف
+ * ما يدلّ عليه كلّ معرّف — ومعرّفٌ لا تعرفه لا يُخفي شيئاً.
+ */
+const HIDE_ID = /^[a-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+){1,5}$/;
+export const MAX_HIDDEN = 200;
+
+const hiddenList = z
+  .array(
+    z
+      .string()
+      .max(96)
+      .regex(HIDE_ID)
+      .refine((k) => !k.split(".").some((s) => FORBIDDEN_SEGMENT.has(s))),
+  )
+  .max(MAX_HIDDEN)
+  .default([])
+  .transform((ids) => [...new Set(ids)].sort());
+
+export const siteTextsSchema = z.object({
+  ar: siteTextMap,
+  fr: siteTextMap,
+  en: siteTextMap,
+  hidden: hiddenList,
+});
+
+export type SiteTextsDTO = z.infer<typeof siteTextsSchema>;

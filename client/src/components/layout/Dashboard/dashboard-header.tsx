@@ -15,9 +15,12 @@ import { LanguageSwitcher } from "../../../i18n/locales/components/language-swit
 import { ThemeToggle } from "../../theme-toggle";
 import { UserAvatar } from "../../ui/user-avatar";
 import { personName } from "../../../lib/person-name";
+import { MessageBell } from "./message-bell";
 
 interface Props {
   onMenuClick: () => void;
+  /** Whether the menu the button opens is open (the phone drawer, or the rail expanded). */
+  menuExpanded?: boolean;
   titleKey: string;
 }
 
@@ -30,7 +33,7 @@ interface Props {
  * is the thing people are asked for most often, so it sits on its own row
  * with a copy button rather than as fine print.
  */
-export function DashboardHeader({ onMenuClick, titleKey }: Props) {
+export function DashboardHeader({ onMenuClick, menuExpanded, titleKey }: Props) {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
   const { user, role, logout } = useAuth();
@@ -91,9 +94,13 @@ export function DashboardHeader({ onMenuClick, titleKey }: Props) {
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-forest/10 bg-cream-2/90 px-4 backdrop-blur lg:px-6">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <button
+          type="button"
           onClick={onMenuClick}
-          className="grid size-9 place-items-center rounded-lg text-forest transition hover:bg-forest/5"
-          aria-label="toggle menu"
+          // Toggles the sidebar itself, so a press here is not "outside" it.
+          data-sidebar-toggle
+          className="grid size-10 shrink-0 place-items-center rounded-lg text-forest transition hover:bg-forest/5"
+          aria-label={t("common.menu")}
+          aria-expanded={menuExpanded}
         >
           <Menu size={20} />
         </button>
@@ -105,6 +112,8 @@ export function DashboardHeader({ onMenuClick, titleKey }: Props) {
       <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         <ThemeToggle />
         <LanguageSwitcher className="text-forest" />
+        {/* Messages only — from anyone; a new one swings it and grows out of it. */}
+        <MessageBell />
 
         <div className="relative" ref={ref}>
           <button

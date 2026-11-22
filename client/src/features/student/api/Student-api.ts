@@ -1,5 +1,6 @@
 import { client } from "../../../lib/api/client";
 import type {
+  StudentSelectionWindow,
   GroupRequest,
   MyProject,
   LookupStudent,
@@ -35,6 +36,12 @@ export const studentApi = {
 
   cancelGroupRequest: (id: string) =>
     client.delete(`${BASE}/group-requests/${id}`).then((r) => r.data ?? null),
+
+  // ── The deadline to choose topics, for the student's own year ──
+  selectionWindow: () =>
+    client
+      .get<{ window: StudentSelectionWindow | null }>(`${BASE}/selection-window`)
+      .then((r) => r.data.window ?? null),
 
   // ── My project (after acceptance) ──
   myProject: () =>

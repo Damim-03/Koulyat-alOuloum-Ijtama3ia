@@ -41,6 +41,7 @@ import type {
   TopicReference,
 } from "../../../types/professor.types";
 import { personName } from "../../../lib/person-name";
+import { TopicExtrasView } from "../../../components/topic/topic-type-badge";
 
 /**
  * One topic, from the professor's side.
@@ -313,6 +314,10 @@ export function ProfessorTopicDetailPage() {
           Two cards on one row share one height. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Section icon={Subtitles} title={t("pro.projectDetails")}>
+          {/* Its type, its co-supervisor and its short description, above the full one. */}
+          <div className="mb-3 empty:hidden">
+            <TopicExtrasView topic={topic} />
+          </div>
           <p className="leading-relaxed whitespace-pre-line text-forest/85">
             {topic.description || "—"}
           </p>

@@ -254,8 +254,11 @@ describe("استيراد الأساتذة", () => {
     await acc.xlsx.load(Buffer.from(res.body.accountsFile, "base64"));
     const sheet = acc.getWorksheet("الحسابات")!;
     expect(sheet.getRow(1).getCell(2).value).toBe("البريد الجامعي (للدخول)");
-    expect(sheet.getRow(2).getCell(5).value).toBe(a!.password);
-    expect(sheet.getRow(3).getCell(5).value).toBe("كما في الملف المرفوع");
+    // العمود يُعرف بعنوانه لا برقمه: أُضيف قبله الاسم باللاتينية، وقد يُضاف غيره.
+    const pw = (sheet.getRow(1).values as unknown[]).indexOf("كلمة المرور الأوّلية");
+    expect(pw).toBeGreaterThan(0);
+    expect(sheet.getRow(2).getCell(pw).value).toBe(a!.password);
+    expect(sheet.getRow(3).getCell(pw).value).toBe("كما في الملف المرفوع");
 
     await request(app)
       .post("/api/auth/professor/login")
@@ -299,5 +302,118 @@ describe("الاسم واللقب باللاتينية", () => {
     expect(errorKeys(rowOf(res, 2))).toEqual(["lastNameLatin"]);
     expect(said(rowOf(res, 2).cells.lastNameLatin!)).toContain("إلزامي");
     expect(errorKeys(rowOf(res, 3))).toEqual([]);
+  });
+});
+
+describe("ما بقي: من سبق بالاسم نفسه، والاسم العربيّ الغائب، وملفٌّ بلا معرّفات", () => {
+  const latinFirst = "Nadir";
+  let latinLast = "";
+  let existingMail = "";
+
+  beforeAll(async () => {
+    latinLast = uniqueLatinLast();
+    existingMail = `${TAG}.ns${Date.now().toString(36)}@${DOMAIN}`;
+    // أستاذٌ مسجَّلٌ بهذا الاسم اللاتينيّ…
+    const user = await prisma.user.create({
+      data: {
+        email: `${TAG}.ns${Date.now().toString(36)}@test.local`,
+        password: "x",
+        role: "professor",
+        firstNameLatin: latinFirst,
+        lastNameLatin: latinLast,
+      },
+    });
+    await prisma.professor.create({
+      data: { employeeNumber: `${TAG}-NS`, universityEmail: existingMail, userId: user.id, departmentId: f.department.id },
+    });
+    // …وحسابٌ بدور أستاذٍ بلا ملفّ أستاذ، وآخر بلا اسمٍ أوّل: لا يُحسبان سابقين.
+    await prisma.user.createMany({
+      data: [
+        { email: `${TAG}.ns-noprof@test.local`, password: "x", role: "professor", firstNameLatin: latinFirst, lastNameLatin: latinLast },
+        { email: `${TAG}.ns-nofirst@test.local`, password: "x", role: "professor", firstNameLatin: null, lastNameLatin: latinLast },
+      ],
+    });
+  });
+
+  it("أستاذٌ بالاسم اللاتينيّ نفسه في المنصّة ⇒ تنبيهٌ يسمّيه ببريده الجامعي، والصفّ يبقى صالحاً", async () => {
+    const res = await upload("/preview", await xlsx([valid({ "الاسم باللاتينية": latinFirst, "اللقب باللاتينية": latinLast })])).expect(200);
+    const r = rowOf(res, 2);
+    expect(r.errors).toBe(0);
+    const warning = said(r.cells.firstNameLatin!, "warning");
+    expect(warning).toContain("بالاسم واللقب نفسيهما");
+    expect(warning).toContain(existingMail);
+    expect(warning.match(/@/g)).toHaveLength(1); // الحسابان الآخران لا يُذكران
+  });
+
+  it("وأستاذٌ بلا اسمٍ عربيّ يُنشأ، واسمه العربيّ فارغٌ لا نصٌّ فارغ", async () => {
+    const university = mail();
+    const res = await upload(
+      "",
+      await xlsx([valid({ "الاسم": null, "اللقب": null, "البريد الجامعي": university })]),
+    ).expect(201);
+    expect(res.body.created).toBe(1);
+    // والبريد الجامعي يُحفظ بأحرفٍ صغيرة، كما في نافذة الإضافة.
+    const stored = university.toLowerCase();
+    expect(res.body.accounts[0]).toMatchObject({ firstName: null, lastName: null, universityEmail: stored });
+    const user = await prisma.user.findFirstOrThrow({ where: { professor: { universityEmail: stored } } });
+    expect([user.firstName, user.lastName]).toEqual([null, null]);
+    expect(user.mustChangePassword).toBe(true);
+  });
+
+  it("وملفٌّ صفوفه بلا بريدٍ جامعيّ ولا لقبٍ لاتينيّ ولا رقمٍ وظيفيّ ⇒ يُحكم عليه بلا ما يُسأل عنه في المنصّة", async () => {
+    const res = await upload("/preview", await xlsx([{ "الاسم باللاتينية": "Karim", "القسم": f.department.name }])).expect(200);
+    const r = rowOf(res, 2);
+    expect(errorKeys(r)).toEqual(expect.arrayContaining(["lastNameLatin", "universityEmail"]));
+    expect(r.cells.employeeNumber!.state).toBe("auto");
+  });
+});
+
+describe("ملفٌّ لا يُعرف فيه نموذج الأساتذة", () => {
+  // ما ليس Excel أصلاً يُردّ قبل هذا (حارس الرفع، 400). وهذا Excel صحيح،
+  // لكن أعمدته ليست أعمدة الاستيراد.
+  it("يُردّ بتقريرٍ يقول لماذا، بلا صفوفٍ ولا ملفٍّ مُعلَّم", async () => {
+    const res = await upload("/preview", await xlsx([{}], ["عمودٌ ما", "وآخر"])).expect(200);
+    expect(res.body.report.fileErrors.length).toBeGreaterThan(0);
+    expect(res.body.report.rows).toEqual([]);
+    expect(res.body.annotatedFile).toBeUndefined();
+  });
+});
+
+/**
+ * التقرير بلغة المسؤول: من تعمل واجهته بالفرنسية أو الإنجليزية يقرأ تقرير
+ * استيراده بها — وأسماء الأعمدة وقيم الخانات تبقى كما في الملف: هي لغته.
+ */
+describe("تقرير الاستيراد بلغة المسؤول", () => {
+  const inLang = (lang: string, path: string, buf: Buffer) => upload(path, buf).set("Accept-Language", lang);
+  const messages = (r: ReportRow) =>
+    Object.values(r.cells)
+      .flatMap((c) => c.issues ?? [])
+      .map((i) => i.message)
+      .join(" | ");
+
+  it("بالفرنسية: البريد بنطاقٍ غير مسجَّل، والقسم المجهول، والرقم الوظيفي يُولَّد", async () => {
+    const res = await inLang("fr", "/preview", await xlsx([valid({ "البريد الجامعي": "a@gmail.com", "القسم": "قسم لا وجود له" })])).expect(200);
+    const r = rowOf(res, 2);
+    expect(said(r.cells.universityEmail!)).toMatch(/^«@gmail\.com» n’est pas un domaine universitaire enregistré\./);
+    expect(said(r.cells.department!)).toMatch(/n’est pas un département de la plateforme/);
+    expect(r.cells.employeeNumber!.saved).toBe("Généré automatiquement");
+    expect(messages(r)).not.toMatch(/[؀-ۿ]{4,} [؀-ۿ]{4,} [؀-ۿ]{4,}/); // لا جملة عربية
+  });
+
+  it("بالإنجليزية: الملف المرفوض كلّه، ورسالة ردّه", async () => {
+    const bad = valid({ "البريد الجامعي": "" });
+    const res = await inLang("en", "", await xlsx([bad])).expect(400);
+    expect(res.body.message).toBe("The file has errors — fix them and upload again. Nobody was imported.");
+    expect(said(rowOf(res, 2).cells.universityEmail!)).toBe("Required — the cell is empty.");
+  });
+
+  it("وملفٌّ بلا أعمدة النموذج يُقال سببه بالإنجليزية، وعنوان العمود كما هو", async () => {
+    const res = await inLang("en", "/preview", await xlsx([{}], ["عمودٌ ما"])).expect(200);
+    expect(res.body.report.fileErrors[0]).toBe("The header row wasn't found (column «البريد الجامعي»). Use the platform's template.");
+  });
+
+  it("وبلا لغةٍ أو بالعربية: كما كان", async () => {
+    const res = await upload("/preview", await xlsx([valid({ "البريد الجامعي": "a@gmail.com" })])).expect(200);
+    expect(said(rowOf(res, 2).cells.universityEmail!)).toMatch(/^«@gmail\.com» ليس نطاقاً جامعياً مسجَّلاً\./);
   });
 });

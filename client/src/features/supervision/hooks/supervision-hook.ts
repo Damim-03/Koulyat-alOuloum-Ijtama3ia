@@ -32,6 +32,20 @@ export function useIssueSupervisionDocument() {
   });
 }
 
+/**
+ * Records a print — before the print window opens, from the button, or as it
+ * opens, from Ctrl+P. The lists are refreshed after, for they show it.
+ */
+export function usePrintSupervisionDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, version }: { id: string; version: string }) => supervisionApi.print(id, version),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: KEYS.all });
+    },
+  });
+}
+
 export function useSupervisionDocuments(params?: {
   page?: number;
   limit?: number;

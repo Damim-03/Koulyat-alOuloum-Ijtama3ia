@@ -13,26 +13,34 @@ import {
   Mail,
   MailX,
   MessagesSquare,
+  Pencil,
   RotateCcw,
   SendHorizontal,
   Trash2,
   Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import { ConfirmDialog } from "../../admin/components/form/confirm-dialog.form";
 import { useAuthStore } from "../../../store/auth.store";
+import { useNow } from "../../../hooks/use-now";
+import { useEscapeToClose } from "../../../hooks/use-escape";
 import {
   discardPending,
+  useDeleteForEveryoneMessage,
   useDeleteInboxMessage,
+  useEditMessage,
   useMarkMessageRead,
   useMarkMessageUnread,
   useReplyMessage,
   useThread,
 } from "../hooks/messages-hook";
-import type { ThreadMessage } from "../api/messages.api";
-import { fullWhen, personName, relativeWhen, setOpenThread } from "../messages-utils";
+import type { MessageAttachment, ThreadMessage } from "../api/messages.api";
+import { MAX_FILES, fullWhen, personName, relativeWhen, setOpenThread, stillEditable } from "../messages-utils";
+import { forgetDrafts, useAttachmentDrafts } from "../hooks/use-attachments";
+import { AttachButton, AttachmentList, DraftTray } from "./attachments";
 import { BroadcastChip, EmptyPane, RoleChip } from "./messages-ui";
 
 /**
@@ -74,6 +82,13 @@ export function MessageReader({
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  // Changing what I sent, briefly; withdrawing it, for the administration.
+  const isAdmin = String(me?.role) === "admin";
+  const now = useNow(true, 30_000);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [toRetract, setToRetract] = useState<ThreadMessage | null>(null);
+  const edit = useEditMessage();
+  const retract = useDeleteForEveryoneMessage();
 
   const thread = useMemo(() => data?.thread ?? [], [data]);
   const selected = data?.message;
@@ -175,11 +190,20 @@ export function MessageReader({
             key={m.id}
             m={m}
             highlighted={m.id === id && thread.length > 1}
+            editing={editingId === m.id}
+            saving={edit.isPending}
+            onEdit={stillEditable(m, now) ? () => setEditingId(m.id) : undefined}
+            onCancelEdit={() => setEditingId(null)}
+            onSave={(body) => edit.mutate({ id: m.id, body }, { onSuccess: () => setEditingId(null) })}
+            onDelete={isAdmin && m.mine && !m.pending ? () => setToRetract(m) : undefined}
             onRetry={() => {
               discardPending(qc, id, m.id);
-              reply.mutate({ parentId: target.id, body: m.body, tempId: `tmp-${Date.now()}` });
+              reply.mutate({ parentId: target.id, body: m.body, attachments: m.attachments, tempId: `tmp-${Date.now()}` });
             }}
-            onDiscard={() => discardPending(qc, id, m.id)}
+            onDiscard={() => {
+              forgetDrafts(m.attachments);
+              discardPending(qc, id, m.id);
+            }}
           />
         ))}
         <div ref={endRef} />
@@ -191,10 +215,11 @@ export function MessageReader({
         disabledHint={t("msg.cannotReplyOwnBroadcast")}
         others={others}
         toName={target.mine ? t("msg.replyToRecipients") : personName(target.sender)}
-        onSend={(body, all) => reply.mutate({ parentId: target.id, body, all, tempId: `tmp-${Date.now()}` })}
+        onSend={(body, all, attachments) => reply.mutate({ parentId: target.id, body, all, attachments, tempId: `tmp-${Date.now()}` })}
       />
 
       <ConfirmDialog
+        icon={Trash2}
         open={confirmDelete}
         tone="danger"
         title={t("messages.deleteMessage")}
@@ -213,6 +238,25 @@ export function MessageReader({
         }
         onClose={() => setConfirmDelete(false)}
       />
+      <ConfirmDialog
+        icon={Trash2}
+        open={!!toRetract}
+        tone="danger"
+        title={t("msg.actions.confirmTitle")}
+        message={toRetract?.broadcast ? t("msg.actions.confirmBroadcast") : t("msg.actions.confirmBody")}
+        confirmLabel={t("msg.actions.confirm")}
+        cancelLabel={t("admin.cancel")}
+        loading={retract.isPending}
+        onConfirm={() =>
+          toRetract &&
+          retract.mutate(toRetract.id, {
+            // The message this view was opened on is gone: so is the view.
+            onSuccess: () => (toRetract.id === selected.id || toRetract.id === rootId) && onGone(),
+            onSettled: () => setToRetract(null),
+          })
+        }
+        onClose={() => setToRetract(null)}
+      />
     </div>
   );
 }
@@ -220,11 +264,25 @@ export function MessageReader({
 function Bubble({
   m,
   highlighted,
+  editing,
+  saving,
+  onEdit,
+  onCancelEdit,
+  onSave,
+  onDelete,
   onRetry,
   onDiscard,
 }: {
   m: ThreadMessage;
   highlighted: boolean;
+  editing: boolean;
+  saving: boolean;
+  /** Present while it may still be edited. */
+  onEdit?: () => void;
+  onCancelEdit: () => void;
+  onSave: (body: string) => void;
+  /** Present for an administrator's own message. */
+  onDelete?: () => void;
   onRetry: () => void;
   onDiscard: () => void;
 }) {
@@ -256,13 +314,56 @@ function Bubble({
             </p>
             <p className="text-[11px] text-clay" title={fullWhen(m.createdAt)}>
               {relativeWhen(m.createdAt)}
+              {m.editedAt && (
+                <span className="italic" title={fullWhen(m.editedAt)} data-testid="edited">
+                  {" · "}
+                  {t("msg.edited")}
+                </span>
+              )}
             </p>
           </div>
+          {!editing && (onEdit || onDelete) && (
+            <div className="flex shrink-0 items-center gap-1">
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  data-testid="reader-edit"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-forest transition hover:bg-forest/8"
+                >
+                  <Pencil size={12} />
+                  {t("msg.actions.edit")}
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  data-testid="reader-delete-everyone"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-red-600 transition hover:bg-red-500/10 dark:text-red-400"
+                >
+                  <Trash2 size={12} />
+                  {t("msg.actions.deleteForEveryone")}
+                </button>
+              )}
+            </div>
+          )}
         </header>
 
-        <p className="text-[14px] leading-7 break-words whitespace-pre-wrap text-forest" dir="auto">
-          {m.body}
-        </p>
+        {editing ? (
+          <InlineEditor m={m} saving={saving} onCancel={onCancelEdit} onSave={onSave} />
+        ) : (
+          m.body && (
+            <p className="text-[14px] leading-7 break-words whitespace-pre-wrap text-forest" dir="auto">
+              {m.body}
+            </p>
+          )
+        )}
+        {m.attachments && m.attachments.length > 0 && (
+          <div className={`max-w-md ${m.body ? "mt-3" : ""}`}>
+            <AttachmentList items={m.attachments} />
+          </div>
+        )}
 
         {/* footer: delivery and receipts */}
         {m.pending === "sending" ? (
@@ -346,6 +447,65 @@ function Bubble({
   );
 }
 
+/** The text of a sent message, changed in place: Ctrl+Enter or ✓ saves, Escape or ✕ leaves it. */
+function InlineEditor({
+  m,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  m: ThreadMessage;
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (body: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [body, setBody] = useState(m.body);
+  useEscapeToClose(onCancel);
+  const next = body.trim();
+  const canSave = !saving && next !== m.body.trim() && (next.length > 0 || (m.attachments?.length ?? 0) > 0);
+  return (
+    <div data-testid="inline-editor">
+      <textarea
+        value={body}
+        autoFocus
+        onChange={(e) => setBody(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && canSave) {
+            e.preventDefault();
+            onSave(next);
+          }
+        }}
+        rows={Math.min(10, Math.max(3, body.split("\n").length))}
+        maxLength={5000}
+        dir="auto"
+        data-testid="inline-edit-input"
+        className="w-full resize-y rounded-xl border border-gold bg-cream p-3 text-[14px] leading-7 text-forest outline-none ring-2 ring-gold/25"
+      />
+      <div className="mt-2 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold text-clay transition hover:bg-forest/8"
+        >
+          <X size={13} />
+          {t("admin.cancel")}
+        </button>
+        <button
+          type="button"
+          onClick={() => onSave(next)}
+          disabled={!canSave}
+          data-testid="inline-edit-save"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-gold px-3.5 py-1.5 text-[12.5px] font-bold text-forest-deep transition hover:bg-gold-soft disabled:opacity-40"
+        >
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+          {t("msg.actions.save")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ReplyBox({
   disabled,
   disabledHint,
@@ -357,17 +517,18 @@ function ReplyBox({
   disabledHint: string;
   others: number;
   toName: string;
-  onSend: (body: string, all: boolean) => void;
+  onSend: (body: string, all: boolean, attachments: MessageAttachment[]) => void;
 }) {
   const { t } = useTranslation();
   const [body, setBody] = useState("");
   const [all, setAll] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const drafts = useAttachmentDrafts();
+  const canSend = (body.trim().length > 0 || drafts.ready > 0) && !drafts.uploading && !drafts.failed;
 
   function send() {
-    const text = body.trim();
-    if (!text) return;
-    onSend(text, all && others > 0);
+    if (!canSend) return;
+    onSend(body.trim(), all && others > 0, drafts.take());
     setBody("");
     ref.current?.focus();
   }
@@ -391,7 +552,9 @@ function ReplyBox({
           </label>
         )}
       </div>
+      <DraftTray drafts={drafts.drafts} onRemove={drafts.remove} onRetry={drafts.retry} />
       <div className="flex items-end gap-2 rounded-2xl border border-forest/15 bg-cream p-2 transition focus-within:border-gold focus-within:ring-2 focus-within:ring-gold/25">
+        <AttachButton drafts={drafts} disabled={drafts.drafts.length >= MAX_FILES} className="size-11" />
         <textarea
           ref={ref}
           value={body}
@@ -401,6 +564,11 @@ function ReplyBox({
               e.preventDefault();
               send();
             }
+          }}
+          onPaste={(e) => {
+            if (!e.clipboardData.files.length) return;
+            e.preventDefault();
+            drafts.add(e.clipboardData.files);
           }}
           rows={Math.min(6, Math.max(2, body.split("\n").length))}
           maxLength={5000}
@@ -412,7 +580,7 @@ function ReplyBox({
         <button
           type="button"
           onClick={send}
-          disabled={!body.trim()}
+          disabled={!canSend}
           aria-label={t("messages.send")}
           data-testid="reply-send"
           className="grid size-11 shrink-0 place-items-center rounded-xl bg-gold text-forest-deep shadow-sm transition hover:bg-gold-soft active:scale-95 disabled:opacity-40"

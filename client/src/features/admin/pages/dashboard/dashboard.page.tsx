@@ -110,7 +110,7 @@ export function AdminDashboardPage() {
         <div className="relative">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-4">
-              <span className="grid size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft">
+              <span className="hidden size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft sm:grid">
                 <LayoutDashboard size={26} />
               </span>
               <div>
@@ -404,12 +404,14 @@ export function AdminDashboardPage() {
 function Heading({ icon: Icon, title, hint, more }: { icon: LucideIcon; title: string; hint?: string; more?: string }) {
   const { t } = useTranslation();
   return (
-    <header className="mb-4 flex items-start justify-between gap-3">
-      <div className="flex items-start gap-3">
+    // On a narrow phone the title, its hint and "view all" side by side left
+    // the text a ~120px column; the link now drops under the title instead.
+    <header className="mb-4 flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+      <div className="flex min-w-0 flex-1 basis-56 items-start gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-gold/25 bg-linear-to-br from-gold/20 to-gold/5 text-gold">
           <Icon size={18} />
         </span>
-        <div>
+        <div className="min-w-0">
           <h2 className="font-serif text-[16px] leading-tight font-bold text-forest">{title}</h2>
           {hint && <p className="mt-1 text-[12px] leading-relaxed text-clay">{hint}</p>}
         </div>
@@ -477,7 +479,10 @@ function Growth({ data }: { data: MonthlyGrowthItem[] }) {
           </span>
         ))}
       </div>
-      <div className="flex gap-2" dir="ltr">
+      {/* Six months of three 12px bars need ~330px; a 320px phone has ~250.
+          Below `sm` the bars and gaps narrow so the chart fits instead of
+          spilling past its card. */}
+      <div className="flex gap-1.5 sm:gap-2" dir="ltr">
         <div className="flex h-52 flex-col justify-between pb-6 text-[10px] text-clay tabular-nums">
           {ticks.map((v) => (
             <span key={v}>{v}</span>
@@ -489,14 +494,14 @@ function Growth({ data }: { data: MonthlyGrowthItem[] }) {
               <div key={v} className="h-px w-full bg-forest/8" />
             ))}
           </div>
-          <div className="relative flex h-52 items-stretch justify-between gap-2">
+          <div className="relative flex h-52 items-stretch justify-between gap-1 sm:gap-2">
             {data.map((d) => (
-              <div key={d.month} className="group flex flex-1 flex-col items-center">
-                <div className="relative flex w-full flex-1 items-end justify-center gap-1 rounded-t-xl transition group-hover:bg-forest/[0.03]">
+              <div key={d.month} className="group flex min-w-0 flex-1 flex-col items-center">
+                <div className="relative flex w-full flex-1 items-end justify-center gap-0.5 rounded-t-xl transition group-hover:bg-forest/[0.03] sm:gap-1">
                   {SERIES.map((s) => (
                     <div
                       key={s.key}
-                      className={`w-3 rounded-t-md ${s.bar} transition-all duration-700 group-hover:brightness-110`}
+                      className={`w-2 rounded-t-md sm:w-3 ${s.bar} transition-all duration-700 group-hover:brightness-110`}
                       style={{ height: `${(d[s.key] / ceil) * 100}%`, minHeight: d[s.key] > 0 ? 4 : 0 }}
                       title={`${t(s.label)}: ${d[s.key]}`}
                     />
@@ -510,7 +515,7 @@ function Growth({ data }: { data: MonthlyGrowthItem[] }) {
                     ))}
                   </div>
                 </div>
-                <span className="mt-1.5 h-4.5 text-[11px] text-clay">{monthOf(d.month)}</span>
+                <span className="mt-1.5 h-4.5 text-[11px] whitespace-nowrap text-clay">{monthOf(d.month)}</span>
               </div>
             ))}
           </div>

@@ -22,6 +22,7 @@ import {
   SendHorizontal,
   Pencil,
   Trash2,
+  ShieldOff,
 } from "lucide-react";
 import {
   useStudent,
@@ -453,6 +454,7 @@ export function AdminStudentDetailPage() {
         />
       )}
       <ConfirmDialog
+        icon={u.isVerified ? ShieldOff : BadgeCheck}
         open={verifyOpen}
         onClose={() => setVerifyOpen(false)}
         title={

@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CheckCircle2,
+  ChevronDown,
   Loader2,
   SendHorizontal,
   Star,
@@ -13,6 +14,7 @@ import { useStudents } from "../../hooks/admin-hook";
 import { useDebouncedValue } from "../../../../hooks/use-debounced-value";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { personName } from "../../../../lib/person-name";
+import { StudentOptions, type StudentOption } from "../../../../components/ui/student-options";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -49,6 +51,11 @@ const nameOf = (u: any) =>
  *
  * ورقمُ التسجيل هو المفتاح، لكنّ الاسم لم يُفقد: نصٌّ لا يطابق رقماً
  * تُعرض نتائجُه أسفل المقعد لتُنقر، فيملأ النقرُ الرقمَ الصحيح.
+ *
+ * **وثلاث طرقٍ للإدخال في الحقل نفسه:** رقمُ التسجيل يُكتب فيُتعرَّف عليه
+ * كما كان؛ أو حروفٌ من الاسم واللقب — حرفٌ أو حرفان، بأيّ ترتيب —؛ أو تُفتح
+ * القائمة بالضغط على الحقل أو زرّها، فتعرض طلبة تخصّص الموضوع الأحرار وحدهم
+ * ويضيّقها ما يُكتب. والاختيار منها يملأ رقم التسجيل.
  */
 export function StudentSeat({
   seat,
@@ -90,7 +97,9 @@ export function StudentSeat({
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
-  const reg = value.trim();
+  const text = value.trim();
+  // Digits alone are a registration number, looked up as ever; anything else is a name, searched in the list.
+  const reg = /^[0-9٠-٩۰-۹]+$/.test(text) ? text : "";
   const debounced = useDebouncedValue(reg, 350);
   const isDupe = reg.length > 0 && taken.includes(reg);
   const seeded = !!initial && !!reg && initial.reg.trim() === reg;
@@ -171,6 +180,61 @@ export function StudentSeat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hitId, index]);
 
+  // ── the list: the topic's specialization's free students, narrowed by what is typed ──
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const seatRef = useRef<HTMLLIElement | null>(null);
+  const listId = useId();
+  const query = useDebouncedValue(text, 250);
+  const showList = open && status !== "found" && !disabled;
+  const { data: listData, isFetching: listing } = useStudents(
+    {
+      page: 1,
+      limit: 20,
+      unassigned: "true",
+      specializationId: specializationId || undefined,
+      quickSearch: query || undefined,
+    },
+    showList && !!specializationId,
+  );
+  const listed = (listData?.items ?? []) as any[];
+  const options: StudentOption[] = listed
+    .filter((s) => !taken.includes((s.registrationNumber ?? "").trim()))
+    .map((s) => ({ id: s.id, reg: s.registrationNumber ?? "", name: nameOf(s.user), user: s.user }));
+  const optionsTotal = Math.max(options.length, (listData?.total ?? 0) - (listed.length - options.length));
+
+  function pick(s: StudentOption) {
+    onChange(index, s.reg);
+    setOpen(false);
+  }
+
+  // A press anywhere outside the seat closes its list.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (seatRef.current && !seatRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  function onKey(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape" && open) {
+      e.stopPropagation();
+      setOpen(false);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setActive((a) => Math.min(a + 1, Math.max(options.length - 1, 0)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((a) => Math.max(a - 1, 0));
+    } else if (e.key === "Enter" && showList && options[active]) {
+      e.preventDefault();
+      pick(options[active]);
+    }
+  }
+
   const ring = mismatch
     ? "border-gold focus:border-gold focus:ring-gold/25"
     : status === "found"
@@ -190,6 +254,7 @@ export function StudentSeat({
 
   return (
     <li
+      ref={seatRef}
       className={`rounded-2xl border p-3 transition ${seatTone}`}
       data-testid={`seat-${seat}`}
     >
@@ -205,12 +270,48 @@ export function StudentSeat({
         <div className="relative flex-1">
           <input
             value={value}
-            onChange={(e) => onChange(index, e.target.value)}
-            placeholder={t("admin.regNumberPlaceholder")}
-            dir="ltr"
+            onChange={(e) => {
+              onChange(index, e.target.value);
+              setOpen(true);
+              setActive(0);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={onKey}
+            role="combobox"
+            aria-expanded={showList}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-label={t("admin.seatLabel", { n: seat })}
+            placeholder={t("admin.seatPlaceholder")}
+            dir="auto"
             disabled={disabled}
-            className={`w-full rounded-xl border-2 bg-cream py-2.5 pe-4 ps-11 text-sm text-forest outline-none transition focus:ring-4 disabled:opacity-50 ${ring}`}
+            className={`w-full rounded-xl border-2 bg-cream py-2.5 pr-11 pl-11 text-sm text-forest outline-none transition focus:ring-4 disabled:opacity-50 ${ring}`}
           />
+          {/* The list without typing: the specialization's free students. */}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setOpen((o) => !o)}
+            disabled={disabled}
+            aria-label={t("admin.seatBrowse")}
+            title={t("admin.seatBrowse")}
+            data-testid={`seat-${seat}-browse`}
+            className="absolute inset-y-0 right-2 my-auto grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/6 hover:text-forest disabled:opacity-40"
+          >
+            <ChevronDown size={17} className={`transition-transform ${showList ? "rotate-180" : ""}`} />
+          </button>
+          {showList && (
+            <StudentOptions
+              id={listId}
+              options={options}
+              loading={listing}
+              total={optionsTotal}
+              title={specializationName ? t("admin.seatListTitle", { spec: specializationName }) : t("admin.seatListTitleAny")}
+              active={active}
+              onActive={setActive}
+              onPick={pick}
+            />
+          )}
           <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
             {status === "loading" && (
               <Loader2 size={18} className="animate-spin text-clay" />
@@ -227,7 +328,7 @@ export function StudentSeat({
           </span>
         </div>
 
-        {reg && (
+        {text && (
           <button
             type="button"
             onClick={() => onChange(index, "")}

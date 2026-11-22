@@ -51,6 +51,10 @@ Backend/prisma/dev.db-journal
 # Uploads (if user-generated)
 Backend/uploads/*
 !Backend/uploads/.gitkeep
+# Private files never served to the public (photos of student cards, for activation)
+Backend/storage/
+# The address databases (Backend/geo/README.md): about 140 MB, downloaded.
+Backend/geo/*.mmdb
 
 # =========================
 # TypeScript

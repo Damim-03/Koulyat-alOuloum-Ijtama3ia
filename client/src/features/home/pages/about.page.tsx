@@ -28,6 +28,7 @@ import { AboutHeroVisual } from "../components/about/about-hero-visual";
 import { SlideBackdrop } from "../components/slide-backdrop";
 import { CountUp } from "../components/about/count-up";
 import { Ornament, SectionHeading, StarPattern } from "../components/about/about-ornaments";
+import { useShown } from "../../../i18n/site-visibility";
 
 /** أيقونات المزايا بالدور — تكتب الإدارة النصّ، والشكل من المنصّة. */
 const FEATURE_ICONS = [ListChecks, UsersRound, Milestone, CalendarCheck, BellRing, FileCheck2, ShieldCheck, LayoutDashboard];
@@ -63,7 +64,7 @@ export function AboutPage() {
     window.scrollTo({ top: 0 });
   }, []);
 
-  if (isLoading) return <div className="forest-glow min-h-[80vh]" />;
+  if (isLoading) return <div className="forest-glow min-h-[80dvh]" />;
 
   const block = resolveAbout((!isError && content) || defaultAboutPage(), currentLang as SiteLang);
   return <AboutContent block={block} slides={slides} backdrop={backdrop} />;
@@ -83,6 +84,7 @@ function AboutContent({
   const { dir, isRTL } = useLanguage();
   const { isAuthenticated } = useAuth();
   const Crumb = isRTL ? ChevronLeft : ChevronRight;
+  const shown = useShown();
 
   const scrollToIntro = () =>
     document.getElementById("about-intro")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -148,6 +150,7 @@ function AboutContent({
             )}
 
             <div className="mt-10 flex flex-col items-center gap-3 animate-[riseIn_0.6s_0.25s_both] sm:flex-row sm:justify-center lg:justify-start">
+              {shown("about.discover") && (
               <button
                 type="button"
                 onClick={scrollToIntro}
@@ -156,6 +159,7 @@ function AboutContent({
                 {t("aboutPage.discover")}
                 <ArrowDown size={16} className="transition group-hover:translate-y-0.5" />
               </button>
+              )}
               <LocaleLink
                 to={PATHS.topics}
                 className="inline-flex h-12 items-center gap-2 rounded-xl border border-white/20 px-6 text-sm font-semibold text-cream transition hover:border-gold/50 hover:bg-white/5"
@@ -205,7 +209,9 @@ function AboutContent({
       <section id="about-intro" className="scroll-mt-28 bg-cream px-5 pb-24 pt-24 lg:px-8">
         <div className="mx-auto max-w-3xl text-center">
           <Reveal>
-            <p className="mb-3 text-[12px] font-bold uppercase tracking-[0.2em] text-gold">{t("aboutPage.eyebrow")}</p>
+            {shown("about.eyebrow") && (
+              <p className="mb-3 text-[12px] font-bold uppercase tracking-[0.2em] text-gold">{t("aboutPage.eyebrow")}</p>
+            )}
             <h2 dir="auto" className="font-serif text-3xl font-bold leading-snug text-forest md:text-[2.6rem]">
               {block.introTitle}
             </h2>
@@ -236,7 +242,10 @@ function AboutContent({
         <section className="relative bg-cream-2 px-5 py-24 lg:px-8">
           <div className="mx-auto max-w-6xl">
             {block.featuresTitle && (
-              <SectionHeading eyebrow={t("aboutPage.featuresEyebrow")} title={block.featuresTitle} />
+              <SectionHeading
+                eyebrow={shown("about.featuresEyebrow") ? t("aboutPage.featuresEyebrow") : undefined}
+                title={block.featuresTitle}
+              />
             )}
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {block.features.map((f, i) => {
@@ -274,6 +283,7 @@ function AboutContent({
       )}
 
       {/* ════════════ دعوة ════════════ */}
+      {shown("about.cta") && (
       <section className="bg-cream px-5 py-24 lg:px-8">
         <Reveal className="mx-auto max-w-5xl">
           <div className="rounded-[2.25rem] bg-linear-to-br from-gold/80 via-gold/20 to-gold/70 p-px shadow-[0_40px_100px_-35px_rgba(22,36,31,0.6)]">
@@ -309,6 +319,7 @@ function AboutContent({
           </div>
         </Reveal>
       </section>
+      )}
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
   Upload,
   UserCheck,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { Stepper } from "../../../../../components/ui/stepper";
 import { useBodyScrollLock } from "../../../../../hooks/use-body-scroll-lock";
@@ -30,9 +31,11 @@ import type {
   ImportColumnKind,
   ImportPreviewResult,
   ImportResult,
+  TopicImportResult,
+  AssignedTopicImportResult,
 } from "../../../../../types/admin";
 import { ImportPreview } from "./import-preview";
-import type { PreviewProfile } from "./import-preview.utils";
+import { GROUP_KEY, type PreviewProfile } from "./import-preview.utils";
 import { KindPill, LetterBadge } from "./import-ui";
 import { personName } from "../../../../../lib/person-name";
 
@@ -48,7 +51,19 @@ const serverMessage = (e: unknown) => (e as HttpError)?.response?.data?.message;
 const sizeOf = (bytes: number) =>
   bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-/** ما يخصّ كلّ استيرادٍ في النافذة — والنافذة نفسها واحدةٌ للطلبة والأساتذة. */
+/** ما يعود به استيرادٌ نجح: حساباتٌ (الطلبة والأساتذة)، أو مواضيع. */
+export type ImportOutcome = ImportResult | TopicImportResult | AssignedTopicImportResult;
+type Item = Record<string, string | null>;
+
+/** بطاقات القواعد تحت الرفع، لاستيراد الحسابات. */
+const ACCOUNT_RULES: [string, LucideIcon][] = [
+  ["ruleAll", Layers],
+  ["rulePreview", Eye],
+  ["rulePasswords", KeyRound],
+  ["ruleExisting", Fingerprint],
+];
+
+/** ما يخصّ كلّ استيرادٍ في النافذة — والنافذة نفسها واحدةٌ للطلبة والأساتذة والمواضيع. */
 export interface ImportDialogConfig {
   /** مفاتيح النصوص الخاصّة (admin.importProf…)؛ ما لم يوجد فيها يُؤخذ من admin.import. */
   ns: string;
@@ -58,8 +73,19 @@ export interface ImportDialogConfig {
   guide: Omit<ImportColumn, "letter">[];
   /** أعمدة الورقة المصغّرة في بطاقة النموذج. */
   mock: [string, ImportColumnKind][];
-  /** أعمدة جدول الحسابات بعد الاستيراد، قبل الاسم وكلمة المرور. */
-  accounts: { key: string; labelKey: string }[];
+  /** بعد الاستيراد، للحسابات: أعمدة جدولها قبل الاسم وكلمة المرور. */
+  accounts?: { key: string; labelKey: string }[];
+  /**
+   * بعد الاستيراد، لما ليس حسابات: قائمةُ ما أُنشئ — بلا كلمات مرورٍ ولا ملفٍّ
+   * يُنزَّل. والنصوص (labelKey) في مفاتيح الاستيراد الخاصّة.
+   */
+  list?: {
+    items: (r: ImportOutcome) => Item[];
+    columns: { key: string; labelKey: string; badge?: boolean }[];
+    stats: { labelKey: string; icon: LucideIcon; count: (items: Item[]) => number }[];
+  };
+  /** بطاقات القواعد تحت الرفع — قواعد الحسابات إن لم تُذكر. */
+  rules?: [string, LucideIcon][];
   preview: PreviewProfile;
 }
 
@@ -94,12 +120,12 @@ export function ImportDialog({
   onClose: () => void;
   config: ImportDialogConfig;
   previewM: ImportMutation<ImportPreviewResult>;
-  importM: ImportMutation<ImportResult>;
+  importM: ImportMutation<ImportOutcome>;
 }) {
   const { t, i18n } = useTranslation();
-  /** النصّ الخاصّ بهذا الاستيراد إن وُجد، وإلّا المشترك. */
+  /** النصّ الخاصّ بهذا الاستيراد إن وُجد (بصيغ جمعه إن كان عدد)، وإلّا المشترك. */
   const tt = (key: string, opts?: Record<string, unknown>) =>
-    i18n?.exists?.(`${config.ns}.${key}`) ? t(`${config.ns}.${key}`, opts) : t(`admin.import.${key}`, opts);
+    i18n?.exists?.(`${config.ns}.${key}`, opts) ? t(`${config.ns}.${key}`, opts) : t(`admin.import.${key}`, opts);
   useBodyScrollLock(open);
 
   const [step, setStep] = useState<Step>("upload");
@@ -107,7 +133,7 @@ export function ImportDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
-  const [result, setResult] = useState<ImportResult | null>(null);
+  const [result, setResult] = useState<ImportOutcome | null>(null);
   // يتغيّر مع كلّ تقريرٍ جديد، فتبدأ المعاينة من أوّلها (تصفيتها وصفّها المختار).
   const [reportVersion, setReportVersion] = useState(0);
   const [downloaded, setDownloaded] = useState(false);
@@ -116,7 +142,8 @@ export function ImportDialog({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const busy = previewM.isPending || importM.isPending;
-  const generated = result?.accounts.filter((a) => a.password).length ?? 0;
+  const accounts = result && "accounts" in result ? result.accounts : [];
+  const generated = accounts.filter((a) => a.password).length;
 
   if (!open) return null;
 
@@ -217,7 +244,7 @@ export function ImportDialog({
     <div className="fixed inset-0 z-60 grid place-items-center p-3 font-body sm:p-5" role="dialog" aria-modal="true" aria-labelledby="import-title">
       <div onClick={close} className="absolute inset-0 bg-forest-deep/60 backdrop-blur-md" />
 
-      <div className="animate-scale-in relative flex h-[min(94vh,980px)] w-full max-w-[min(96vw,1560px)] flex-col overflow-hidden rounded-[28px] border border-gold/20 bg-cream-card shadow-[0_40px_120px_-30px_rgba(10,20,17,0.75)] ring-1 ring-black/5">
+      <div className="animate-scale-in relative flex h-[min(94dvh,980px)] w-full max-w-[min(96vw,1560px)] flex-col overflow-hidden rounded-[28px] border border-gold/20 bg-cream-card shadow-[0_40px_120px_-30px_rgba(10,20,17,0.75)] ring-1 ring-black/5">
         {/* ── header ── */}
         <header className="forest-glow relative shrink-0 overflow-hidden px-7 py-5 text-cream">
           <div aria-hidden className="dot-matrix pointer-events-none absolute inset-0 opacity-60" />
@@ -281,6 +308,7 @@ export function ImportDialog({
               importing={importM.isPending}
               profile={config.preview}
               annotatedName={config.files.errors}
+              tt={tt}
             />
           )}
 
@@ -307,7 +335,7 @@ export function ImportDialog({
                           {tt("templateButton")}
                         </button>
                       </div>
-                      <SheetMock cols={config.mock} />
+                      <SheetMock cols={config.mock} name={config.files.template} />
                     </div>
                   </section>
 
@@ -405,14 +433,7 @@ export function ImportDialog({
                   </section>
 
                   <ul className="grid shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {(
-                      [
-                        ["ruleAll", Layers],
-                        ["rulePreview", Eye],
-                        ["rulePasswords", KeyRound],
-                        ["ruleExisting", Fingerprint],
-                      ] as const
-                    ).map(([k, Icon]) => (
+                    {(config.rules ?? ACCOUNT_RULES).map(([k, Icon]) => (
                       <li key={k} className="flex items-start gap-3 rounded-2xl border border-forest/8 bg-cream-2/50 px-4 py-3">
                         <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-gold/12 text-gold">
                           <Icon size={16} />
@@ -428,7 +449,11 @@ export function ImportDialog({
             </div>
           )}
 
-          {step === "done" && result && (
+          {step === "done" && result && config.list && (
+            <ListDone list={config.list} result={result} notice={notice} tt={tt} />
+          )}
+
+          {step === "done" && result && !config.list && (
             <div className="h-full overflow-y-auto px-6 py-6 lg:px-8" data-testid="import-done">
               {notice}
               <div className="grid gap-6 lg:h-full lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
@@ -449,7 +474,7 @@ export function ImportDialog({
 
                     <div className="grid w-full max-w-md grid-cols-2 gap-3">
                       <MiniStat icon={<KeyRound size={15} />} label={tt("statGenerated")} value={generated} />
-                      <MiniStat icon={<UserCheck size={15} />} label={tt("statFromFile")} value={result.accounts.length - generated} />
+                      <MiniStat icon={<UserCheck size={15} />} label={tt("statFromFile")} value={accounts.length - generated} />
                     </div>
 
                     <div className={`w-full max-w-md rounded-2xl border p-5 text-start ${generated ? "border-gold/50 bg-gold/8 shadow-[0_14px_30px_-18px_rgba(193,150,90,0.8)]" : "border-forest/10 bg-cream-2/60"}`}>
@@ -466,7 +491,7 @@ export function ImportDialog({
                         type="button"
                         data-testid="import-download-accounts"
                         onClick={() => {
-                          downloadBase64(result.accountsFile, datedName(config.files.accounts));
+                          downloadBase64((result as ImportResult).accountsFile, datedName(config.files.accounts));
                           setDownloaded(true);
                           setCloseArmed(false);
                         }}
@@ -511,7 +536,7 @@ export function ImportDialog({
                       <p className="text-[11px] text-clay">{tt("accountsHint")}</p>
                     </div>
                     <span className="rounded-full bg-forest/6 px-3 py-1 font-serif text-sm font-bold text-forest tabular-nums">
-                      {result.accounts.length}
+                      {accounts.length}
                     </span>
                   </header>
                   <div className="min-h-0 flex-1 overflow-y-auto">
@@ -519,7 +544,7 @@ export function ImportDialog({
                       <thead className="sticky top-0 bg-forest-deep text-cream">
                         <tr>
                           <th className="px-4 py-2.5 text-start text-[11px] font-semibold">#</th>
-                          {config.accounts.map((c) => (
+                          {(config.accounts ?? []).map((c) => (
                             <th key={c.key} className="px-4 py-2.5 text-start text-[11px] font-semibold">
                               {t(`admin.import.${c.labelKey}`)}
                             </th>
@@ -529,10 +554,10 @@ export function ImportDialog({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-forest/8">
-                        {result.accounts.map((a, i) => (
-                          <tr key={String(a[config.accounts[0]!.key])} className="transition hover:bg-gold/5">
+                        {accounts.map((a, i) => (
+                          <tr key={String(a[config.accounts?.[0]?.key ?? "password"] ?? i)} className="transition hover:bg-gold/5">
                             <td className="px-4 py-2.5 font-mono text-[11px] text-clay tabular-nums">{i + 1}</td>
-                            {config.accounts.map((c) => (
+                            {(config.accounts ?? []).map((c) => (
                               <td key={c.key} className="px-4 py-2.5 font-mono text-xs font-semibold text-forest" dir="ltr">
                                 {a[c.key]}
                               </td>
@@ -654,6 +679,100 @@ function PrimaryButton({
   );
 }
 
+/**
+ * بعد استيرادٍ ليس حسابات: ما أُنشئ، بأرقامه وقائمته. ولا كلمات مرورٍ تُنزَّل
+ * هنا، فتُغلق النافذة بلا تنبيه.
+ */
+function ListDone({
+  list,
+  result,
+  notice,
+  tt,
+}: {
+  list: NonNullable<ImportDialogConfig["list"]>;
+  result: ImportOutcome;
+  notice: React.ReactNode;
+  tt: (key: string, opts?: Record<string, unknown>) => string;
+}) {
+  const items = list.items(result);
+  return (
+    <div className="h-full overflow-y-auto px-6 py-6 lg:px-8" data-testid="import-done">
+      {notice}
+      <div className="grid gap-6 lg:h-full lg:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)]">
+        <div className="flex min-h-0 flex-col overflow-y-auto rounded-3xl border border-forest/10 bg-linear-to-b from-sage/10 via-cream-card to-cream-card px-6 py-6 text-center">
+          <div className="m-auto flex w-full flex-col items-center gap-4">
+            <div className="animate-scale-in relative grid size-24 place-items-center rounded-full bg-linear-to-br from-sage/35 to-sage/5 ring-[10px] ring-gold/15">
+              <div aria-hidden className="absolute inset-0 rounded-full shadow-[0_0_60px_rgba(143,179,168,0.45)]" />
+              <CheckCircle2 size={48} className="relative text-sage" />
+            </div>
+            <div>
+              <h4 className="font-serif text-3xl font-bold text-forest">{tt("doneTitle")}</h4>
+              <p className="mt-2 text-sm text-clay">
+                <b className="font-serif text-4xl text-forest tabular-nums">{result.created}</b> {tt("doneCount", { count: result.created })}
+              </p>
+              <p className="mt-1 text-xs text-clay">{tt("doneBody")}</p>
+            </div>
+            <div className={`grid w-full max-w-md gap-3 ${list.stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`} data-testid="import-done-stats">
+              {list.stats.map(({ labelKey, icon: Icon, count }) => (
+                <MiniStat key={labelKey} icon={<Icon size={15} />} label={tt(labelKey)} value={count(items)} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <section className="flex min-h-80 flex-col overflow-hidden rounded-3xl border border-forest/10 bg-cream-card shadow-[0_10px_30px_-18px_rgba(38,66,61,0.35)]">
+          <header className="flex items-center gap-3 border-b border-forest/10 bg-cream-2/50 px-5 py-4">
+            <span className="grid size-9 place-items-center rounded-xl bg-gold/12 text-gold">
+              <CheckCircle2 size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h5 className="font-serif text-base font-bold text-forest">{tt("listTitle")}</h5>
+              <p className="text-[11px] text-clay">{tt("listHint")}</p>
+            </div>
+            <span className="rounded-full bg-forest/6 px-3 py-1 font-serif text-sm font-bold text-forest tabular-nums">
+              {items.length}
+            </span>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <table className="w-full text-start text-sm" data-testid="import-created">
+              <thead className="sticky top-0 bg-forest-deep text-cream">
+                <tr>
+                  <th className="px-4 py-2.5 text-start text-[11px] font-semibold">#</th>
+                  {list.columns.map((c) => (
+                    <th key={c.key} className="px-4 py-2.5 text-start text-[11px] font-semibold">
+                      {tt(c.labelKey)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-forest/8">
+                {items.map((it, i) => (
+                  <tr key={i} className="align-top transition hover:bg-gold/5">
+                    <td className="px-4 py-2.5 font-mono text-[11px] text-clay tabular-nums">{i + 1}</td>
+                    {list.columns.map((c) => (
+                      <td key={c.key} className="px-4 py-2.5 text-forest">
+                        {c.badge ? (
+                          <span className="inline-flex rounded-full bg-gold/12 px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap text-forest ring-1 ring-gold/30">
+                            {it[c.key]}
+                          </span>
+                        ) : (
+                          <span dir="auto" className={c === list.columns[0] ? "font-semibold" : "text-[13px]"}>
+                            {it[c.key] || "—"}
+                          </span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function MiniStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
     <div className="rounded-2xl border border-forest/10 bg-cream-card px-4 py-3 text-start">
@@ -667,7 +786,7 @@ function MiniStat({ icon, label, value }: { icon: React.ReactNode; label: string
 }
 
 /** ورقةٌ مصغّرة للنموذج — تُري قبل التنزيل ألوان أعمدته الثلاثة. */
-function SheetMock({ cols }: { cols: [string, ImportColumnKind][] }) {
+function SheetMock({ cols, name }: { cols: [string, ImportColumnKind][]; name: string }) {
   const tone: Record<ImportColumnKind, string> = {
     req: "bg-forest text-cream",
     opt: "bg-sage/80 text-white",
@@ -681,7 +800,7 @@ function SheetMock({ cols }: { cols: [string, ImportColumnKind][] }) {
           <span className="size-2 rounded-full bg-brick/60" />
           <span className="size-2 rounded-full bg-gold/70" />
           <span className="size-2 rounded-full bg-sage/70" />
-          <span className="ms-2 font-mono text-[9px] text-clay" dir="ltr">students-import.xlsx</span>
+          <span className="ms-2 font-mono text-[9px] text-clay" dir="ltr">{name}</span>
         </div>
         <div className="grid grid-cols-4 gap-px bg-forest/8 text-[9px] font-bold">
           {cols.map(([h, k]) => (
@@ -699,12 +818,6 @@ function SheetMock({ cols }: { cols: [string, ImportColumnKind][] }) {
     </div>
   );
 }
-
-const GROUP_KEY: Record<ImportColumn["group"], string> = {
-  personal: "admin.import.groupPersonal",
-  academic: "admin.import.groupAcademic",
-  professional: "admin.import.groupProfessional",
-};
 
 /** أعمدة الملف قبل الرفع: ترتيبها ونوعها وما يُكتب فيها. */
 function ColumnGuide({

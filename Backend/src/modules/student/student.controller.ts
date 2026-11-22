@@ -16,7 +16,9 @@ import {
   cancelGroupRequestService,
   getMyProjectService,
   getStudentDashboardService,
+  selectionWindowService,
 } from "./student.service";
+import { tr } from "../../core/i18n";
 
 // ─── BROWSE TOPICS ─────────────────────────────────────────────
 export const browseTopicsController = async (
@@ -28,7 +30,7 @@ export const browseTopicsController = async (
   if (!parsed.success) {
     return next(
       new BadRequestException(
-        "Validation error",
+        tr("request.validation"),
         ErrorCodeEnum.VALIDATION_ERROR,
       ),
     );
@@ -67,7 +69,7 @@ export const lookupStudentController = async (
   if (!parsed.success) {
     return next(
       new BadRequestException(
-        "Validation error",
+        tr("request.validation"),
         ErrorCodeEnum.VALIDATION_ERROR,
       ),
     );
@@ -93,7 +95,7 @@ export const createGroupRequestController = async (
   if (!parsed.success) {
     return next(
       new BadRequestException(
-        "Validation error",
+        tr("request.validation"),
         ErrorCodeEnum.VALIDATION_ERROR,
       ),
     );
@@ -163,6 +165,15 @@ export const getStudentDashboardController = async (
   try {
     const dashboard = await getStudentDashboardService(req.user!.userId);
     return res.status(HTTPSTATUS.OK).json(dashboard);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── THE DEADLINE TO CHOOSE ────────────────────────────────────
+export const selectionWindowController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    return res.status(HTTPSTATUS.OK).json(await selectionWindowService(req.user!.userId));
   } catch (error) {
     next(error);
   }

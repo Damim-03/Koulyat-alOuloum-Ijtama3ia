@@ -1,10 +1,13 @@
 import { prisma } from "../../core/prisma/client";
+import { topicExtrasSelect } from "../../core/topic/topic-extras";
 import { HttpException, NotFoundException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { HTTPSTATUS } from "../../core/config/http/http.config";
 import { Roles } from "../../core/enums/role.enum";
 import { ListPublicTopicsDTO } from "./public.validation";
 import { Prisma } from "../../generated/prisma";
+import { tr } from "../../core/i18n";
+import { REQUEST_CAP_REACHED, UNDER_REQUEST_CAP } from "../../core/topic/topic-status";
 
 /** من يقرأ: الموضوع المحجوز يُغلق على الطلبة وحدهم، إلّا فريقه. */
 export interface PublicViewer {
@@ -63,26 +66,31 @@ const publicProfessorSelect = {
 // ═══════════════════════════════════════════════════════════════
 //
 // Only topics the admin has PUBLISHED are ever exposed publicly:
-//   open  → "available" (published, open for requests)
+//   open  → "available" while it takes requests: fewer pending than its cap
+//           (teams ask at the same time; the administration picks one)
 //   full  → "reserved"  (shown, but locked — a group already formed)
+//   open with its pending requests at the cap → "reserved" too, until the
+//           administration decides
 // pending / approved (accepted but not yet published) / rejected / archived
 // are NEVER returned. "approved" is the initial-acceptance stage and stays
 // hidden until the admin publishes it (approved → open).
 
 const VISIBLE_STATUSES = ["open", "full"] as const;
 
-/** الطلب الحيّ هو ما يحجز الموضوع فعلياً — pending أو accepted. */
+/** الطلب الحيّ — pending أو accepted. */
 const LIVE_REQUEST = { status: { in: ["pending", "accepted"] } as never };
 
-/** منشور، ولا مجموعة، ولا طلب حيّ ⇒ يقبل طلباً الآن. */
+/** منشور، ولا مجموعة ولا فريق مقبول، وطلباته المعلّقة دون سقفه ⇒ يقبل طلباً الآن. */
 const PUBLIC_AVAILABLE: Prisma.GraduationTopicWhereInput = {
   status: "open",
   projectGroup: null,
-  groupRequests: { none: LIVE_REQUEST },
+  groupRequests: { none: { status: "accepted" } },
+  ...UNDER_REQUEST_CAP,
 };
 
 /**
- * ظاهر للعموم لكنه مأخوذ: تشكّلت له مجموعة، أو يحجزه طلب حيّ.
+ * ظاهر للعموم لكنه لا يقبل طلباً: تشكّلت له مجموعة، أو قُبل عليه فريق، أو
+ * اكتملت طلباته المعلّقة عند سقفه — وذاك حتى تبتّ الإدارة.
  *
  * كان تبويب «محجوز» يطلب `status = full` **و** «لا طلب حيّ» معاً، وهما لا
  * يجتمعان: كل موضوع اكتمل بطلب يحمل طلباً مقبولاً، فكان التبويب يُخفيه
@@ -92,8 +100,40 @@ const PUBLIC_RESERVED: Prisma.GraduationTopicWhereInput = {
   status: { in: [...VISIBLE_STATUSES] as never },
   OR: [
     { projectGroup: { isNot: null } },
-    { groupRequests: { some: LIVE_REQUEST } },
+    { groupRequests: { some: { status: "accepted" } } },
+    REQUEST_CAP_REACHED,
   ],
+};
+
+/**
+ * ما يقوله الموضوع لهذا القارئ.
+ *
+ * `taken`: لا يقبل طلباً — مجموعة، أو فريق مقبول، أو سقفٌ مكتمل.
+ * `mine`: لفريق القارئ عليه طلبٌ حيّ أو مجموعة — فيُفتح له، ولا يُعرض عليه
+ * التقدّم ثانيةً (طلبُه قائم). و`myRequestPending` يفرّق بين «طلبكم بين
+ * المتقدّمين ينتظر القرار» و«الموضوع لفريقكم».
+ */
+const readerView = (t: {
+  status: string;
+  maxRequests: number | null;
+  pendingRequestCount: number;
+  group: boolean;
+  accepted: boolean;
+  mineTaken: boolean;
+  minePending: boolean;
+}) => {
+  const capFull = t.maxRequests !== null && t.pendingRequestCount >= t.maxRequests;
+  const taken = t.group || t.accepted || capFull;
+  const mine = t.mineTaken || t.minePending;
+  return {
+    isAvailable: t.status === "open" && !taken && !mine,
+    // للقارئ نفسه، طلبُ فريقه يحجز الموضوع له.
+    isReserved: taken || mine,
+    isMine: mine,
+    myRequestPending: t.minePending && !t.mineTaken,
+    // عدّادُ السقف للعرض: «طلبان من ٣».
+    requests: { pending: t.pendingRequestCount, max: t.maxRequests },
+  };
 };
 
 const VISIBLE: Prisma.GraduationTopicWhereInput = {
@@ -172,14 +212,18 @@ export const listPublicTopicsService = async (
         specialization: { select: { id: true, name: true, level: true } },
         academicYear: { select: { id: true, title: true } },
         professor: { select: publicProfessorSelect },
+        // The short description and the type, for the card (core/topic/topic-extras).
+        summary: true,
+        type: topicExtrasSelect.type,
+        maxRequests: true,
+        pendingRequestCount: true,
         // الإشغال يُقرأ من صفوفه لا من `status`. المعرّفات لا تُعاد إلى
         // العميل — تُستهلك أدناه ثم تُسقَط من الحمولة العامّة. ومعها عضويّةُ
-        // القارئ وحده: هل الفريق الحاجز فريقُه؟
+        // القارئ وحده: هل لفريقه طلبٌ حيّ عليه؟
         projectGroup: { select: { id: true, members: mineOnly(me) } },
         groupRequests: {
           where: LIVE_REQUEST,
-          select: { id: true, members: mineOnly(me) },
-          take: 1,
+          select: { status: true, members: mineOnly(me) },
         },
       },
       orderBy: ORDER[q.sort],
@@ -192,14 +236,19 @@ export const listPublicTopicsService = async (
   ]);
 
   // زرّ «تقدَّم» يعتمد على الإشغال الحقيقي، لا على الحالة وحدها.
-  const items = rows.map(({ projectGroup, groupRequests, ...t }) => ({
+  const items = rows.map(({ projectGroup, groupRequests, maxRequests, pendingRequestCount, ...t }) => ({
     ...t,
-    isAvailable:
-      t.status === "open" && !projectGroup && groupRequests.length === 0,
-    isReserved: !!projectGroup || groupRequests.length > 0,
-    // `isMine`: الموضوع محجوزٌ لفريق القارئ — فيفتحه، ويُغلق على غيره.
-    isMine:
-      !!projectGroup?.members.length || !!groupRequests[0]?.members.length,
+    ...readerView({
+      status: t.status,
+      maxRequests,
+      pendingRequestCount,
+      group: !!projectGroup,
+      accepted: groupRequests.some((r) => r.status === "accepted"),
+      mineTaken:
+        !!projectGroup?.members.length ||
+        groupRequests.some((r) => r.status === "accepted" && r.members.length > 0),
+      minePending: groupRequests.some((r) => r.status === "pending" && r.members.length > 0),
+    }),
   }));
 
   const total =
@@ -300,6 +349,23 @@ export const getPublicTopicFiltersService = async (userId: string) => {
 // حفظه. والأستاذ والمسؤول يقرآنه كما هو: لا طلبَ لهما عليه.
 export const getPublicTopicService = async (id: string, viewer: PublicViewer) => {
   const me = await studentIdOf(viewer);
+
+  // والطالبُ الذي له مذكرة لا يفتح إلّا موضوعها: طالبٌ واحد لمذكرةٍ واحدة، فلا
+  // طلبَ له على غيره — وتفاصيلُ غيره تُغلق عليه كما يُغلق المحجوز، والقائمة
+  // تقفل بطاقاتها (الواجهة)؛ وهنا لمن جاء بالرابط المباشر.
+  if (me) {
+    const placed = await prisma.projectMember.findFirst({
+      where: { studentId: me },
+      select: { group: { select: { topicId: true, topic: { select: { title: true } } } } },
+    });
+    if (placed && placed.group.topicId !== id)
+      throw new HttpException(
+        tr("public.topicPlaced", { title: placed.group.topic.title }),
+        HTTPSTATUS.FORBIDDEN,
+        ErrorCodeEnum.TOPIC_PLACED,
+      );
+  }
+
   const topic = await prisma.graduationTopic.findFirst({
     where: { id, status: { in: [...VISIBLE_STATUSES] as never } },
     // The lists hide a reserved topic; a saved or shared link still reaches
@@ -316,44 +382,54 @@ export const getPublicTopicService = async (id: string, viewer: PublicViewer) =>
       // references: true,  // ← فعّله بعد إضافة عمود references + migration
       createdAt: true,
       publishedAt: true,
+      maxRequests: true,
+      pendingRequestCount: true,
       specialization: { select: { id: true, name: true, level: true } },
       academicYear: { select: { id: true, title: true } },
       professor: { select: publicProfessorSelect },
+      // The co-supervisor, the short description and the type (core/topic/topic-extras).
+      ...topicExtrasSelect,
     },
   });
   if (!topic)
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
   // المُسنَد إدارياً يصل `full` بلا طلب، فالمجموعة وحدها تكفي لاعتباره محجوزاً.
-  const [liveRequest, group] = await Promise.all([
-    prisma.groupRequest.findFirst({
+  const [liveRequests, group] = await Promise.all([
+    prisma.groupRequest.findMany({
       where: { topicId: id, ...LIVE_REQUEST },
-      select: { id: true, members: mineOnly(me) },
+      select: { status: true, members: mineOnly(me) },
     }),
     prisma.projectGroup.findUnique({
       where: { topicId: id },
       select: { id: true, members: mineOnly(me) },
     }),
   ]);
-  const reserved = !!liveRequest || !!group;
-  const isMine = !!liveRequest?.members.length || !!group?.members.length;
+  const { maxRequests, pendingRequestCount, ...rest } = topic;
+  const view = readerView({
+    status: topic.status,
+    maxRequests,
+    pendingRequestCount,
+    group: !!group,
+    accepted: liveRequests.some((r) => r.status === "accepted"),
+    mineTaken:
+      !!group?.members.length ||
+      liveRequests.some((r) => r.status === "accepted" && r.members.length > 0),
+    minePending: liveRequests.some((r) => r.status === "pending" && r.members.length > 0),
+  });
 
-  if (reserved && viewer.role === Roles.STUDENT && !isMine)
+  // مأخوذٌ لغير فريق القارئ: لا تُعرض تفاصيله على طالبٍ لا طلب له عليه.
+  if (view.isReserved && !view.isMine && viewer.role === Roles.STUDENT)
     throw new HttpException(
-      "هذا الموضوع محجوز لفريقٍ آخر، فلا تُعرض تفاصيله.",
+      tr("public.topicReserved"),
       HTTPSTATUS.FORBIDDEN,
       ErrorCodeEnum.TOPIC_RESERVED,
     );
 
-  return {
-    ...topic,
-    isAvailable: topic.status === "open" && !reserved,
-    isReserved: reserved,
-    isMine,
-  };
+  return { ...rest, ...view };
 };
 
 // Specializations list for the filter dropdown (public, minimal fields).

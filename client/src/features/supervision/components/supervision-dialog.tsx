@@ -1,12 +1,7 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   Award,
@@ -14,6 +9,7 @@ import {
   BookText,
   CalendarDays,
   FileCheck2,
+  FilePen,
   GraduationCap,
   Loader2,
   Lock,
@@ -25,15 +21,14 @@ import {
 
 import {
   useIssueSupervisionDocument,
+  usePrintSupervisionDocument,
   useSupervisionPreview,
 } from "../hooks/supervision-hook";
 import type { SupervisionDocument } from "../api/supervision.api";
 import { SupervisionSheet } from "./supervision-sheet";
+import { SheetPreviewFrame } from "./sheet-preview-frame";
 import { LoadingArea } from "../../../components/ui/loading-area";
-
-/** مقاسُ الورقة بالبكسل عند ٩٦ نقطة/بوصة — عليه يُحسب تصغير المعاينة. */
-const SHEET_W = 794;
-const SHEET_H = 1123;
+import { serverMessage as messageOf } from "../../../lib/api/error";
 
 /**
  * نافذةُ «طلب الموافقة على الإشراف».
@@ -60,8 +55,12 @@ export function SupervisionDialog({
   const { t } = useTranslation();
   const preview = useSupervisionPreview(topicId);
   const issue = useIssueSupervisionDocument();
+  const print = usePrintSupervisionDocument();
 
+  // The document as the last answer gave it: issued here, or printed here.
   const [issued, setIssued] = useState<SupervisionDocument | null>(null);
+  // Set while the button's own print runs: its `beforeprint` is not a second print.
+  const printing = useRef(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -83,6 +82,49 @@ export function SupervisionDialog({
     });
   }
 
+  /**
+   * A print refused. 409: the sheet changed since it was shown (the topic, or
+   * the sheet's text) — the new one is fetched and shown, to be printed then.
+   */
+  async function onPrintRefused(e: unknown) {
+    if ((e as { response?: { status?: number } }).response?.status === 409) {
+      setIssued(null);
+      await preview.refetch();
+      toast.warning(messageOf(e, t("supervision.changedBeforePrint")));
+    } else {
+      toast.error(messageOf(e, t("supervision.printFailed")));
+    }
+  }
+
+  /**
+   * The print is recorded first, then the print window opens: the first one
+   * fixes the sheet as it is shown here. Not recorded — nothing printed, for
+   * a sheet that might be on paper must be one that no longer changes.
+   */
+  async function onPrint() {
+    if (!active) return;
+    printing.current = true;
+    try {
+      setIssued(await print.mutateAsync({ id: active.id, version: active.version }));
+      window.print();
+    } catch (e) {
+      await onPrintRefused(e);
+    } finally {
+      printing.current = false;
+    }
+  }
+
+  // Ctrl+P while the sheet is shown prints it too: recorded as it opens.
+  useEffect(() => {
+    if (!printable || !active) return;
+    const onBeforePrint = () => {
+      if (printing.current) return;
+      print.mutate({ id: active.id, version: active.version }, { onSuccess: setIssued, onError: onPrintRefused });
+    };
+    window.addEventListener("beforeprint", onBeforePrint);
+    return () => window.removeEventListener("beforeprint", onBeforePrint);
+  });
+
   const body = (
     <div
       className="sup-print-root fixed inset-0 z-100 grid place-items-center p-3 sm:p-5"
@@ -97,7 +139,7 @@ export function SupervisionDialog({
         className="sup-print-hide absolute inset-0 bg-forest-deep/55 backdrop-blur-sm"
       />
 
-      <div className="sup-print-pass relative z-10 flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-cream-card ring-1 ring-forest/10 shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
+      <div className="sup-print-pass relative z-10 flex max-h-[94dvh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-cream-card ring-1 ring-forest/10 shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
         {/* ── الرأس ── */}
         <div className="sup-print-hide flex shrink-0 items-center gap-3.5 bg-linear-to-l from-forest to-forest-deep px-5 py-4 text-cream sm:px-6">
           <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-cream/10 ring-1 ring-cream/15">
@@ -129,6 +171,9 @@ export function SupervisionDialog({
               <span dir="ltr" className="font-mono">
                 {active.documentNumber}
               </span>
+              {active.printedAt && (
+                <Printer size={14} aria-label={t("supervision.printed")} data-testid="printed-badge" />
+              )}
             </span>
           )}
 
@@ -166,6 +211,8 @@ export function SupervisionDialog({
                     {t("supervision.revokedNotice")}
                   </p>
                 )}
+
+                {active?.status === "active" && <PrintStatus doc={active} />}
 
                 {/* ── ما ستحمله الورقة، للقراءة لا للتعديل ── */}
                 <dl className="divide-y divide-forest/8 overflow-hidden rounded-2xl bg-cream-2 ring-1 ring-forest/10">
@@ -234,7 +281,7 @@ export function SupervisionDialog({
           {/* ═══ الورقة ═══ */}
           <section className="sup-print-pass bg-clay/12 p-4 sm:p-6 lg:min-h-0 lg:overflow-y-auto">
             {snapshot ? (
-              <PreviewFrame>
+              <SheetPreviewFrame>
                 <SupervisionSheet
                   snapshot={snapshot}
                   documentNumber={
@@ -243,7 +290,7 @@ export function SupervisionDialog({
                   barcode={active?.barcode ?? null}
                   revoked={active?.status === "revoked"}
                 />
-              </PreviewFrame>
+              </SheetPreviewFrame>
             ) : (
               <div className="sup-print-hide grid h-full min-h-60 place-items-center text-sm text-clay">
                 {preview.isLoading ? (
@@ -269,10 +316,11 @@ export function SupervisionDialog({
           {printable ? (
             <button
               type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-bold text-forest-deep shadow-sm transition hover:bg-gold-soft active:scale-95"
+              onClick={onPrint}
+              disabled={print.isPending}
+              className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-bold text-forest-deep shadow-sm transition hover:bg-gold-soft active:scale-95 disabled:cursor-wait disabled:opacity-60"
             >
-              <Printer size={16} />
+              {print.isPending ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
               {t("supervision.print")}
             </button>
           ) : (
@@ -298,56 +346,6 @@ export function SupervisionDialog({
   );
 
   return createPortal(body, document.body);
-}
-
-/**
- * إطارُ المعاينة: يقيس عرضه ويُصغّر الورقة لتملأه، بلا مقياسٍ مكتوبٍ سلفاً.
- *
- * كان المقياس ثابتاً (٠٫٥٢ ثمّ ٠٫٧) فيخرج خطُّ الورقة صغيراً على الشاشات
- * الواسعة وتفيض على الضيّقة. وصار يتبع عرض العمود: على شاشةٍ كبيرة تُعرض
- * الورقة بحجمها الطبيعيّ — ولا يُكبَّر فوقه، لأنّ تكبير المعاينة لا يزيد
- * المطبوع وضوحاً، إنّما يُشوّشها.
- *
- * والارتفاعُ يُحجز مُصغَّراً (`SHEET_H * scale`) لأنّ `transform` لا يُنقص
- * المساحة التي يشغلها العنصر؛ ولولا ذلك لبقي تحت الورقة فراغٌ بطول الفرق.
- */
-function PreviewFrame({ children }: { children: ReactNode }) {
-  const holder = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(0.7);
-
-  useLayoutEffect(() => {
-    const el = holder.current;
-    if (!el) return;
-
-    function measure() {
-      const width = el?.clientWidth ?? 0;
-      if (width) setScale(Math.min(1, width / SHEET_W));
-    }
-
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={holder}
-      className="sup-print-pass relative mx-auto w-full"
-      style={{ height: Math.round(SHEET_H * scale) }}
-    >
-      <div
-        className="sup-print-pass absolute top-0 left-1/2 origin-top shadow-[0_8px_30px_rgba(0,0,0,0.28)]"
-        style={{
-          width: SHEET_W,
-          marginLeft: -SHEET_W / 2,
-          transform: `scale(${scale})`,
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -395,6 +393,55 @@ const PRINT_SHELL_CSS = `
   }
 }
 `;
+
+/**
+ * Printed or not, and by whom.
+ *
+ * Not yet: the sheet follows its topic and the sheet's text, under the same
+ * number and barcode. Printed: who printed it first and when, how many times
+ * since — and that nothing in it changes any more. An employee of the
+ * administration is named to the administration alone (the server leaves
+ * the name out for the others).
+ */
+function PrintStatus({ doc }: { doc: SupervisionDocument }) {
+  const { t, i18n } = useTranslation();
+  const lang = i18n?.language ?? "ar";
+  const when = (iso: string) =>
+    new Intl.DateTimeFormat(lang === "ar" ? "ar-DZ" : lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
+
+  if (!doc.printedAt)
+    return (
+      <div data-testid="print-status" data-printed="false" className="rounded-2xl border border-sage/35 bg-sage/8 p-3.5 text-[12.5px]">
+        <p className="flex items-center gap-2 font-bold text-forest">
+          <FilePen size={15} className="text-sage" />
+          {t("supervision.notPrinted")}
+        </p>
+        <p className="mt-1 leading-relaxed text-clay">{t("supervision.notPrintedHint")}</p>
+      </div>
+    );
+
+  const who = doc.printedByRole
+    ? [t(`supervision.printedByRole.${doc.printedByRole}`), doc.printedByName].filter(Boolean).join(" — ")
+    : null;
+  return (
+    <div data-testid="print-status" data-printed="true" className="rounded-2xl border border-gold/35 bg-gold/8 p-3.5 text-[12.5px]">
+      <p className="flex items-center gap-2 font-bold text-forest">
+        <Printer size={15} className="text-gold" />
+        {t("supervision.printed")}
+      </p>
+      <p className="mt-1 text-forest/85">
+        {who ? t("supervision.printedFirst", { who, when: when(doc.printedAt) }) : t("supervision.printedBefore")}
+      </p>
+      {doc.printCount > 1 && doc.lastPrintedAt && (
+        <p className="mt-0.5 text-clay">{t("supervision.printedTimes", { n: doc.printCount, when: when(doc.lastPrintedAt) })}</p>
+      )}
+      <p className="mt-1.5 flex items-start gap-1.5 leading-relaxed text-clay">
+        <Lock size={12} className="mt-0.5 shrink-0" />
+        {t("supervision.printedLocked")}
+      </p>
+    </div>
+  );
+}
 
 function Row({
   icon,

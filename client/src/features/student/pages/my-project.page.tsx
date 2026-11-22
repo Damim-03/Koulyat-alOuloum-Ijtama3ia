@@ -17,7 +17,7 @@ import {
   GraduationCap,
   IdCard,
   Lock,
-  Mail,
+  MessageCircle,
   MapPin,
   Paperclip,
   Search,
@@ -813,8 +813,8 @@ function DefenseCard({ defense }: { defense: DefenseRef | null }) {
  */
 function SupervisorCard({ project }: { project: MyProject }) {
   const { t } = useTranslation();
+  const { localePath } = useLanguage();
   const prof = project.topic?.professor?.user;
-  const email = prof?.email ?? null;
 
   return (
     <section className="relative overflow-hidden rounded-3xl bg-linear-to-br from-forest to-forest-deep p-6 text-cream">
@@ -843,14 +843,19 @@ function SupervisorCard({ project }: { project: MyProject }) {
         <p className="mb-4 text-xs leading-relaxed text-soft-sage">
           {t("stu.proj.supervisorBody")}
         </p>
-        {email && (
-          <a
-            href={`mailto:${email}`}
+        {/* Straight into the conversation with the supervisor, inside the
+            platform — it used to be a mailto: link, which opened the mail
+            app (when there was one) and left the exchange outside the
+            platform where neither side would see it again. */}
+        {prof?.id && (
+          <Link
+            to={`${localePath(`${PATHS.student.root}/messages`)}?c=${encodeURIComponent(prof.id)}`}
+            data-testid="message-supervisor"
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-gold py-2.5 text-sm font-bold text-[var(--t-brand-deep)] transition hover:bg-gold-soft active:scale-95"
           >
-            <Mail size={16} />
+            <MessageCircle size={16} />
             {t("stu.proj.emailSupervisor")}
-          </a>
+          </Link>
         )}
       </div>
     </section>
