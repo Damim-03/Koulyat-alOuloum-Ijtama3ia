@@ -110,6 +110,30 @@ services:
     command: ["tunnel", "--no-autoupdate", "--protocol", "http2", "--url", "http://app:3000"]
     networks: [edge]
 
+  # Optional: a permanent Cloudflare Tunnel for your own domain — a fixed
+  # address (https://memoires.your-domain.com) with a real certificate, no
+  # port open to the internet, and it works behind CGNAT. The tunnel and its
+  # route (Published application → http://app:3000) are made in the
+  # Cloudflare dashboard, which gives the token.
+  #   .env              COMPOSE_PROFILES=cloudflare (so `up -d` starts it),
+  #                     PUBLIC_ORIGIN=https://memoires.your-domain.com
+  #   .env.cloudflared  TUNNEL_TOKEN=<the token>   (chmod 600)
+  # The token has its own file so it reaches this container only: whoever
+  # holds it can run a connector for the tunnel and receive its traffic, and
+  # everything in .env is handed to the app as well.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: [cloudflare]
+    restart: unless-stopped
+    depends_on: [app]
+    # Same reasons as the quick tunnel above: straight to the platform, over
+    # HTTP/2 (TCP) rather than QUIC.
+    command: ["tunnel", "--no-autoupdate", "--protocol", "http2", "run"]
+    env_file:
+      - path: .env.cloudflared
+        required: false
+    networks: [edge]
+
 networks:
   internal:
     internal: true
