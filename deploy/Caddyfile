@@ -7,9 +7,15 @@
 # the whole thing on the machine itself before the domain is ready.
 {
 	email {$ACME_EMAIL}
+	# A client that names no site (no SNI) gets DOMAIN's certificate. Browsers
+	# never send SNI to an IP address, so with DOMAIN=192.168.x.x (a trial on
+	# the local network) every handshake failed without this line.
+	default_sni {$DOMAIN}
 }
 
-{$DOMAIN} {
+# "https://" is needed, not only clearer: without it Caddy 2.10 leaves the TLS
+# policy to auto-HTTPS, which drops default_sni above.
+https://{$DOMAIN} {
 	# Message attachments go up to 25MB each; a little room for the rest of
 	# the request. The platform checks each file's own size limit itself.
 	request_body {
