@@ -11,6 +11,8 @@ import { useLanguage } from "../../../../hooks/use-language";
 import { LocaleLink } from "../../../../i18n/locales/components/locale-link";
 import { LanguageSwitcher } from "../../../../i18n/locales/components/language-switcher";
 import { PATHS } from "../../../../routes/paths";
+import { looksLikeEmail, safeHttpUrl } from "../../../../i18n/site-texts";
+import { useShown } from "../../../../i18n/site-visibility";
 
 const NOISE =
   "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E\")";
@@ -26,22 +28,45 @@ interface OfficialLink {
   url: string;
 }
 
+/** Columns the admin kept spread across the row, however many remain. */
+const COLS: Record<number, string> = {
+  1: "lg:grid-cols-1",
+  2: "lg:grid-cols-2",
+  3: "lg:grid-cols-3",
+  4: "lg:grid-cols-4",
+};
+
 export function Footer() {
   const { t } = useTranslation();
   const { dir } = useLanguage();
-  const official = t("officialLinks", {
-    returnObjects: true,
-  }) as OfficialLink[];
+  // What the admin hid (واجهة الموقع ← النصوص).
+  const shown = useShown();
+  const official = (t("officialLinks", { returnObjects: true }) as OfficialLink[]).filter((_, i) =>
+    shown(`footer.link.${i + 1}`),
+  );
+  // The admin may change these (واجهة الموقع ← النصوص): a link that is not
+  // http(s) is shown as plain text, never as an href.
+  const phone = t("footer.phoneNumber");
+  const email = t("footer.email");
+  const mailHref = looksLikeEmail(email) ? `mailto:${email}` : undefined;
 
+  // A page hidden from the menu is hidden here too.
   const QUICK = [
-    { to: PATHS.home, label: t("common.home") },
-    { to: PATHS.topics, label: t("common.topics") },
-    { to: PATHS.about, label: t("common.about") },
-  ];
+    { to: PATHS.home, label: t("common.home"), id: "" },
+    { to: PATHS.topics, label: t("common.topics"), id: "nav.topics" },
+    { to: PATHS.about, label: t("common.about"), id: "nav.about" },
+  ].filter((l) => !l.id || shown(l.id));
 
-  const SOCIALS = [
-    { icon: Mail, href: "mailto:contact@univ-eloued.dz", label: "Email" },
-  ];
+  const columns = {
+    about: shown("footer.about"),
+    quick: shown("footer.quick"),
+    official: shown("footer.official"),
+    contact:
+      shown("footer.contact") && (shown("footer.address") || shown("footer.phone") || shown("footer.email")),
+  };
+  const columnCount = Object.values(columns).filter(Boolean).length;
+
+  const SOCIALS = mailHref ? [{ icon: Mail, href: mailHref, label: t("social.email") }] : [];
 
   const scrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -100,6 +125,7 @@ export function Footer() {
               </div>
             </div>
 
+            {shown("footer.backToTop") && (
             <button
               onClick={scrollTop}
               className="group flex shrink-0 items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-cream/60 transition hover:border-white/30 hover:bg-white/5 hover:text-cream"
@@ -113,18 +139,23 @@ export function Footer() {
                 className="transition-transform group-hover:-translate-y-0.5"
               />
             </button>
+            )}
           </div>
 
-          <div className="mb-14 grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          {columnCount > 0 && (
+          <div className={`mb-14 grid gap-10 sm:grid-cols-2 ${COLS[columnCount]}`}>
             {/* about + socials */}
+            {columns.about && (
             <div>
               <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-cream">
                 <span className="h-4 w-1 rounded-full bg-gold" />
                 {t("footer.about")}
               </h3>
-              <p className="mb-5 text-[13px] leading-relaxed text-cream/60">
-                {t("footer.aboutDesc")}
-              </p>
+              {shown("footer.aboutDesc") && (
+                <p className="mb-5 text-[13px] leading-relaxed text-cream/60">
+                  {t("footer.aboutDesc")}
+                </p>
+              )}
               <div className="flex items-center gap-2">
                 {SOCIALS.map(({ icon: Icon, href, label }) => (
                   <a
@@ -140,8 +171,10 @@ export function Footer() {
                 ))}
               </div>
             </div>
+            )}
 
             {/* quick links */}
+            {columns.quick && (
             <div>
               <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-cream">
                 <span className="h-4 w-1 rounded-full bg-gold" />
@@ -164,36 +197,48 @@ export function Footer() {
                 ))}
               </ul>
             </div>
+            )}
 
             {/* official platforms */}
+            {columns.official && (
             <div>
               <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-cream">
                 <span className="h-4 w-1 rounded-full bg-gold" />
                 {t("footer.official")}
               </h3>
               <div className="space-y-2">
-                {official.map((l) => (
-                  <a
-                    key={l.url}
-                    href={l.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-[12.5px] text-cream/55 transition hover:text-gold"
-                  >
-                    <ExternalLink size={11} className="shrink-0" />
-                    {l.label}
-                  </a>
-                ))}
+                {official.map((l, i) => {
+                  const href = safeHttpUrl(l.url);
+                  return href ? (
+                    <a
+                      key={i}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-[12.5px] text-cream/55 transition hover:text-gold"
+                    >
+                      <ExternalLink size={11} className="shrink-0" />
+                      {l.label}
+                    </a>
+                  ) : (
+                    <p key={i} className="text-[12.5px] text-cream/55">
+                      {l.label}
+                    </p>
+                  );
+                })}
               </div>
             </div>
+            )}
 
             {/* contact */}
+            {columns.contact && (
             <div>
               <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-cream">
                 <span className="h-4 w-1 rounded-full bg-gold" />
                 {t("footer.contact")}
               </h3>
               <div className="space-y-3">
+                {shown("footer.address") && (
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-white/8">
                     <MapPin size={14} className="text-gold/80" />
@@ -202,29 +247,36 @@ export function Footer() {
                     {t("footer.address")}
                   </p>
                 </div>
+                )}
+                {shown("footer.phone") && (
                 <div className="flex items-center gap-3">
                   <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/8">
                     <Phone size={14} className="text-gold/80" />
                   </div>
                   <p dir="ltr" className="text-[13px] text-cream/65">
-                    +213 32 12 34 56
+                    {phone}
                   </p>
                 </div>
+                )}
+                {shown("footer.email") && (
                 <div className="flex items-center gap-3">
                   <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/8">
                     <Mail size={14} className="text-gold/80" />
                   </div>
                   <a
-                    href="mailto:contact@univ-eloued.dz"
+                    href={mailHref}
                     dir="ltr"
                     className="text-[13px] text-cream/65 transition hover:text-gold"
                   >
-                    contact@univ-eloued.dz
+                    {email}
                   </a>
                 </div>
+                )}
               </div>
             </div>
+            )}
           </div>
+          )}
 
           {/* bottom bar: copyright (right) · credit (center) · language (left) */}
           <div className="border-t border-white/10 pt-6">
@@ -233,9 +285,11 @@ export function Footer() {
                 © {new Date().getFullYear()} {t("brand.name")} —{" "}
                 {t("footer.rights")}
               </p>
-              <p className="order-3 text-[11px] text-cream/35 sm:order-2">
-                {t("footer.madeWith")}
-              </p>
+              {shown("footer.madeWith") && (
+                <p className="order-3 text-[11px] text-cream/35 sm:order-2">
+                  {t("footer.madeWith")}
+                </p>
+              )}
               <div className="order-1 sm:order-3">
                 <LanguageSwitcher />
               </div>

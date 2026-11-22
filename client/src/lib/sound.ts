@@ -45,8 +45,8 @@ export const SOUNDS = {
   networkError: { src: "/sounds/error.mp3", volume: 0.55 },
   /** The connection came back. */
   networkRestored: { src: "/sounds/success.m4a", volume: 0.45 },
-  /** An incoming message or notification. */
-  messageArrived: { src: "/sounds/message-arrive.mp3", volume: 0.5 },
+  /** A new message: the bell in the dashboards' header rings with it (or the corner toast, outside them). */
+  messageArrived: { src: "/sounds/Voicy_Notification%20Of%20Playstation%205.mp3", volume: 0.6 },
   /** "لا" in a confirmation dialog. */
   dialogNo: { src: "/sounds/no-in-dialog.mp3", volume: 0.4 },
   /** "نعم" / "موافق" / "تم" in a confirmation dialog. */

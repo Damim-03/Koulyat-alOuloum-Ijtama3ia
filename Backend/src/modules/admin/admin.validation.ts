@@ -1,6 +1,11 @@
+import { teamSizeRuleSchema } from "../../core/academic/team-size";
 import { z } from "zod";
+import { TOPIC_EXPORT_COLUMNS } from "./topic-export.columns";
+import { topicExtrasShape } from "../../core/topic/topic-extras";
 import { entityId } from "../../core/validation/id";
 import { imageUrl } from "../../core/validation/image-url";
+import { tr } from "../../core/i18n";
+import { zmsg } from "../../core/i18n/zod";
 
 //
 // ─── SHARED ───────────────────────────────────────────────────
@@ -20,6 +25,9 @@ export const listQuerySchema = z.object({
   // Generic status filter used by lists that support it (group-requests,
   // topics). Lists that don't use it simply ignore the field.
   status: z.string().trim().optional(),
+  // One item to bring to the top of the first page — the topic a page was
+  // opened for ("decide on the request"). Lists that don't use it ignore it.
+  focus: entityId.optional(),
 });
 export type ListQueryDTO = z.infer<typeof listQuerySchema>;
 
@@ -27,6 +35,15 @@ const RoleEnum = z.enum(["admin", "professor", "student"]);
 const StatusEnum = z.enum(["active", "suspended"]);
 const GenderEnum = z.enum(["male", "female"]);
 const LevelEnum = z.enum(["licence", "master", "doctorate"]);
+
+/**
+ * An optional image of a structure entity (its cover, a faculty's icon).
+ * An empty string clears it; null is the same, so the client can send either.
+ */
+const clearableImage = z
+  .union([z.string().trim(), z.null()])
+  .optional()
+  .transform((v) => (v === "" ? null : v));
 
 //
 // ─── USERS ────────────────────────────────────────────────────
@@ -38,7 +55,7 @@ const LevelEnum = z.enum(["licence", "master", "doctorate"]);
  * - 72 is bcrypt's hard limit: bytes past it are silently ignored, so a
  *   longer value would look stronger than it is.
  */
-const passwordSchema = z
+export const passwordSchema = z
   .string()
   .min(8, "Password must be at least 8 characters")
   .max(72, "Password must be at most 72 characters");
@@ -61,7 +78,7 @@ const latinBase = z
       .string()
       .min(1)
       .max(60)
-      .regex(LATIN_NAME, "الاسم باللاتينية: حروفٌ لاتينية فقط"),
+      .regex(LATIN_NAME, zmsg("v.latinName")),
   );
 export const toLatinLast = (s: string) => s.toLocaleUpperCase("fr");
 export const toLatinFirst = (s: string) =>
@@ -259,9 +276,7 @@ export const adminUpdateMilestoneSchema = z
       .enum(["pending", "in_progress", "completed", "overdue"])
       .optional(),
   })
-  .refine((d) => Object.keys(d).length > 0, {
-    message: "لا يوجد ما يُحدَّث",
-  });
+  .refine((d) => Object.keys(d).length > 0, zmsg("request.nothingToUpdate"));
 export type AdminUpdateMilestoneDTO = z.infer<typeof adminUpdateMilestoneSchema>;
 
 /** Milestones of one group, optionally narrowed. */
@@ -327,7 +342,7 @@ export const createProfessorSchema = z.object({
   employeeNumber: z
     .string()
     .trim()
-    .regex(/^\d{13}$/, "الرقم الوظيفي يجب أن يتكوّن من 13 رقماً")
+    .regex(/^\d{13}$/, zmsg("v.employeeNumber13"))
     .optional(),
   // الصيغة فقط هنا؛ النطاق المسموح به يُفرض في الخدمة مقابل جدول
   // UniversityDomain حتى تستطيع الإدارة إضافة نطاقات دون تعديل الشيفرة.
@@ -370,12 +385,7 @@ export const createDomainSchema = z.object({
   name: z.string().trim().min(1),
   code: z.string().trim().min(1),
   departmentId: entityId,
-  // Optional cover image. An empty string clears it; null is the same,
-  // so the client can send either.
-  coverUrl: z
-    .union([z.string().trim(), z.null()])
-    .optional()
-    .transform((v) => (v === "" ? null : v)),
+  coverUrl: clearableImage,
 });
 export type CreateDomainDTO = z.infer<typeof createDomainSchema>;
 
@@ -383,12 +393,7 @@ export const updateDomainSchema = z.object({
   name: z.string().trim().min(1).optional(),
   code: z.string().trim().min(1).optional(),
   departmentId: entityId.optional(),
-  // Optional cover image. An empty string clears it; null is the same,
-  // so the client can send either.
-  coverUrl: z
-    .union([z.string().trim(), z.null()])
-    .optional()
-    .transform((v) => (v === "" ? null : v)),
+  coverUrl: clearableImage,
 });
 export type UpdateDomainDTO = z.infer<typeof updateDomainSchema>;
 
@@ -410,8 +415,8 @@ const structureRefSchema = z.object({
 });
 
 const nameCode = {
-  name: z.string().trim().min(1, "الاسم مطلوب"),
-  code: z.string().trim().min(1, "الرمز مطلوب"),
+  name: z.string().trim().min(1, zmsg("v.nameRequired")),
+  code: z.string().trim().min(1, zmsg("v.codeRequired")),
 };
 
 export const academicStructureSchema = z.object({
@@ -444,7 +449,7 @@ export const academicStructureSchema = z.object({
         specializations: z
           .array(
             z.object({
-              name: z.string().trim().min(1, "اسم التخصّص مطلوب"),
+              name: z.string().trim().min(1, zmsg("v.specNameRequired")),
               level: z.enum(["licence", "master", "doctorate"]),
             }),
           )
@@ -475,20 +480,22 @@ export type CreateUniversityDomainDTO = z.infer<
   typeof createUniversityDomainSchema
 >;
 
+/** The name in Latin letters, for the official topics list in English or French; empty clears it. */
+const nameLatin = z
+  .string()
+  .trim()
+  .max(191)
+  .transform((v) => v || null)
+  .nullable()
+  .optional();
+
 export const createFacultySchema = z.object({
   name: z.string().trim().min(1),
+  nameLatin,
   code: z.string().trim().min(1),
-  // Optional cover image. An empty string clears it; null is the same,
-  // so the client can send either.
-  coverUrl: z
-    .union([z.string().trim(), z.null()])
-    .optional()
-    .transform((v) => (v === "" ? null : v)),
+  coverUrl: clearableImage,
   // شعار الكلّية — علامةٌ مربّعة، غيرُ الغلاف العريض. وتُمسح بالقواعد نفسها.
-  iconUrl: z
-    .union([z.string().trim(), z.null()])
-    .optional()
-    .transform((v) => (v === "" ? null : v)),
+  iconUrl: clearableImage,
 });
 export type CreateFacultyDTO = z.infer<typeof createFacultySchema>;
 
@@ -501,27 +508,19 @@ export type UpdateFacultyDTO = z.infer<typeof updateFacultySchema>;
 
 export const createDepartmentSchema = z.object({
   name: z.string().trim().min(1),
+  nameLatin,
   code: z.string().trim().min(1),
   facultyId: entityId,
-  // Optional cover image. An empty string clears it; null is the same,
-  // so the client can send either.
-  coverUrl: z
-    .union([z.string().trim(), z.null()])
-    .optional()
-    .transform((v) => (v === "" ? null : v)),
+  coverUrl: clearableImage,
 });
 export type CreateDepartmentDTO = z.infer<typeof createDepartmentSchema>;
 
 export const updateDepartmentSchema = z.object({
   name: z.string().trim().min(1).optional(),
+  nameLatin,
   code: z.string().trim().min(1).optional(),
   facultyId: entityId.optional(),
-  // Optional cover image. An empty string clears it; null is the same,
-  // so the client can send either.
-  coverUrl: z
-    .union([z.string().trim(), z.null()])
-    .optional()
-    .transform((v) => (v === "" ? null : v)),
+  coverUrl: clearableImage,
 });
 export type UpdateDepartmentDTO = z.infer<typeof updateDepartmentSchema>;
 
@@ -535,16 +534,9 @@ export const createFiliereSchema = z
     code: z.string().trim().min(1),
     departmentId: entityId.optional(),
     domainId: entityId.optional(),
-    // Optional cover image. An empty string clears it; null is the same,
-    // so the client can send either.
-    coverUrl: z
-    .union([z.string().trim(), z.null()])
-    .optional()
-    .transform((v) => (v === "" ? null : v)),
+    coverUrl: clearableImage,
   })
-  .refine((d) => d.departmentId || d.domainId, {
-    message: "departmentId or domainId is required",
-  });
+  .refine((d) => d.departmentId || d.domainId, zmsg("structure.parentRequired"));
 export type CreateFiliereDTO = z.infer<typeof createFiliereSchema>;
 
 export const updateFiliereSchema = z.object({
@@ -552,12 +544,7 @@ export const updateFiliereSchema = z.object({
   code: z.string().trim().min(1).optional(),
   departmentId: entityId.optional(),
   domainId: entityId.optional(),
-  // Optional cover image. An empty string clears it; null is the same,
-  // so the client can send either.
-  coverUrl: z
-    .union([z.string().trim(), z.null()])
-    .optional()
-    .transform((v) => (v === "" ? null : v)),
+  coverUrl: clearableImage,
 });
 export type UpdateFiliereDTO = z.infer<typeof updateFiliereSchema>;
 
@@ -575,12 +562,7 @@ export const createSpecializationSchema = z.object({
   name: z.string().trim().min(1),
   level: LevelEnum,
   filiereId: entityId,
-  // Optional cover image. An empty string clears it; null is the same,
-  // so the client can send either.
-  coverUrl: z
-    .union([z.string().trim(), z.null()])
-    .optional()
-    .transform((v) => (v === "" ? null : v)),
+  coverUrl: clearableImage,
 });
 export type CreateSpecializationDTO = z.infer<
   typeof createSpecializationSchema
@@ -590,12 +572,7 @@ export const updateSpecializationSchema = z.object({
   name: z.string().trim().min(1).optional(),
   level: LevelEnum.optional(),
   filiereId: entityId.optional(),
-  // Optional cover image. An empty string clears it; null is the same,
-  // so the client can send either.
-  coverUrl: z
-    .union([z.string().trim(), z.null()])
-    .optional()
-    .transform((v) => (v === "" ? null : v)),
+  coverUrl: clearableImage,
 });
 export type UpdateSpecializationDTO = z.infer<
   typeof updateSpecializationSchema
@@ -629,11 +606,11 @@ export const closeAcademicYearSchema = z
     nextYearTitle: z
       .string()
       .trim()
-      .regex(/^\d{4}\/\d{4}$/, "الصيغة: 2026/2027")
+      .regex(/^\d{4}\/\d{4}$/, zmsg("v.yearFormat"))
       .optional(),
   })
   .refine((d) => !(d.nextYearId && d.nextYearTitle), {
-    message: "اختر سنةً موجودة أو اكتب عنوان سنةٍ جديدة — لا الاثنين",
+    ...zmsg("archive.pickOrType"),
     path: ["nextYearTitle"],
   });
 export type CloseAcademicYearDTO = z.infer<typeof closeAcademicYearSchema>;
@@ -643,6 +620,66 @@ export const reopenAcademicYearSchema = z.object({
   activate: z.boolean().optional().default(false),
 });
 export type ReopenAcademicYearDTO = z.infer<typeof reopenAcademicYearSchema>;
+
+/**
+ * يومٌ كما يكتبه حقل التاريخ: «2026-11-11» — وموجودٌ في التقويم (لا 30 فبراير).
+ * والتحقّق الثاني يجري ولو سقط الأوّل (zod يُكمل الفحوص)، فلا يفترض الصيغة:
+ * «11/10/2026» تاريخٌ غير صالح يُرفض بـ٤٠٠، لا رميةٌ تصير ٥٠٠.
+ */
+const calendarDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, zmsg("year.proposalWindow.date"))
+  .refine((v) => {
+    const d = new Date(`${v}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(v);
+  }, zmsg("year.proposalWindow.date"));
+
+/** ساعةٌ من اليوم كما يكتبها حقل الوقت: «08:00» أو «08:00:30». */
+const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, zmsg("year.proposalWindow.date"));
+
+/**
+ * فترةٌ من فترتي السنة — اقتراح المواضيع، أو اختيارها (core/academic/
+ * proposal-window): من يومٍ إلى يوم يشملهما، وبالثانية إن ذُكرت الساعتان.
+ * والنهاية بعد البداية لحظةً لا يوماً: «من 08:00 إلى 07:00 من اليوم نفسه» مقلوبة.
+ */
+export const proposalWindowSchema = z
+  .object({ opensOn: calendarDay, closesOn: calendarDay, opensTime: clock.optional(), closesTime: clock.optional() })
+  .refine(
+    (d) => {
+      const at = (day: string, time: string) => `${day}T${time.length === 5 ? `${time}:00` : time}`;
+      return at(d.closesOn, d.closesTime ?? "23:59:59") > at(d.opensOn, d.opensTime ?? "00:00:00");
+    },
+    { ...zmsg("year.proposalWindow.order"), path: ["closesOn"] },
+  );
+export type ProposalWindowDTO = z.infer<typeof proposalWindowSchema>;
+
+/**
+ * The number of students per topic of a year, by level (core/academic/team-size):
+ * each level a rule or `null` (free); the year's topics follow them unless told not to.
+ */
+const levelRule = teamSizeRuleSchema.nullable();
+export const teamSizeSchema = z.object({
+  rules: z.object({ licence: levelRule, master: levelRule, doctorate: levelRule }),
+  applyToExisting: z.boolean().optional(),
+});
+/** The most topics a professor sends for the year (core/academic/topic-quota). */
+export const topicQuotaSchema = z.object({
+  max: z.number().int().min(1).max(50),
+});
+
+/** The rules to preview, in the query: `licence=max-3&master=exact-2` — a level left out is free. */
+const ruleParam = z
+  .string()
+  .regex(/^(exact|max)-(10|[1-9])$/)
+  .transform((v) => {
+    const [mode, n] = v.split("-");
+    return { mode: mode as "exact" | "max", n: Number(n) };
+  });
+export const teamSizePreviewSchema = z.object({
+  licence: ruleParam.optional(),
+  master: ruleParam.optional(),
+  doctorate: ruleParam.optional(),
+});
 
 //
 // ─── TOPICS ───────────────────────────────────────────────────
@@ -658,8 +695,35 @@ export const listTopicsSchema = listQuerySchema.extend({
   facultyId: entityId.optional(),
   departmentId: entityId.optional(),
   filiereId: entityId.optional(),
+  // المستوى صفةٌ للتخصص، يجتمع مع الهرم أعلاه — كصفحة الطلبة.
+  level: LevelEnum.optional(),
 });
 export type ListTopicsDTO = z.infer<typeof listTopicsSchema>;
+
+/**
+ * تصدير المواضيع: فلاتر صفحة المواضيع نفسها — البحث والحالة والأستاذ والسنة
+ * والهرم — ومعها طلبة كلّ موضوع أو بدونهم.
+ */
+export const exportTopicsSchema = z.object({
+  search: z.string().trim().optional(),
+  status: listTopicsSchema.shape.status,
+  professorId: entityId.optional(),
+  academicYearId: entityId.optional(),
+  facultyId: entityId.optional(),
+  departmentId: entityId.optional(),
+  filiereId: entityId.optional(),
+  specializationId: entityId.optional(),
+  level: LevelEnum.optional(),
+  students: z.enum(["with", "without"]).default("without"),
+  // The file's language, and the columns it carries («#» and the title always).
+  lang: z.enum(["ar", "en", "fr"]).default("ar"),
+  columns: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v.split(",").map((c) => c.trim()).filter(Boolean)))
+    .pipe(z.array(z.enum(TOPIC_EXPORT_COLUMNS)).optional()),
+});
+export type ExportTopicsDTO = z.infer<typeof exportTopicsSchema>;
 
 /**
  * The list of memoir titles, as the department prints it: before assignment
@@ -674,13 +738,26 @@ export const topicTitlesListSchema = z.object({
   filiereId: entityId.optional(),
   departmentId: entityId.optional(),
   facultyId: entityId.optional(),
+  level: LevelEnum.optional(),
 });
 export type TopicTitlesListDTO = z.infer<typeof topicTitlesListSchema>;
 
+/**
+ * A rejection reason as the administration writes it — read by the professor
+ * or the team it reaches. Its columns are TEXT; the ceiling keeps a pasted
+ * page out of a notification.
+ */
+export const REASON_MAX = 1000;
+
 export const rejectTopicSchema = z.object({
-  reason: z.string().trim().optional(),
+  reason: z.string().trim().max(REASON_MAX).optional(),
 });
 export type RejectTopicDTO = z.infer<typeof rejectTopicSchema>;
+
+/** The body was read unchecked: a number or an object reached the database. */
+export const rejectGroupRequestSchema = z.object({
+  reason: z.string().trim().max(REASON_MAX).optional(),
+});
 
 // Same topic fields as the assigned variant, minus the group. `publish`
 // decides which of the two admin-reachable statuses the topic starts in.
@@ -691,13 +768,15 @@ export const createTopicSchema = z.object({
   objectives: z.array(z.string().trim().min(1)).max(50).optional(),
   maxStudents: z.number().int().min(1).max(10),
   /**
-   * سقفُ المحاولات على الموضوع — بما فيها المرفوضة. و`null` بلا سقف.
+   * كم فريقاً يتقدّم إلى الموضوع معاً قبل أن يُغلق. و`null` بلا سقف.
    */
   maxRequests: z.number().int().min(1).max(50).nullable().optional(),
   professorId: entityId,
   specializationId: entityId,
   academicYearId: entityId,
   publish: z.boolean().optional().default(false),
+  // The co-supervisor, short description and type (core/topic/topic-extras).
+  ...topicExtrasShape,
 });
 export type CreateTopicDTO = z.infer<typeof createTopicSchema>;
 
@@ -709,7 +788,7 @@ export const createAssignedTopicSchema = z
     objectives: z.array(z.string().trim().min(1)).max(50).optional(),
     maxStudents: z.number().int().min(1).max(10),
   /**
-   * سقفُ المحاولات على الموضوع — بما فيها المرفوضة. و`null` بلا سقف.
+   * كم فريقاً يتقدّم إلى الموضوع معاً قبل أن يُغلق. و`null` بلا سقف.
    */
   maxRequests: z.number().int().min(1).max(50).nullable().optional(),
     professorId: entityId,
@@ -717,20 +796,21 @@ export const createAssignedTopicSchema = z
     academicYearId: entityId,
     memberStudentIds: z.array(entityId).min(1).max(10),
     leaderStudentId: entityId,
+    ...topicExtrasShape,
   })
   .refine((d) => d.memberStudentIds.includes(d.leaderStudentId), {
-    message: "المرسِل يجب أن يكون ضمن الطلبة المُسنَدين",
+    ...zmsg("assigned.leaderInGroup"),
     path: ["leaderStudentId"],
   })
   .refine(
     (d) => new Set(d.memberStudentIds).size === d.memberStudentIds.length,
     {
-      message: "يوجد طالب مكرّر في القائمة",
+      ...zmsg("assigned.duplicateStudent"),
       path: ["memberStudentIds"],
     },
   )
   .refine((d) => d.memberStudentIds.length <= d.maxStudents, {
-    message: "عدد الطلبة المُسنَدين يتجاوز الحدّ الأقصى",
+    ...zmsg("assigned.tooMany"),
     path: ["memberStudentIds"],
   });
 export type CreateAssignedTopicDTO = z.infer<typeof createAssignedTopicSchema>;
@@ -744,7 +824,7 @@ export const updateAssignedTopicSchema = z
     objectives: z.array(z.string().trim().min(1)).max(50).optional(),
     maxStudents: z.number().int().min(1).max(10).optional(),
   /**
-   * سقفُ المحاولات على الموضوع — بما فيها المرفوضة. و`null` بلا سقف.
+   * كم فريقاً يتقدّم إلى الموضوع معاً قبل أن يُغلق. و`null` بلا سقف.
    */
   maxRequests: z.number().int().min(1).max(50).nullable().optional(),
     professorId: entityId.optional(),
@@ -752,21 +832,22 @@ export const updateAssignedTopicSchema = z
     academicYearId: entityId.optional(),
     memberStudentIds: z.array(entityId).min(1).max(10).optional(),
     leaderStudentId: entityId.optional(),
+    ...topicExtrasShape,
   })
   .refine((d) => !d.memberStudentIds || !!d.leaderStudentId, {
-    message: "leaderStudentId مطلوب عند تعديل الطلبة",
+    ...zmsg("assigned.leaderRequired"),
     path: ["leaderStudentId"],
   })
   .refine(
     (d) =>
       !d.memberStudentIds || d.memberStudentIds.includes(d.leaderStudentId!),
-    { message: "المرسِل يجب أن يكون ضمن الطلبة", path: ["leaderStudentId"] },
+    { ...zmsg("v.leaderInStudents"), path: ["leaderStudentId"] },
   )
   .refine(
     (d) =>
       !d.memberStudentIds ||
       new Set(d.memberStudentIds).size === d.memberStudentIds.length,
-    { message: "يوجد طالب مكرّر في القائمة", path: ["memberStudentIds"] },
+    { ...zmsg("assigned.duplicateStudent"), path: ["memberStudentIds"] },
   );
 export type UpdateAssignedTopicDTO = z.infer<typeof updateAssignedTopicSchema>;
 
@@ -815,7 +896,7 @@ const committeeMemberSchema = z.object({
  */
 const committeeSchema = z
   .array(committeeMemberSchema)
-  .max(7, { message: "لا تتّسع اللجنة لأكثر من سبعة أعضاء" })
+  .max(7, zmsg("defense.maxMembers"))
   .superRefine((list, ctx) => {
     const seen = new Set<string>();
     list.forEach((m, i) => {
@@ -823,17 +904,17 @@ const committeeSchema = z
         ctx.addIssue({
           code: "custom",
           path: [i, "professorId"],
-          message: "الأستاذ نفسه مكرّر في اللجنة — لكلّ أستاذٍ مقعدٌ واحد",
+          message: tr("defense.duplicateMember"),
         });
       seen.add(m.professorId);
     });
     if (list.filter((m) => m.role === "president").length > 1)
-      ctx.addIssue({ code: "custom", message: "للّجنة رئيسٌ واحد فقط" });
+      ctx.addIssue({ code: "custom", message: tr("defense.onePresident") });
   });
 
 export const createDefenseSchema = z.object({
   groupId: entityId,
-  date: z.string().datetime({ message: "date must be ISO datetime" }),
+  date: z.string().datetime(zmsg("defense.dateFormat")),
   room: z.string().trim().min(1).max(120),
   durationMinutes: z.number().int().min(15).max(480).optional(),
   grade: z.number().min(0).max(20).optional(),

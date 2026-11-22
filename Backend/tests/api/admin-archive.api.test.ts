@@ -338,8 +338,9 @@ describe("POST /api/admin/archive/years/:id/reopen", () => {
     await close(y.id, { confirmTitle: y.title }).expect(200);
   });
 
+  /** والطلب بلا جسمٍ أصلاً يُقرأ «بلا تفعيل» — فيصل الحكم على السنة نفسها. */
   it("سنةٌ غير مؤرشفة ⇒ 400", async () => {
     const { y } = await year();
-    await as(request(app).post(`/api/admin/archive/years/${y.id}/reopen`).send({})).expect(400);
+    await as(request(app).post(`/api/admin/archive/years/${y.id}/reopen`)).expect(400);
   });
 });

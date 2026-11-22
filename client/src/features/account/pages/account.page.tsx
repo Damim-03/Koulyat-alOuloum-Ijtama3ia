@@ -1,9 +1,15 @@
 import { useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { RecoveryEmailCard } from "../components/recovery-email-card";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   AtSign,
   Award,
+  CheckCircle2,
+  Pencil,
+  Plus,
+  Send,
+  X,
   BadgeCheck,
   Building2,
   CalendarRange,
@@ -16,20 +22,18 @@ import {
   ChevronRight,
   Clock,
   Copy,
-  Eye,
-  EyeOff,
   Fingerprint,
   Globe,
   ImagePlus,
   KeyRound,
   Languages,
   Laptop,
-  Lightbulb,
   Loader2,
   Lock,
   LogOut,
   Mail,
   MailCheck,
+  Monitor,
   MonitorSmartphone,
   Moon,
   Palette,
@@ -38,18 +42,30 @@ import {
   Save,
   ShieldCheck,
   ShieldAlert,
+  Smartphone,
   Sparkles,
   Sun,
+  Tablet,
   Trash2,
   TriangleAlert,
   Upload,
   User,
   UserRound,
-  X,
   type LucideIcon,
+  ImageMinus,
 } from "lucide-react";
-import type { MyAccount, MyAccountPatch } from "../../../types/account";
-import { useChangeMyEmail, useChangeMyPassword, useMyAccount, useSetMyAvatar, useUpdateMyAccount } from "../account.api";
+import type { AccountSession, MyAccount, MyAccountPatch } from "../../../types/account";
+import {
+  useChangeMyEmail,
+  useEndMySession,
+  useMyAccount,
+  useMyActivationRequest,
+  useMySessions,
+  useSetMyAvatar,
+  useUpdateMyAccount,
+} from "../account.api";
+import { VerificationWing } from "../components/activation-screen";
+import { useDates } from "../../../hooks/use-dates";
 import { useAuth } from "../../../hooks/use-auth";
 import { useLanguage } from "../../../hooks/use-language";
 import { useTheme } from "../../../hooks/use-theme";
@@ -63,6 +79,10 @@ import { LATIN_NAME, toLatinFirst, toLatinLast } from "../../../lib/latin-name";
 import { relative } from "../../admin/pages/projects/project-utils";
 import i18n from "../../../i18n/i18n";
 import { otherScriptName, personName, readsLatin } from "../../../lib/person-name";
+import { Field, PrimaryBtn, Secret } from "../components/form-bits";
+import { inputCls } from "../lib/input-class";
+import { PasswordForm } from "../components/password-form";
+import { TwoFactorCard } from "../components/two-factor-card";
 
 /**
  * The administrator's own account, from A to Z — one wing at a time.
@@ -73,10 +93,12 @@ import { otherScriptName, personName, readsLatin } from "../../../lib/person-nam
  * account menu's "change password" — can open the right one directly.
  */
 
-const WINGS = ["personal", "photo", "email", "password", "security", "prefs"] as const;
+const WINGS = ["personal", "verification", "photo", "email", "password", "security", "prefs"] as const;
 type Wing = (typeof WINGS)[number];
 const WING_ICON: Record<Wing, LucideIcon> = {
   personal: UserRound,
+  // A student's own: the card and the face, sent for the administration to verify.
+  verification: BadgeCheck,
   photo: Camera,
   email: Mail,
   password: KeyRound,
@@ -88,9 +110,6 @@ const USERNAME = /^[A-Za-z0-9._-]{3,30}$/;
 const PHONE = /^\+?[0-9][0-9 ]{5,19}$/;
 const COMPLETENESS: (keyof MyAccount)[] = ["firstName", "lastName", "firstNameLatin", "lastNameLatin", "gender", "phone", "username", "avatarUrl"];
 const CARD = "rounded-3xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]";
-const INPUT =
-  "h-12 w-full rounded-2xl border bg-cream-2 px-4 text-[14px] text-forest outline-none transition placeholder:text-clay/60 focus:border-gold focus:bg-cream-card focus:ring-4 focus:ring-gold/15";
-const inputCls = (error?: string) => `${INPUT} ${error ? "border-red-400/70 focus:border-red-400 focus:ring-red-400/15" : "border-forest/12"}`;
 
 export function AccountPage() {
   const q = useMyAccount();
@@ -104,8 +123,16 @@ function Account({ a }: { a: MyAccount }) {
   const { t } = useTranslation();
   const [sp, setSp] = useSearchParams();
   // Only the wings this role can use: no photo wing for a student, no email
-  // wing for anyone but the administration.
-  const wings = WINGS.filter((w) => (w !== "photo" || a.can.photo) && (w !== "email" || a.can.email));
+  // wing for anyone but the administration, and verification by photos for
+  // students alone.
+  const isStudent = a.role === "student";
+  // A student's or a professor's own email is set in the personal wing — the «email» wing speaks
+  // of signing in by it, which only an administrator does.
+  const wings = WINGS.filter(
+    (w) => (w !== "photo" || a.can.photo) && (w !== "email" || (a.can.email && a.role === "admin")) && (w !== "verification" || isStudent),
+  );
+  // Where a request to verify the account stands — read only where it can be one.
+  const request = useMyActivationRequest(isStudent && !a.isVerified).data;
   const wing: Wing = (wings as readonly string[]).includes(sp.get("tab") ?? "") ? (sp.get("tab") as Wing) : "personal";
   const open = (w: Wing) => {
     const next = new URLSearchParams(sp);
@@ -127,10 +154,20 @@ function Account({ a }: { a: MyAccount }) {
       pct === null
         ? { text: t("admin.account.wing.readOnly"), tone: "muted" }
         : { text: pct === 100 ? t("admin.account.wing.complete") : t("admin.account.wing.percent", { p: pct }), tone: pct === 100 ? "ok" : "warn" },
+    verification: a.isVerified
+      ? { text: t("admin.struct.spec.verified"), tone: "ok" }
+      : request?.status === "pending"
+        ? { text: t("admin.account.wing.verifyPending"), tone: "warn" }
+        : request?.status === "rejected"
+          ? { text: t("admin.account.wing.verifyRejected"), tone: "warn" }
+          : { text: t("admin.account.security.notVerified"), tone: "muted" },
     photo: { text: a.avatarUrl ? t("admin.account.wing.photoSet") : t("admin.account.wing.photoNone"), tone: a.avatarUrl ? "ok" : "warn" },
     email: { text: a.email ?? "—", tone: "muted" },
     password: { text: t("admin.account.wing.protected"), tone: "ok" },
-    security: { text: t(`admin.struct.spec.status.${a.status === "suspended" ? "suspended" : "active"}`), tone: a.status === "suspended" ? "warn" : "ok" },
+    security:
+      a.twoFactor.available && !a.twoFactor.enabled
+        ? { text: t("account.twoFactor.off"), tone: "warn" }
+        : { text: t(`admin.struct.spec.status.${a.status === "suspended" ? "suspended" : "active"}`), tone: a.status === "suspended" ? "warn" : "ok" },
     prefs: { text: `${languages.find((l) => l.code === currentLang)?.label ?? currentLang} · ${t(`admin.account.prefs.theme_${theme}`)}`, tone: "muted" },
   };
 
@@ -200,7 +237,7 @@ function Account({ a }: { a: MyAccount }) {
             <div className="dot-matrix pointer-events-none absolute inset-0 opacity-25" />
             <div className="pointer-events-none absolute -top-16 -start-10 size-56 rounded-full bg-gold/10 blur-3xl" />
             <div className="relative flex flex-wrap items-center gap-4">
-              <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-forest to-forest-deep text-gold-soft shadow-[0_10px_24px_-12px_rgba(22,36,31,0.8)] dark:from-gold/25 dark:to-gold/10 dark:text-gold">
+              <span className="hidden size-14 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-forest to-forest-deep text-gold-soft shadow-[0_10px_24px_-12px_rgba(22,36,31,0.8)] dark:from-gold/25 dark:to-gold/10 dark:text-gold sm:grid">
                 <Icon size={24} />
               </span>
               <div className="min-w-0 flex-1">
@@ -212,10 +249,11 @@ function Account({ a }: { a: MyAccount }) {
           </header>
 
           <div className="animate-scale-in px-6 py-6 lg:px-8" key={wing}>
-            {wing === "personal" && (a.can.edit.length ? <PersonalWing a={a} /> : <ProfileWing a={a} />)}
+            {wing === "personal" && (isStudent || !a.can.edit.length ? <ProfileWing a={a} /> : <PersonalWing a={a} />)}
+            {wing === "verification" && <VerificationWing verified={a.isVerified} />}
             {wing === "photo" && <PhotoWing a={a} />}
             {wing === "email" && <EmailWing a={a} />}
-            {wing === "password" && <PasswordWing />}
+            {wing === "password" && <PasswordForm a={a} />}
             {wing === "security" && <SecurityWing a={a} />}
             {wing === "prefs" && <PrefsWing />}
           </div>
@@ -254,11 +292,13 @@ function Hero({ a, pct, missing, onPhoto, onComplete }: { a: MyAccount; pct: num
   const otherIsLatin = !readsLatin();
 
   return (
-    <section className="forest-glow relative mb-6 overflow-hidden rounded-3xl px-6 py-8 text-cream shadow-[0_18px_50px_-20px_rgba(22,36,31,0.6)] lg:px-10">
+    <section className="forest-glow relative mb-6 overflow-hidden rounded-3xl px-5 py-7 text-cream shadow-[0_18px_50px_-20px_rgba(22,36,31,0.6)] sm:px-6 sm:py-8 lg:px-10">
       <div className="dot-matrix pointer-events-none absolute inset-0 opacity-60" />
       <div className="pointer-events-none absolute -top-24 -end-16 size-96 rounded-full bg-gold/12 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-32 start-1/3 size-72 rounded-full bg-soft-sage/10 blur-3xl" />
-      <div className="relative flex flex-wrap items-center gap-7">
+      {/* A phone stacks it — photo, then the name centred under it; beside a
+          116px photo the name had a column some 150px wide. */}
+      <div className="relative flex flex-col items-center gap-6 text-center sm:flex-row sm:flex-wrap sm:gap-7 sm:text-start">
         <div className="relative">
           <span className="absolute -inset-2 rounded-full bg-linear-to-br from-gold/60 via-gold/10 to-transparent blur-[2px]" />
           <UserAvatar user={a} size={116} className="relative ring-4 ring-forest-deep" />
@@ -274,7 +314,7 @@ function Hero({ a, pct, missing, onPhoto, onComplete }: { a: MyAccount; pct: num
           )}
         </div>
 
-        <div className="min-w-0 flex-1">
+        <div className="w-full min-w-0 sm:w-auto sm:flex-1">
           <p className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-gold/10 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-gold-soft">
             <Sparkles size={12} />
             {t("admin.account.eyebrow")}
@@ -283,13 +323,13 @@ function Hero({ a, pct, missing, onPhoto, onComplete }: { a: MyAccount; pct: num
             <bdi>{name}</bdi>
           </h1>
           {other && (
-            <p className="mt-2 flex items-center gap-3" data-testid="hero-other-name">
+            <p className="mt-2 flex items-center justify-center gap-3 sm:justify-start" data-testid="hero-other-name">
               <span aria-hidden className="h-px w-10 shrink-0 bg-linear-to-l from-gold/10 to-gold ltr:bg-linear-to-r" />
               {/* Letter-spacing suits Latin capitals; it would break Arabic apart. */}
               <bdi className={`text-[18px] leading-none text-gold-soft ${otherIsLatin ? "font-serif font-semibold tracking-[0.12em]" : "font-semibold"}`}>{other}</bdi>
             </p>
           )}
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-[12px]">
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-[12px] sm:justify-start">
             {a.email && (
               <button
                 type="button"
@@ -303,7 +343,7 @@ function Hero({ a, pct, missing, onPhoto, onComplete }: { a: MyAccount; pct: num
                 title={t("common.copy")}
               >
                 <Mail size={12} className="text-gold-soft" />
-                <span dir="ltr">{a.email}</span>
+                <span dir="ltr" className="min-w-0 break-all">{a.email}</span>
                 {copied ? <Check size={12} className="text-emerald-300" /> : <Copy size={11} className="text-cream/60" />}
               </button>
             )}
@@ -315,7 +355,7 @@ function Hero({ a, pct, missing, onPhoto, onComplete }: { a: MyAccount; pct: num
               </span>
             )}
           </div>
-          <div className="mt-3 flex flex-wrap gap-2 text-[12px]">
+          <div className="mt-3 flex flex-wrap justify-center gap-2 text-[12px] sm:justify-start">
             <HeroFact icon={Clock} label={t("admin.account.lastLogin")} value={a.lastLoginAt ? relative(a.lastLoginAt) : "—"} />
             <HeroFact
               icon={User}
@@ -325,7 +365,7 @@ function Hero({ a, pct, missing, onPhoto, onComplete }: { a: MyAccount; pct: num
           </div>
         </div>
 
-        <div className="flex flex-wrap items-stretch gap-3">
+        <div className="flex w-full flex-wrap items-stretch justify-center gap-3 sm:w-auto">
           {(a.student || a.professor) && <IdentityCard a={a} />}
           {pct !== null && (
             <button
@@ -500,6 +540,13 @@ function PersonalWing({ a }: { a: MyAccount }) {
         </div>
       </Group>
 
+      {/* A professor's own address — signing in stays by the university one; links and alerts go here once confirmed. */}
+      {a.professor && a.can.email && (
+        <Group icon={Mail} title={t("admin.account.group.personalEmail")} hint={t("admin.account.personalEmailHint")}>
+          <EmailRow a={a} />
+        </Group>
+      )}
+
       {a.professor && (
         <>
           <RecordGroup a={a} />
@@ -621,20 +668,31 @@ function ManagedNote({ a }: { a: MyAccount }) {
 }
 
 /**
- * A student's own record. The administration keeps all of it — a name, a
- * registration number, a specialization are its to change — so it reads here,
- * with the way to ask for a correction.
+ * A student's own record. The administration keeps nearly all of it — a
+ * registration number, a specialization, the Latin name are its to change —
+ * so it reads here, with the way to ask for a correction. Two things are the
+ * student's own (the user's decision, 2026-11-18): the first and last name in
+ * Arabic — corrected, or filled in when left empty — and the email.
  */
 function ProfileWing({ a }: { a: MyAccount }) {
   const { t } = useTranslation();
+  const student = a.role === "student";
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Group icon={Languages} title={t("admin.account.group.name")}>
           <div className="space-y-3">
-            <ReadRow icon={UserRound} label={t("admin.account.f.fullName")} value={[a.firstName, a.lastName].filter(Boolean).join(" ") || "—"} />
+            {student && a.can.edit.includes("firstName") ? (
+              <StudentNameRow a={a} />
+            ) : (
+              <ReadRow icon={UserRound} label={t("admin.account.f.fullName")} value={[a.firstName, a.lastName].filter(Boolean).join(" ") || "—"} />
+            )}
             <ReadRow icon={Globe} label={t("admin.account.f.latinName")} value={[a.firstNameLatin, a.lastNameLatin].filter(Boolean).join(" ") || "—"} ltr />
-            {a.email && <ReadRow icon={Mail} label={t("admin.account.f.email")} value={a.email} ltr />}
+            {student && a.can.email ? (
+              <EmailRow a={a} />
+            ) : (
+              a.email && <ReadRow icon={Mail} label={t("admin.account.f.email")} value={a.email} ltr />
+            )}
           </div>
           <Field label={t("admin.account.f.gender")} hint={a.gender ? undefined : t("admin.account.genderUnset")} group>
             <GenderSelect value={a.gender} onChange={() => undefined} readOnly />
@@ -644,6 +702,363 @@ function ProfileWing({ a }: { a: MyAccount }) {
       </div>
       <ManagedNote a={a} />
     </div>
+  );
+}
+
+/** A name in Arabic letters, as the server takes it: letters, a space, a hyphen, an apostrophe — two at least. */
+const ARABIC_NAME = /^[\u0620-\u0652\u0670-\u06D3\s'-]+$/;
+const ARABIC_LETTER = /[\u0620-\u064A\u0671-\u06D3]/;
+const squashed = (s: string) => s.trim().replace(/\s+/g, " ");
+
+/** A row the student may change: what it holds, and the pencil — or, empty, the way to fill it in. */
+function EditableRow({
+  icon: Icon,
+  label,
+  value,
+  empty,
+  action,
+  onEdit,
+  ltr,
+  badge,
+  testId,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: ReactNode;
+  empty: boolean;
+  action: string;
+  onEdit: () => void;
+  ltr?: boolean;
+  /** Beside the label: the email's state, say. */
+  badge?: ReactNode;
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${
+        empty ? "border-dashed border-gold/45 bg-gold/[0.05]" : "border-forest/8 bg-cream-card/60"
+      }`}
+    >
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-gold/10 text-gold">
+        <Icon size={16} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-2 text-[11px] text-clay">
+          {label}
+          {badge}
+        </p>
+        <p dir={ltr && !empty ? "ltr" : undefined} className={`truncate text-[14px] font-semibold ${empty ? "text-clay" : "text-forest"} ${ltr && !empty ? "text-start" : ""}`}>
+          {value}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onEdit}
+        data-testid={`${testId}-edit`}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-gold/40 bg-gold/10 px-3 py-1.5 text-[12px] font-bold text-forest transition hover:border-gold/70 hover:bg-gold/20"
+      >
+        {empty ? <Plus size={14} className="text-gold" /> : <Pencil size={13} className="text-gold" />}
+        {action}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The frame of a form opened in place of its row: a gold tile and a title,
+ * what it is for, the fields — and, under a hairline, the way out and the way
+ * on. The name and the email open in it alike.
+ */
+function InPlaceForm({
+  icon: Icon,
+  title,
+  subtitle,
+  onCancel,
+  footer,
+  testId,
+  onSubmit,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  subtitle: string;
+  onCancel: () => void;
+  footer: ReactNode;
+  testId: string;
+  onSubmit: () => void;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  return (
+    <form
+      noValidate
+      data-testid={testId}
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onCancel();
+      }}
+      className="animate-scale-in relative overflow-hidden rounded-3xl border border-gold/30 bg-cream-card shadow-[0_22px_48px_-28px_rgba(26,49,45,0.7)]"
+    >
+      {/* a glow of gold in the corner, and a hairline across the top */}
+      <div aria-hidden className="pointer-events-none absolute -end-16 -top-20 size-56 rounded-full bg-gold/15 blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-gold/70 to-transparent" />
+
+      <header className="relative flex items-start gap-3.5 px-5 pt-5">
+        <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-gold to-gold-soft text-[#1a312d] shadow-[0_10px_24px_-10px_rgba(193,150,90,0.9)]">
+          <Icon size={21} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-serif text-[17px] leading-tight font-bold text-forest">{title}</h3>
+          <p className="mt-1 text-[12px] leading-relaxed text-clay">{subtitle}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label={t("admin.cancel")}
+          title={t("admin.cancel")}
+          className="grid size-8 shrink-0 place-items-center rounded-xl text-clay transition hover:bg-forest/6 hover:text-forest"
+        >
+          <X size={16} />
+        </button>
+      </header>
+
+      <div className="relative space-y-4 px-5 pt-5 pb-5">{children}</div>
+
+      <footer className="relative flex flex-wrap items-center justify-between gap-3 border-t border-forest/8 bg-cream-2/40 px-5 py-3.5">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-xl px-4 py-2 text-[12.5px] font-semibold text-clay transition hover:bg-forest/5 hover:text-forest"
+        >
+          {t("admin.cancel")}
+        </button>
+        {footer}
+      </footer>
+    </form>
+  );
+}
+
+/** The first and last name in Arabic: corrected — or filled in, when the administration left them empty. */
+function StudentNameRow({ a }: { a: MyAccount }) {
+  const { t } = useTranslation();
+  const update = useUpdateMyAccount();
+  const [editing, setEditing] = useState(false);
+  const [first, setFirst] = useState(a.firstName ?? "");
+  const [last, setLast] = useState(a.lastName ?? "");
+  const full = [a.firstName, a.lastName].filter(Boolean).join(" ");
+
+  const check = (s: string) => {
+    const v = squashed(s);
+    if (!v) return t("admin.account.err.required");
+    return v.length >= 2 && ARABIC_NAME.test(v) && ARABIC_LETTER.test(v) ? undefined : t("account.student.err.arabic");
+  };
+  const errFirst = check(first);
+  const errLast = check(last);
+  const patch: MyAccountPatch = {};
+  if (squashed(first) !== (a.firstName ?? "")) patch.firstName = squashed(first);
+  if (squashed(last) !== (a.lastName ?? "")) patch.lastName = squashed(last);
+  const changes = Object.keys(patch).length;
+  // What it will read as, live — the way it prints.
+  const preview = [squashed(first), squashed(last)].filter(Boolean).join(" ");
+
+  const cancel = () => {
+    setEditing(false);
+    setFirst(a.firstName ?? "");
+    setLast(a.lastName ?? "");
+  };
+
+  if (!editing)
+    return (
+      <EditableRow
+        icon={UserRound}
+        label={t("admin.account.f.fullName")}
+        value={full || t("account.student.nameEmpty")}
+        empty={!full}
+        action={full ? t("account.student.edit") : t("account.student.addName")}
+        onEdit={() => setEditing(true)}
+        testId="student-name"
+      />
+    );
+  return (
+    <InPlaceForm
+      icon={UserRound}
+      title={t("account.student.nameTitle")}
+      subtitle={t("account.student.nameHint")}
+      onCancel={cancel}
+      testId="student-name-form"
+      onSubmit={() => {
+        if (!errFirst && !errLast && changes) update.mutate(patch);
+      }}
+      footer={
+        <PrimaryBtn type="submit" disabled={!!errFirst || !!errLast || !changes} busy={update.isPending} icon={Check} testId="student-name-save">
+          {t("account.student.save")}
+        </PrimaryBtn>
+      }
+    >
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label={t("admin.account.f.firstName")} error={first ? errFirst : undefined} required>
+          <input
+            dir="rtl"
+            value={first}
+            onChange={(e) => setFirst(e.target.value)}
+            aria-label={t("admin.account.f.firstName")}
+            placeholder={t("account.student.firstNamePlaceholder")}
+            autoFocus
+            className={`${inputCls(first ? errFirst : undefined)} h-12 text-[15px]`}
+          />
+        </Field>
+        <Field label={t("admin.account.f.lastName")} error={last ? errLast : undefined} required>
+          <input
+            dir="rtl"
+            value={last}
+            onChange={(e) => setLast(e.target.value)}
+            aria-label={t("admin.account.f.lastName")}
+            placeholder={t("account.student.lastNamePlaceholder")}
+            className={`${inputCls(last ? errLast : undefined)} h-12 text-[15px]`}
+          />
+        </Field>
+      </div>
+      <div className="flex items-center gap-3 rounded-2xl border border-forest/8 bg-cream-2/50 px-4 py-3" data-testid="student-name-preview">
+        <span className="text-[11px] font-semibold text-clay">{t("account.student.namePreview")}</span>
+        <span className={`min-w-0 flex-1 truncate font-serif text-[16px] font-bold ${preview ? "text-forest" : "text-clay/50"}`}>{preview || "—"}</span>
+      </div>
+    </InPlaceForm>
+  );
+}
+
+/**
+ * The account's own email — a student's, or a professor's beside the university
+ * address: given — or changed — with the current password; the link that
+ * proves it leaves on saving.
+ */
+function EmailRow({ a }: { a: MyAccount }) {
+  const { t } = useTranslation();
+  const change = useChangeMyEmail();
+  const [editing, setEditing] = useState(false);
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
+  const same = email.trim().toLowerCase() === (a.email ?? "").toLowerCase();
+  const ready = valid && !same && !!pw;
+  // Where the student is: the address, the password, then the link.
+  const step = !valid || same ? 1 : !pw ? 2 : 3;
+
+  const cancel = () => {
+    setEditing(false);
+    setEmail("");
+    setPw("");
+  };
+
+  const state = a.email ? (
+    <span
+      data-testid="student-email-state"
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+        a.emailVerified ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/12 text-amber-700 dark:text-amber-300"
+      }`}
+    >
+      {a.emailVerified ? <MailCheck size={11} /> : <TriangleAlert size={11} />}
+      {t(a.emailVerified ? "account.student.emailVerified" : "account.student.emailUnverified")}
+    </span>
+  ) : null;
+
+  if (!editing)
+    return (
+      <EditableRow
+        icon={Mail}
+        label={t("admin.account.f.email")}
+        value={a.email || t("account.student.emailEmpty")}
+        empty={!a.email}
+        action={a.email ? t("account.student.edit") : t("account.student.addEmail")}
+        onEdit={() => setEditing(true)}
+        ltr
+        badge={state}
+        testId="student-email"
+      />
+    );
+  return (
+    <InPlaceForm
+      icon={Mail}
+      title={t(a.email ? "account.student.emailTitleChange" : "account.student.emailTitleAdd")}
+      subtitle={t("account.student.emailSubtitle")}
+      onCancel={cancel}
+      testId="student-email-form"
+      onSubmit={() => {
+        if (ready) change.mutate({ email: email.trim(), currentPassword: pw });
+      }}
+      footer={
+        <PrimaryBtn type="submit" disabled={!ready} busy={change.isPending} icon={Send} testId="student-email-save">
+          {t(change.isPending ? "account.student.savingEmail" : "account.student.saveEmail")}
+        </PrimaryBtn>
+      }
+    >
+      {a.email && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border border-forest/8 bg-cream-2/50 px-4 py-3">
+          <span className="text-[11px] font-semibold text-clay">{t("admin.account.email.current")}</span>
+          <span dir="ltr" className="min-w-0 flex-1 truncate text-start text-[13.5px] font-bold text-forest">
+            {a.email}
+          </span>
+          {state}
+        </div>
+      )}
+
+      {/* the three steps, the one reached in gold */}
+      <ol className="grid grid-cols-3 gap-2" data-testid="student-email-steps">
+        {[1, 2, 3].map((n) => {
+          const done = n < step;
+          const on = n === step;
+          return (
+            <li
+              key={n}
+              data-state={done ? "done" : on ? "current" : "todo"}
+              className={`flex items-center gap-2 rounded-2xl border px-3 py-2.5 text-[11.5px] font-semibold transition ${
+                on ? "border-gold/50 bg-gold/10 text-forest" : done ? "border-emerald-500/25 bg-emerald-500/[0.06] text-forest/80" : "border-forest/8 text-clay"
+              }`}
+            >
+              <span
+                className={`grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
+                  done ? "bg-emerald-500 text-white" : on ? "bg-linear-to-br from-gold to-gold-soft text-[#1a312d]" : "bg-forest/8 text-clay"
+                }`}
+              >
+                {done ? <Check size={12} strokeWidth={3} /> : n}
+              </span>
+              <span className="min-w-0 truncate">{t(`account.student.emailStep${n}`)}</span>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label={t("admin.account.email.new")} error={email && !valid ? t("admin.account.err.email") : email && same ? t("admin.account.err.sameEmail") : undefined}>
+          <div className="relative">
+            <Mail size={16} className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-gold" />
+            <input
+              type="email"
+              dir="ltr"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              aria-label={t("admin.account.email.new")}
+              autoFocus
+              placeholder="name@example.com"
+              className={`${inputCls(email && (!valid || same) ? "x" : undefined)} h-12 ps-11 pe-10`}
+            />
+            {valid && !same && <CheckCircle2 size={17} className="pointer-events-none absolute end-3.5 top-1/2 -translate-y-1/2 text-emerald-500" />}
+          </div>
+        </Field>
+        <Field label={t("admin.account.currentPassword")}>
+          <Secret value={pw} onChange={setPw} autoComplete="current-password" testId="student-email-password" />
+        </Field>
+      </div>
+
+      <p className="flex items-start gap-2.5 rounded-2xl bg-sky-500/[0.07] px-4 py-3 text-[12px] leading-relaxed text-forest/85 ring-1 ring-sky-400/25">
+        <Send size={15} className="mt-0.5 shrink-0 text-sky-600 rtl:-scale-x-100 dark:text-sky-300" />
+        {t(a.role === "professor" ? "account.student.emailHintProfessor" : "account.student.emailHint")}
+      </p>
+    </InPlaceForm>
   );
 }
 
@@ -778,6 +1193,7 @@ function PhotoWing({ a }: { a: MyAccount }) {
         }}
       />
       <ConfirmDialog
+        icon={ImageMinus}
         open={removing}
         tone="danger"
         title={t("admin.account.photo.remove")}
@@ -858,125 +1274,6 @@ function EmailWing({ a }: { a: MyAccount }) {
   );
 }
 
-/* ── password ─────────────────────────────────────────────── */
-
-function strength(p: string) {
-  const checks = {
-    length: p.length >= 8,
-    long: p.length >= 12,
-    cases: /[a-z]/.test(p) && /[A-Z]/.test(p),
-    digit: /\d/.test(p),
-    symbol: /[^A-Za-z0-9]/.test(p),
-  };
-  return { checks, score: Object.values(checks).filter(Boolean).length };
-}
-
-function PasswordWing() {
-  const { t } = useTranslation();
-  const change = useChangeMyPassword();
-  const [cur, setCur] = useState("");
-  const [next, setNext] = useState("");
-  const [again, setAgain] = useState("");
-  const s = strength(next);
-  const ok = !!cur && s.checks.length && next.length <= 72 && again === next && next !== cur;
-  const level = !next ? 0 : s.score <= 2 ? 1 : s.score === 3 ? 2 : s.score === 4 ? 3 : 4;
-  const LEVEL = [
-    { label: "—", bar: "bg-forest/10", text: "text-clay" },
-    { label: t("admin.account.password.weak"), bar: "bg-rose-500", text: "text-rose-600 dark:text-rose-300" },
-    { label: t("admin.account.password.fair"), bar: "bg-amber-500", text: "text-amber-600 dark:text-amber-300" },
-    { label: t("admin.account.password.good"), bar: "bg-sky-500", text: "text-sky-600 dark:text-sky-300" },
-    { label: t("admin.account.password.strong"), bar: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-300" },
-  ];
-
-  return (
-    <form
-      className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_300px]"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!ok) return;
-        change.mutate(
-          { currentPassword: cur, newPassword: next },
-          {
-            onSuccess: () => {
-              setCur("");
-              setNext("");
-              setAgain("");
-            },
-          },
-        );
-      }}
-    >
-      <div className="space-y-4">
-        <Field label={t("admin.account.currentPassword")}>
-          <Secret value={cur} onChange={setCur} autoComplete="current-password" testId="acc-pw-current" />
-        </Field>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label={t("admin.account.password.new")} error={next && next === cur ? t("admin.account.err.samePassword") : next.length > 72 ? t("admin.account.err.tooLong") : undefined}>
-            <Secret value={next} onChange={setNext} autoComplete="new-password" testId="acc-pw-new" />
-          </Field>
-          <Field
-            label={t("admin.account.password.confirm")}
-            error={again && again !== next ? t("admin.account.err.mismatch") : undefined}
-            hint={again && again === next && next ? t("admin.account.password.matches") : undefined}
-          >
-            <Secret value={again} onChange={setAgain} autoComplete="new-password" testId="acc-pw-again" />
-          </Field>
-        </div>
-
-        <div className="rounded-3xl border border-forest/10 bg-cream-2/40 p-5">
-          <div className="mb-3 flex items-center justify-between text-[12.5px]">
-            <span className="inline-flex items-center gap-1.5 text-clay">
-              <Lock size={14} className="text-gold" />
-              {t("admin.account.password.strength")}
-            </span>
-            <b className={LEVEL[level].text}>{LEVEL[level].label}</b>
-          </div>
-          <div className="mb-4 grid grid-cols-4 gap-1.5">
-            {[1, 2, 3, 4].map((i) => (
-              <span key={i} className={`h-2 rounded-full transition-colors duration-300 ${i <= level ? LEVEL[level].bar : "bg-forest/10"}`} />
-            ))}
-          </div>
-          <ul className="grid grid-cols-1 gap-2 text-[12.5px] sm:grid-cols-2">
-            {(Object.keys(s.checks) as (keyof typeof s.checks)[]).map((k) => (
-              <li key={k} className={`flex items-center gap-2 ${s.checks[k] ? "text-emerald-700 dark:text-emerald-300" : "text-clay"}`}>
-                <span className={`grid size-5 shrink-0 place-items-center rounded-full ${s.checks[k] ? "bg-emerald-500/15" : "bg-forest/6"}`}>
-                  {s.checks[k] ? <Check size={12} /> : <X size={11} className="opacity-60" />}
-                </span>
-                {t(`admin.account.password.rule.${k}`)}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="flex flex-1 items-start gap-2 text-[12px] leading-relaxed text-clay">
-            <MonitorSmartphone size={15} className="mt-0.5 shrink-0 text-gold" />
-            {t("admin.account.password.othersOut")}
-          </p>
-          <PrimaryBtn type="submit" disabled={!ok} busy={change.isPending} icon={KeyRound} testId="acc-pw-submit">
-            {t("admin.account.password.submit")}
-          </PrimaryBtn>
-        </div>
-      </div>
-
-      <aside className="h-fit rounded-3xl border border-gold/25 bg-gold/5 p-5">
-        <p className="mb-3 flex items-center gap-2 text-[13px] font-bold text-forest">
-          <Lightbulb size={16} className="text-gold" />
-          {t("admin.account.password.tipsTitle")}
-        </p>
-        <ul className="space-y-2.5 text-[12px] leading-relaxed text-forest/85">
-          {[1, 2, 3, 4].map((n) => (
-            <li key={n} className="flex items-start gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-gold" />
-              {t(`admin.account.password.tip${n}`)}
-            </li>
-          ))}
-        </ul>
-      </aside>
-    </form>
-  );
-}
-
 /* ── security ─────────────────────────────────────────────── */
 
 function SecurityWing({ a }: { a: MyAccount }) {
@@ -1008,6 +1305,12 @@ function SecurityWing({ a }: { a: MyAccount }) {
         ))}
       </div>
 
+      <RecoveryEmailCard a={a} />
+
+      {a.twoFactor.available && <TwoFactorCard a={a} />}
+
+      <DevicesCard />
+
       <div className="flex items-start gap-3 rounded-2xl border border-sky-400/30 bg-sky-500/6 p-4">
         <Laptop size={18} className="mt-0.5 shrink-0 text-sky-600 dark:text-sky-300" />
         <p className="text-[12.5px] leading-relaxed text-forest">{t("admin.account.security.thisDevice")}</p>
@@ -1033,6 +1336,7 @@ function SecurityWing({ a }: { a: MyAccount }) {
         </div>
       </div>
       <ConfirmDialog
+        icon={LogOut}
         open={confirm}
         tone="danger"
         title={t("admin.account.security.everywhere")}
@@ -1040,6 +1344,148 @@ function SecurityWing({ a }: { a: MyAccount }) {
         confirmLabel={t("admin.account.security.everywhereAction")}
         onConfirm={() => logoutEverywhere()}
         onClose={() => setConfirm(false)}
+      />
+    </div>
+  );
+}
+
+const DEVICE_ICON: Record<AccountSession["device"]["type"], LucideIcon> = {
+  mobile: Smartphone,
+  tablet: Tablet,
+  desktop: Monitor,
+  unknown: MonitorSmartphone,
+};
+
+/** "Chrome on Windows", or whatever part of it is known. */
+function deviceName(t: (k: string, o?: Record<string, string>) => string, d: AccountSession["device"]) {
+  if (d.browser && d.os) return t("admin.account.security.deviceOn", { browser: d.browser, os: d.os });
+  return d.browser ?? d.os ?? t("admin.account.security.unknownDevice");
+}
+
+/** Minutes matter here — "this hour" says little about a device. */
+function ago(iso: string) {
+  const rtf = new Intl.RelativeTimeFormat(i18n.language, { numeric: "auto" });
+  const mins = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
+  if (Math.abs(mins) < 1) return rtf.format(0, "second");
+  if (Math.abs(mins) < 60) return rtf.format(mins, "minute");
+  const hours = Math.round(mins / 60);
+  if (Math.abs(hours) < 24) return rtf.format(hours, "hour");
+  return rtf.format(Math.round(hours / 24), "day");
+}
+
+/**
+ * Every device signed in to the account. Signing one out takes effect at once:
+ * its requests are refused, and its open page is told over the socket.
+ */
+function DevicesCard() {
+  const { t } = useTranslation();
+  const { fmtDate } = useDates();
+  const { data, isLoading, isError, refetch } = useMySessions();
+  const end = useEndMySession();
+  const [target, setTarget] = useState<AccountSession | null>(null);
+
+  return (
+    <div className="rounded-3xl border border-forest/10 bg-cream-2/40 p-5" data-testid="account-devices">
+      <div className="mb-4 flex items-start gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-gold/15 text-gold">
+          <MonitorSmartphone size={20} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-2 text-[14px] font-bold text-forest">
+            {t("admin.account.security.devices")}
+            {data && <span className="rounded-full bg-forest/8 px-2 py-0.5 text-[11px] font-bold text-clay">{data.length}</span>}
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-clay">{t("admin.account.security.devicesHint")}</p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="grid place-items-center py-8 text-clay">
+          <Loader2 size={20} className="animate-spin" />
+        </div>
+      ) : isError ? (
+        <ErrorRetry compact title={t("admin.account.security.devicesError")} onRetry={refetch} />
+      ) : !data?.length ? (
+        <p className="py-4 text-center text-[12.5px] text-clay">{t("admin.account.security.noDevices")}</p>
+      ) : (
+        <ul className="space-y-2.5">
+          {data.map((s) => {
+            const Icon = DEVICE_ICON[s.device.type];
+            const busy = end.isPending && end.variables === s.id;
+            return (
+              <li
+                key={s.id}
+                data-testid="account-device"
+                className={`flex flex-wrap items-center gap-3 rounded-2xl border p-3.5 sm:flex-nowrap ${
+                  s.current ? "border-gold/45 bg-gold/6" : "border-forest/10 bg-cream-card"
+                }`}
+              >
+                <span className="relative grid size-11 shrink-0 place-items-center rounded-2xl bg-forest/6 text-forest">
+                  <Icon size={20} />
+                  {s.online && <span className="absolute -end-0.5 -top-0.5 size-3 rounded-full border-2 border-cream-card bg-emerald-500" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-1.5 text-[13.5px] font-bold text-forest">
+                    <span dir="auto">{deviceName(t, s.device)}</span>
+                    {s.current && (
+                      <span className="rounded-full bg-gold/20 px-2 py-0.5 text-[10.5px] font-bold text-gold">{t("admin.account.security.current")}</span>
+                    )}
+                    {s.online && !s.current && (
+                      <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[10.5px] font-bold text-emerald-600 dark:text-emerald-300">
+                        {t("admin.account.security.online")}
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-clay">
+                    <span>{t(`admin.account.security.type.${s.device.type}`)}</span>
+                    {s.ip && (
+                      <>
+                        <span aria-hidden>·</span>
+                        {/* Isolated, or the RTL line reorders it: "::1" reads "1::". */}
+                        <bdi dir="ltr" className="font-mono">
+                          {s.ip}
+                        </bdi>
+                      </>
+                    )}
+                    <span aria-hidden>·</span>
+                    <span>
+                      {t("admin.account.security.lastActive")}:{" "}
+                      {s.current || s.online ? t("admin.account.security.online") : ago(s.lastActiveAt)}
+                    </span>
+                    <span aria-hidden>·</span>
+                    <span>
+                      {t("admin.account.security.since")}: {fmtDate(s.createdAt, true)}
+                    </span>
+                  </p>
+                </div>
+                {!s.current && (
+                  <button
+                    type="button"
+                    onClick={() => setTarget(s)}
+                    disabled={busy}
+                    data-testid="account-device-signout"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-red-300/60 px-3.5 py-2 text-[12.5px] font-bold text-red-600 transition hover:bg-red-500/10 disabled:opacity-60 dark:text-red-300"
+                  >
+                    {busy ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} className="rtl:rotate-180" />}
+                    {t("admin.account.security.signOut")}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <ConfirmDialog
+        icon={LogOut}
+        open={!!target}
+        tone="danger"
+        title={t("admin.account.security.signOutTitle")}
+        message={target ? t("admin.account.security.signOutConfirm", { name: deviceName(t, target.device) }) : ""}
+        confirmLabel={t("admin.account.security.signOut")}
+        loading={end.isPending}
+        onConfirm={() => target && end.mutate(target.id, { onSettled: () => setTarget(null) })}
+        onClose={() => setTarget(null)}
       />
     </div>
   );
@@ -1146,100 +1592,6 @@ function Group({ icon: Icon, title, hint, children }: { icon: LucideIcon; title:
       <div className="space-y-4">{children}</div>
       {hint && <p className="mt-3 text-[11px] leading-relaxed text-clay">{hint}</p>}
     </div>
-  );
-}
-
-/** `group` for a field of several controls: a label would pass every click on its text to the first one. */
-function Field({
-  label,
-  hint,
-  error,
-  required,
-  group,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  error?: string;
-  required?: boolean;
-  group?: boolean;
-  children: ReactNode;
-}) {
-  const Tag = group ? "div" : "label";
-  return (
-    <Tag className="block" role={group ? "group" : undefined} aria-label={group ? label : undefined}>
-      <span className="mb-1.5 flex items-center gap-1 text-[12.5px] font-semibold text-forest">
-        {label}
-        {required && <span className="text-red-500">*</span>}
-      </span>
-      {children}
-      {error ? (
-        <span className="mt-1.5 flex items-center gap-1 text-[11.5px] text-red-600 dark:text-red-300">
-          <TriangleAlert size={12} />
-          {error}
-        </span>
-      ) : hint ? (
-        <span className="mt-1.5 block text-[11px] text-clay">{hint}</span>
-      ) : null}
-    </Tag>
-  );
-}
-
-function Secret({ value, onChange, autoComplete, testId }: { value: string; onChange: (v: string) => void; autoComplete: string; testId?: string }) {
-  const { t } = useTranslation();
-  const [show, setShow] = useState(false);
-  return (
-    <div className="relative">
-      <KeyRound size={16} className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-gold" />
-      <input
-        type={show ? "text" : "password"}
-        dir="ltr"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        autoComplete={autoComplete}
-        data-testid={testId}
-        className={`${inputCls()} ps-11 pe-12`}
-      />
-      <button
-        type="button"
-        onClick={() => setShow((v) => !v)}
-        aria-label={show ? t("admin.account.hide") : t("admin.account.show")}
-        className="absolute end-2.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-xl text-clay transition hover:bg-forest/6 hover:text-forest"
-      >
-        {show ? <EyeOff size={16} /> : <Eye size={16} />}
-      </button>
-    </div>
-  );
-}
-
-function PrimaryBtn({
-  type = "button",
-  disabled,
-  busy,
-  icon: Icon,
-  onClick,
-  testId,
-  children,
-}: {
-  type?: "button" | "submit";
-  disabled?: boolean;
-  busy?: boolean;
-  icon: LucideIcon;
-  onClick?: () => void;
-  testId?: string;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type={type}
-      onClick={onClick}
-      disabled={disabled || busy}
-      data-testid={testId}
-      className="inline-flex items-center gap-2 rounded-2xl bg-linear-to-l from-gold to-gold-soft px-5 py-3 text-sm font-bold text-forest-deep shadow-[0_10px_24px_-12px_rgba(193,150,90,0.9)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none"
-    >
-      {busy ? <Loader2 size={16} className="animate-spin" /> : <Icon size={16} />}
-      {children}
-    </button>
   );
 }
 

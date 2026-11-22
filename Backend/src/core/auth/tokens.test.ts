@@ -232,3 +232,17 @@ describe("ما يُوضَع في الرمز", () => {
     );
   });
 });
+
+describe("حمولةٌ ليست كائناً", () => {
+  /**
+   * `jwt.verify` يُرجع نصّاً حين تكون الحمولة نصّاً لا كائناً. والتحقّق من
+   * الجمهور والمُصدِر يرفض ذلك قبل أن يصل هنا اليوم — والحارس بعده لا يتّكل
+   * على سلوك المكتبة: ما ليس كائناً بمطالباته لا يُقرأ منه شيء.
+   */
+  it.each([["نصّ", "just a string"], ["null", null]])("حمولةٌ %s ⇒ «Malformed token payload»", (_label, value) => {
+    jest.spyOn(jwt, "verify").mockReturnValueOnce(value as never);
+    expect(() => verifyToken("anything", "access")).toThrow(
+      new jwt.JsonWebTokenError("Malformed token payload"),
+    );
+  });
+});

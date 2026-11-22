@@ -13,6 +13,7 @@ import {
   Layers,
   Loader2,
   Megaphone,
+  Paperclip,
   PenLine,
   Search,
   SendHorizontal,
@@ -36,7 +37,9 @@ import {
 } from "../../admin/hooks/admin-hook";
 import { useAudience, useBroadcastMessage, useContacts, useSendMessage } from "../hooks/messages-hook";
 import type { AudienceInput, Contact, ContactRole } from "../api/messages.api";
-import { personName, readDraft, writeDraft } from "../messages-utils";
+import { MAX_FILE_MB, MAX_FILES, personName, readDraft, writeDraft } from "../messages-utils";
+import { useAttachmentDrafts } from "../hooks/use-attachments";
+import { AttachButton, DraftTray } from "./attachments";
 import { RelationChip } from "./messages-ui";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -107,6 +110,8 @@ function ComposeBody({
   const [error, setError] = useState<string | null>(null);
   const send = useSendMessage();
   const broadcast = useBroadcastMessage();
+  // The files go up as they are chosen; closing the window takes them back.
+  const files = useAttachmentDrafts();
   const busy = send.isPending || broadcast.isPending;
 
   // Kept as you type; cleared once sent.
@@ -137,19 +142,31 @@ function ComposeBody({
   const audience = useAudience(audienceQuery, draft.mode === "audience" && canBroadcast);
   const reach = draft.mode === "audience" ? (audience.data?.count ?? 0) : draft.picked.length;
 
+  const hasContent = draft.body.trim().length > 0 || files.ready > 0;
   const canSend =
     !busy &&
-    draft.body.trim().length > 0 &&
+    hasContent &&
+    !files.uploading &&
+    !files.failed &&
     (draft.mode === "direct" ? draft.picked.length > 0 : reach > 0 && !audience.isFetching);
 
   function submit() {
     if (!canSend) {
-      if (!draft.body.trim()) setError(t("msg.compose.needBody"));
+      if (files.uploading) setError(t("msg.files.wait"));
+      else if (files.failed) setError(t("msg.files.fixFailed"));
+      else if (!hasContent) setError(t("msg.compose.needBody"));
       else if (draft.mode === "direct" && !draft.picked.length) setError(t("msg.compose.needRecipient"));
       return;
     }
-    const common = { subject: draft.subject.trim() || undefined, body: draft.body.trim() };
+    const attachmentIds = files.drafts.flatMap((d) => (d.status === "ready" && d.attachment ? [d.attachment.id] : []));
+    const common = {
+      subject: draft.subject.trim() || undefined,
+      body: draft.body.trim(),
+      attachmentIds: attachmentIds.length ? attachmentIds : undefined,
+    };
     const done = (result: SentResult) => {
+      // Sent: the files are the message's now, not drafts to take back.
+      files.take();
       writeDraft(null);
       onSent(result);
     };
@@ -165,7 +182,7 @@ function ComposeBody({
   return (
     <div className="fixed inset-0 z-100 flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true" data-testid="compose-dialog">
       <div className="absolute inset-0 bg-forest-deep/60 backdrop-blur-sm" onMouseDown={() => !busy && onClose()} />
-      <div className="animate-scale-in relative z-10 flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-cream-card shadow-2xl">
+      <div className="animate-scale-in relative z-10 flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-cream-card shadow-2xl">
         {/* header */}
         <div className="forest-glow relative shrink-0 overflow-hidden px-6 py-5 text-cream">
           <div className="dot-matrix pointer-events-none absolute inset-0 opacity-50" />
@@ -228,7 +245,15 @@ function ComposeBody({
             </section>
 
             {/* what */}
-            <section className="flex flex-col p-5">
+            <section
+              className="flex flex-col p-5"
+              onDragOver={(e) => Array.from(e.dataTransfer.types).includes("Files") && e.preventDefault()}
+              onDrop={(e) => {
+                if (!e.dataTransfer.files.length) return;
+                e.preventDefault();
+                files.add(e.dataTransfer.files);
+              }}
+            >
               <p className="mb-3 text-[11.5px] font-bold tracking-wide text-gold">{t("msg.compose.message")}</p>
               <input
                 value={draft.subject}
@@ -247,6 +272,11 @@ function ComposeBody({
                     submit();
                   }
                 }}
+                onPaste={(e) => {
+                  if (!e.clipboardData.files.length) return;
+                  e.preventDefault();
+                  files.add(e.clipboardData.files);
+                }}
                 rows={11}
                 maxLength={5000}
                 placeholder={t("messages.bodyPlaceholder")}
@@ -260,6 +290,20 @@ function ComposeBody({
                   {draft.body.length}/5000
                 </span>
               </p>
+              {/* files: picked, dropped on this side, or pasted */}
+              <div className="mt-3 rounded-2xl border border-dashed border-forest/20 bg-cream/60 p-3" data-testid="compose-files">
+                <DraftTray drafts={files.drafts} onRemove={files.remove} onRetry={files.retry} />
+                <div className="flex items-center gap-3">
+                  <AttachButton drafts={files} disabled={files.drafts.length >= MAX_FILES} className="size-10 border border-forest/15 bg-cream-card" />
+                  <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-clay">
+                    <span className="flex items-center gap-1 font-semibold text-forest">
+                      <Paperclip size={12} className="-rotate-45 text-gold" />
+                      {t("msg.files.attachTitle", { count: files.drafts.length, max: MAX_FILES })}
+                    </span>
+                    {t("msg.files.hint", { max: MAX_FILES, mb: MAX_FILE_MB })}
+                  </span>
+                </div>
+              </div>
             </section>
           </div>
         </div>
@@ -631,11 +675,13 @@ function AudienceBuilder({
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Select
               value={value.facultyId ?? ""}
+              aria-label={t("admin.faculty")}
               onChange={(v) => patch({ facultyId: v || undefined, departmentId: undefined, filiereId: undefined, specializationId: undefined })}
               options={[{ value: "", label: t("admin.proj.allFaculties") }, ...((faculties ?? []) as any[]).map((f) => ({ value: f.id, label: f.name }))]}
             />
             <Select
               value={value.departmentId ?? ""}
+              aria-label={t("admin.department")}
               onChange={(v) => patch({ departmentId: v || undefined, filiereId: undefined, specializationId: undefined })}
               options={[{ value: "", label: t("admin.proj.allDepartments") }, ...deps.map((d) => ({ value: d.id, label: d.name }))]}
             />
@@ -643,16 +689,19 @@ function AudienceBuilder({
               <>
                 <Select
                   value={value.filiereId ?? ""}
+                  aria-label={t("admin.filiere")}
                   onChange={(v) => patch({ filiereId: v || undefined, specializationId: undefined })}
                   options={[{ value: "", label: t("msg.audience.allFilieres") }, ...fils.map((f) => ({ value: f.id, label: f.name }))]}
                 />
                 <Select
                   value={value.specializationId ?? ""}
+                  aria-label={t("admin.specialization")}
                   onChange={(v) => patch({ specializationId: v || undefined })}
                   options={[{ value: "", label: t("messages.allSpecializations") }, ...sps.map((s) => ({ value: s.id, label: s.name }))]}
                 />
                 <Select
                   value={value.level ?? ""}
+                  aria-label={t("admin.specializationLevel")}
                   onChange={(v) => patch({ level: (v || undefined) as AudienceInput["level"] })}
                   options={[
                     { value: "", label: t("msg.audience.allLevels") },
@@ -663,6 +712,7 @@ function AudienceBuilder({
                 />
                 <Select
                   value={value.academicYearId ?? ""}
+                  aria-label={t("admin.academicYear")}
                   onChange={(v) => patch({ academicYearId: v || undefined })}
                   options={[{ value: "", label: t("admin.allYears") }, ...((years ?? []) as any[]).map((y) => ({ value: y.id, label: y.title }))]}
                 />

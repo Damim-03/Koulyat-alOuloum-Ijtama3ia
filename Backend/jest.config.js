@@ -29,6 +29,10 @@ const config = {
   testMatch: ["**/*.test.ts"],
 
   setupFiles: ["<rootDir>/tests/load-env.ts"],
+  // تشغيلٌ واحد لقاعدة الاختبار في كلّ وقت: الثاني يقف ويقول لماذا، بدل أن
+  // يمحو بيانات الأوّل في منتصفه (انظر tests/global-setup.ts).
+  globalSetup: "<rootDir>/tests/global-setup.ts",
+  globalTeardown: "<rootDir>/tests/global-teardown.ts",
 
   testPathIgnorePatterns: ["/node_modules/", "/dist/", "/src/generated/"],
   modulePathIgnorePatterns: ["<rootDir>/dist/"],

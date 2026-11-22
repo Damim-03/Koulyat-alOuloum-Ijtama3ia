@@ -34,6 +34,7 @@ import {
   UserCheck,
   Users,
   type LucideIcon,
+  CalendarX,
 } from "lucide-react";
 
 import type { AdminDefense } from "../../../../types/admin";
@@ -47,6 +48,7 @@ import i18n from "../../../../i18n/i18n";
 import { formatGrade, gradeMention, nameOf, relative } from "../projects/project-utils";
 import { PHASE, byRole, clock, phaseOf } from "./defense-utils";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
+import { stackOnPhone } from "../../../../lib/stack-table";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -163,7 +165,7 @@ export function AdminDefensesPage() {
         <div className="relative">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-4">
-              <span className="grid size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft">
+              <span className="hidden size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft sm:grid">
                 <Gavel size={26} />
               </span>
               <div>
@@ -232,6 +234,7 @@ export function AdminDefensesPage() {
           <ProfessorPicker value={get("professorId")} onChange={(v) => update({ professorId: v })} />
           <Select
             value={get("status")}
+            aria-label={t("admin.statusLabel")}
             onChange={(v) => update({ status: v })}
             options={[
               { value: "", label: t("admin.allDefenseStates") },
@@ -242,6 +245,7 @@ export function AdminDefensesPage() {
           />
           <Select
             value={get("sort") || "dateAsc"}
+            aria-label={t("admin.proj.sortLabel")}
             onChange={(v) => update({ sort: v === "dateAsc" ? "" : v })}
             options={[
               { value: "dateAsc", label: t("admin.defensesPage.sortAsc") },
@@ -341,11 +345,11 @@ export function AdminDefensesPage() {
 
           {pages > 1 && !isError && (
             <nav className="mt-6 flex items-center justify-center gap-1.5">
-              <PagerBtn disabled={page <= 1} onClick={() => update({ page: String(page - 1) })} icon={ChevronRight} />
+              <PagerBtn disabled={page <= 1} onClick={() => update({ page: String(page - 1) })} icon={ChevronRight} label={t("admin.proj.prev")} />
               <span className="px-3 text-sm text-forest tabular-nums">
                 {page} / {pages}
               </span>
-              <PagerBtn disabled={page >= pages} onClick={() => update({ page: String(page + 1) })} icon={ChevronLeft} />
+              <PagerBtn disabled={page >= pages} onClick={() => update({ page: String(page + 1) })} icon={ChevronLeft} label={t("admin.proj.next")} />
             </nav>
           )}
         </div>
@@ -377,7 +381,7 @@ export function AdminDefensesPage() {
                     <li key={p.id} className="flex items-center gap-3 px-4 py-3">
                       <UserAvatar user={p.topic?.professor?.user} size={32} />
                       <div className="min-w-0 flex-1">
-                        <Link to={`/${lang}/admin/projects/${p.id}`} className="line-clamp-1 text-[12.5px] font-semibold text-forest hover:text-gold">
+                        <Link to={`/${lang}/admin/projects/${p.id}`} className="block truncate text-[12.5px] font-semibold text-forest hover:text-gold">
                           {p.topic?.title}
                         </Link>
                         <p className={`text-[10.5px] ${done ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-clay"}`}>
@@ -419,6 +423,7 @@ export function AdminDefensesPage() {
         initialStatus={dialog?.initialStatus}
       />
       <ConfirmDialog
+        icon={confirm?.kind === "cancel" ? CalendarX : Trash2}
         open={!!confirm}
         tone="danger"
         title={confirm?.kind === "cancel" ? t("admin.defensesPage.cancelTitle") : t("admin.proj.deleteDefense")}
@@ -501,10 +506,11 @@ function ViewBtn({ on, onClick, icon: Icon, label }: { on: boolean; onClick: () 
   );
 }
 
-function PagerBtn({ disabled, onClick, icon: Icon }: { disabled: boolean; onClick: () => void; icon: LucideIcon }) {
+function PagerBtn({ disabled, onClick, icon: Icon, label }: { disabled: boolean; onClick: () => void; icon: LucideIcon; label: string }) {
   return (
     <button
       type="button"
+      aria-label={label}
       disabled={disabled}
       onClick={() => {
         onClick();
@@ -745,7 +751,7 @@ function DefenseTable({
   return (
     <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]" data-testid="defenses-table">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[820px] text-start">
+        <table ref={stackOnPhone} className="stack-sm w-full min-w-[820px] text-start">
           <thead>
             <tr className="bg-forest text-cream">
               <th className={th}>{t("admin.defensesPage.col.when")}</th>

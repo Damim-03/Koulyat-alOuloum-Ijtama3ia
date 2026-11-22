@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { professorApi } from "../api/professor.api";
+import { serverMessage } from "../../../lib/api/error";
 import { t } from "i18next";
 import type {
   CreateTopicInput,
@@ -15,15 +16,26 @@ const KEYS = {
   topic: (id: string) => ["professor", "topic", id] as const,
   groups: ["professor", "groups"] as const,
   group: (id: string) => ["professor", "group", id] as const,
-  milestones: (groupId: string) =>
-    ["professor", "milestones", groupId] as const,
   specializations: ["common", "specializations"] as const,
   academicYears: ["common", "academic-years"] as const,
   faculties: ["common", "faculties"] as const,
   studentSearch: (q: string, spec?: string) =>
     ["professor", "student-search", q, spec ?? ""] as const,
   departments: ["common", "departments"] as const,
+  topicQuota: (yearId?: string) => ["professor", "topic-quota", yearId ?? ""] as const,
 };
+
+/** Every count of his topics: a topic sent, moved, resubmitted or deleted changes it. */
+const QUOTA = ["professor", "topic-quota"] as const;
+
+/** His limit for a year — the one given, else the current — and how much of it he has used. */
+export function useProfessorTopicQuota(yearId?: string, enabled = true) {
+  return useQuery({
+    queryKey: KEYS.topicQuota(yearId),
+    queryFn: () => professorApi.topicQuota(yearId),
+    enabled,
+  });
+}
 
 // ── Dashboard ──
 export function useProfessorDashboard() {
@@ -52,13 +64,16 @@ export function useAcademicYears() {
   });
 }
 
-/** Debounce before calling this — every keystroke would otherwise be a query. */
-export function useSearchStudents(q: string, specializationId?: string) {
+/**
+ * Debounce before calling this — every keystroke would otherwise be a query.
+ * A letter is enough; and nothing typed, with a specialization, lists its
+ * students — while the list is open (`enabled`).
+ */
+export function useSearchStudents(q: string, specializationId?: string, enabled = true) {
   return useQuery({
     queryKey: KEYS.studentSearch(q, specializationId),
     queryFn: () => professorApi.searchStudents(q, specializationId),
-    // The endpoint refuses a shorter term anyway; not asking is cheaper.
-    enabled: q.trim().length >= 2,
+    enabled: enabled && (q.trim().length >= 1 || !!specializationId),
     staleTime: 60 * 1000,
   });
 }
@@ -95,9 +110,11 @@ export function useCreateTopic() {
     mutationFn: (data: CreateTopicInput) => professorApi.createTopic(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.topics });
+      qc.invalidateQueries({ queryKey: QUOTA });
       toast.success(t("toast.topicSentToAdmin"));
     },
-    onError: () => toast.error(t("toast.topicSendFailed")),
+    // The server's reason when it gives one — a closed period, the limit reached.
+    onError: (e) => toast.error(serverMessage(e, t("toast.topicSendFailed"))),
   });
 }
 export function useCreateTopicWithGroup() {
@@ -107,6 +124,7 @@ export function useCreateTopicWithGroup() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.topics });
       qc.invalidateQueries({ queryKey: KEYS.dashboard });
+      qc.invalidateQueries({ queryKey: QUOTA });
       toast.success(t("toast.topicProposedWithTeam"));
     },
     onError: (e: unknown) => {
@@ -125,9 +143,10 @@ export function useUpdateTopic() {
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: KEYS.topics });
       qc.invalidateQueries({ queryKey: KEYS.topic(v.id) });
+      qc.invalidateQueries({ queryKey: QUOTA });
       toast.success(t("admin.topicUpdated"));
     },
-    onError: () => toast.error(t("toast.topicUpdateFailed")),
+    onError: (e) => toast.error(serverMessage(e, t("toast.topicUpdateFailed"))),
   });
 }
 export function useDeleteTopic() {
@@ -136,6 +155,7 @@ export function useDeleteTopic() {
     mutationFn: (id: string) => professorApi.deleteTopic(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.topics });
+      qc.invalidateQueries({ queryKey: QUOTA });
       toast.success(t("toast.topicDeleted"));
     },
     onError: () => toast.error(t("toast.topicDeleteFailed")),
@@ -164,8 +184,8 @@ export function useCreateMilestone() {
       data: CreateMilestoneInput;
     }) => professorApi.createMilestone(groupId, data),
     onSuccess: (_d, v) => {
+      // المراحل جزءٌ من استعلام المجموعة نفسه.
       qc.invalidateQueries({ queryKey: KEYS.group(v.groupId) });
-      qc.invalidateQueries({ queryKey: KEYS.milestones(v.groupId) });
       toast.success(t("toast.milestoneAdded"));
     },
     onError: () => toast.error(t("toast.milestoneAddFailed")),

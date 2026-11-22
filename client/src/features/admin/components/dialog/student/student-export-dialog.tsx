@@ -31,7 +31,8 @@ import {
 import { adminApi } from "../../../api/admin.api";
 import { Select } from "../../../../../components/ui/select";
 import { useBodyScrollLock } from "../../../../../hooks/use-body-scroll-lock";
-import { downloadBlob } from "../../../../../lib/download";
+import { blobErrorMessage, downloadBlob } from "../../../../../lib/download";
+import { ChoiceCard } from "../../../../../components/ui/choice-card";
 import { SPEC_LEVEL_KEY, SPEC_LEVELS, type SpecLevel } from "../user/user-form-steps";
 
 /** فلاتر الصفحة لحظة الفتح — ما يراه المسؤول في الجدول هو ما يبدأ منه. */
@@ -225,17 +226,7 @@ function ExportDialog({ onClose, initial }: Props) {
       toast.success(tt("done", { count: count ?? 0 }));
       onClose();
     } catch (e) {
-      // جوابُ الخطأ نفسه blob: يُقرأ نصّاً لتظهر رسالة الخادم.
-      let message = tt("failed");
-      const data = (e as { response?: { data?: unknown } })?.response?.data;
-      if (data instanceof Blob) {
-        try {
-          message = JSON.parse(await data.text()).message ?? message;
-        } catch {
-          /* keep the generic message */
-        }
-      }
-      toast.error(message);
+      toast.error(await blobErrorMessage(e, tt("failed")));
     } finally {
       setBusy(false);
     }
@@ -252,7 +243,7 @@ function ExportDialog({ onClose, initial }: Props) {
     >
       <div onClick={() => !busy && onClose()} className="absolute inset-0 bg-forest-deep/60 backdrop-blur-md" />
 
-      <div className="animate-scale-in relative flex max-h-[94vh] w-full max-w-[min(96vw,1080px)] flex-col overflow-hidden rounded-[28px] border border-gold/20 bg-cream-card shadow-[0_40px_120px_-30px_rgba(10,20,17,0.75)] ring-1 ring-black/5">
+      <div className="animate-scale-in relative flex max-h-[94dvh] w-full max-w-[min(96vw,1080px)] flex-col overflow-hidden rounded-[28px] border border-gold/20 bg-cream-card shadow-[0_40px_120px_-30px_rgba(10,20,17,0.75)] ring-1 ring-black/5">
         {/* ── الرأس ── */}
         <header className="forest-glow relative shrink-0 overflow-hidden px-7 py-5 text-cream">
           <div aria-hidden className="dot-matrix pointer-events-none absolute inset-0 opacity-60" />
@@ -373,14 +364,14 @@ function ExportDialog({ onClose, initial }: Props) {
                   <h4 className="font-serif text-lg font-bold text-forest">{tt("howTitle")}</h4>
                 </div>
                 <div role="radiogroup" aria-label={tt("howTitle")} className="grid gap-2.5">
-                  <LayoutCard
+                  <ChoiceCard
                     icon={Sheet}
                     title={tt("layoutBySpec")}
                     hint={tt("layoutBySpecHint")}
                     on={layout === "bySpecialization"}
                     onPick={() => setLayout("bySpecialization")}
                   />
-                  <LayoutCard
+                  <ChoiceCard
                     icon={Table2}
                     title={tt("layoutSingle")}
                     hint={tt("layoutSingleHint")}
@@ -528,45 +519,5 @@ function Rung({ icon: Icon, label, children }: { icon: LucideIcon; label: string
         {children}
       </label>
     </li>
-  );
-}
-
-function LayoutCard({
-  icon: Icon,
-  title,
-  hint,
-  on,
-  onPick,
-}: {
-  icon: LucideIcon;
-  title: string;
-  hint: string;
-  on: boolean;
-  onPick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={on}
-      onClick={onPick}
-      className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-start transition ${
-        on ? "border-gold/60 bg-gold/10 shadow-[0_8px_20px_-14px_rgba(193,150,90,0.9)]" : "border-forest/12 hover:border-forest/25 hover:bg-forest/3"
-      }`}
-    >
-      <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${on ? "bg-gold/20 text-gold" : "bg-forest/6 text-clay"}`}>
-        <Icon size={19} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <b className="block text-sm text-forest">{title}</b>
-        <span className="mt-0.5 block text-[11.5px] leading-relaxed text-clay">{hint}</span>
-      </span>
-      <span
-        aria-hidden
-        className={`mt-1 grid size-4 shrink-0 place-items-center rounded-full border ${on ? "border-gold bg-gold" : "border-forest/25"}`}
-      >
-        {on && <span className="size-1.5 rounded-full bg-white" />}
-      </span>
-    </button>
   );
 }

@@ -17,6 +17,7 @@ import { useDepartments, useDeleteDepartment } from "../../hooks/admin-hook";
 import type { Department } from "../../../../types/admin";
 import { DepartmentFormDialog } from "../../components/dialog/department/department.form";
 import { CoverBanner } from "../../components/ui/cover-banner";
+import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
 import { None } from "../../../../lib/none";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
@@ -39,6 +40,7 @@ export function AdminDepartmentsPage() {
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Department | null>(null);
+  const [toDelete, setToDelete] = useState<Department | null>(null);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const list = departments ?? [];
@@ -73,8 +75,7 @@ export function AdminDepartmentsPage() {
     setDialogOpen(true);
   }
   function handleDelete(d: Department) {
-    if (confirm(t("admin.confirmDeleteDept", { name: d.name })))
-      deleteDepartment.mutate(d.id);
+    setToDelete(d);
   }
   function openDomains(d: Department) {
     navigate(`/admin/faculties/${d.facultyId}/departments/${d.id}`);
@@ -270,6 +271,19 @@ export function AdminDepartmentsPage() {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         department={editing}
+      />
+      <ConfirmDialog
+        open={!!toDelete}
+        tone="danger"
+        icon={Trash2}
+        title={t("admin.deleteDeptTitle")}
+        message={t("admin.deleteDeptBody", { name: toDelete?.name ?? "" })}
+        confirmLabel={t("admin.delete")}
+        loading={deleteDepartment.isPending}
+        onClose={() => setToDelete(null)}
+        onConfirm={() =>
+          toDelete && deleteDepartment.mutate(toDelete.id, { onSettled: () => setToDelete(null) })
+        }
       />
     </div>
   );

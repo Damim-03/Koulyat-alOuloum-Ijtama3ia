@@ -39,11 +39,28 @@ import {
 import { Select } from "../../../../../components/ui/select";
 import { LoadingArea } from "../../../../../components/ui/loading-area";
 import { personName } from "../../../../../lib/person-name";
+import { TopicExtrasFields } from "../../../../../components/topic/topic-extras-fields";
+import { extrasOf, extrasPayload } from "../../../../../lib/topic-extras";
+import { levelName } from "../../../../../lib/spec-level";
+import { ruleOf, seatsFor } from "../../../../../lib/team-size";
+import { TeamSizeRuled } from "../../../../../components/topic/team-size-ruled";
+import { useProfessorOptions, useTopicTypeOptions } from "../../../../../hooks/use-topic-lookups";
+import { TopicReviewStep, type ReviewLine } from "./topic-review-step";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
- * Edit an assigned topic.
+ * Edit a topic — in one of two ways, from its page:
+ *
+ * - «تعديل الموضوع المسند» (`mode: "assigned"`): the topic and its students —
+ *   its data, then its team, then a review to confirm.
+ * - «تعديل الموضوع» (`mode: "topic"`): the topic alone — its data, then the
+ *   review. Its students are not sent, so they are not touched (the server
+ *   edits the team only when a member list comes with the request).
+ *
+ * The last step is the same in both: what changes, each field from what it
+ * was to what it will be, then the topic as it will be saved; and only then
+ * «تأكيد وحفظ».
  *
  * Rebuilt on the same two-step shape as the create dialog: they ask for the
  * same things, and having them look like two unrelated forms meant every
@@ -55,11 +72,15 @@ import { personName } from "../../../../../lib/person-name";
  */
 
 
+type EditMode = "assigned" | "topic";
+
 interface Props {
   /** The topic being edited — the dialog is open when this is not null. */
   topicId: string | null;
   onClose: () => void;
   onUpdated?: () => void;
+  /** The topic and its students (the default), or the topic alone. */
+  mode?: EditMode;
 }
 
 function fullName(u: any) {
@@ -69,6 +90,7 @@ export function EditAssignedTopicDialog({
   topicId,
   onClose,
   onUpdated,
+  mode = "assigned",
 }: Props) {
   const { data: topic, isLoading } = useAdminTopic(topicId ?? "");
 
@@ -77,7 +99,7 @@ export function EditAssignedTopicDialog({
   // The form mounts only once the topic has arrived, so its fields are seeded
   // by useState initialisers instead of effects that sync after the fact.
   return createPortal(
-    <Shell onClose={onClose}>
+    <Shell onClose={onClose} mode={mode}>
       {isLoading || !topic ? (
         <LoadingArea className="py-16" />
       ) : (
@@ -87,6 +109,7 @@ export function EditAssignedTopicDialog({
           topic={topic as any}
           onClose={onClose}
           onUpdated={onUpdated}
+          mode={mode}
         />
       )}
     </Shell>,
@@ -96,9 +119,11 @@ export function EditAssignedTopicDialog({
 
 function Shell({
   onClose,
+  mode,
   children,
 }: {
   onClose: () => void;
+  mode: EditMode;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -120,10 +145,10 @@ function Shell({
             </div>
             <div>
               <h2 className="font-serif text-lg font-bold">
-                {t("admin.editAssignedTopicTitle")}
+                {t(mode === "topic" ? "admin.editTopicOnlyTitle" : "admin.editAssignedTopicTitle")}
               </h2>
               <p className="text-xs text-cream/70">
-                {t("admin.editAssignedTopicSubtitle")}
+                {t(mode === "topic" ? "admin.editTopicOnlySubtitle" : "admin.editAssignedTopicSubtitle")}
               </p>
             </div>
           </div>
@@ -146,22 +171,29 @@ function EditForm({
   topic,
   onClose,
   onUpdated,
+  mode,
 }: {
   topicId: string;
   topic: any;
   onClose: () => void;
   onUpdated?: () => void;
+  mode: EditMode;
 }) {
   const { t } = useTranslation();
   const updateTopic = useUpdateAssignedTopic();
 
-  const [step, setStep] = useState<1 | 2>(1);
+  // The steps: the topic's data, its team (when it is edited here), then the review.
+  const steps: ("topic" | "students" | "review")[] = mode === "topic" ? ["topic", "review"] : ["topic", "students", "review"];
+  const [stepIdx, setStepIdx] = useState(0);
+  const stepKey = steps[stepIdx]!;
+  const goTo = (key: "topic" | "students") => setStepIdx(steps.indexOf(key));
 
   const [title, setTitle] = useState<string>(() => topic.title ?? "");
   const [description, setDescription] = useState<string>(
     () => topic.description ?? "",
   );
-  const [maxStudents, setMaxStudents] = useState<number>(
+  // The number typed — used only while the year has no number of its own (lib/team-size).
+  const [chosenMax, setChosenMax] = useState<number>(
     () => topic.maxStudents ?? 1,
   );
   const [maxRequests, setMaxRequests] = useState<CapValue>(
@@ -182,6 +214,7 @@ function EditForm({
   const [objectives, setObjectives] = useState<string[]>(
     () => topic.objectives ?? [],
   );
+  const [extras, setExtras] = useState(() => extrasOf(topic));
 
   // The cascade starts empty: every level then lists everything, so the
   // topic's existing specialization stays selectable without pre-walking
@@ -269,6 +302,12 @@ function EditForm({
       }),
     [specs, filiereId, departmentId, facultyId, departments],
   );
+  /** The chosen specialization's level — the topic's — shown beside it. */
+  const chosenLevel = levelName((specs ?? []).find((sp: any) => sp.id === specializationId)?.level, t);
+  // The number of students the administration set for the year and this level — unless the topic,
+  // from before it, has more students than it: then its own number, as it is (nobody is removed).
+  const teamRule = ruleOf(years, academicYearId, (specs ?? []).find((sp: any) => sp.id === specializationId)?.level);
+  const maxStudents = seatsFor(teamRule, chosenMax, { members: seededMembers.length, current: topic.maxStudents ?? 1 });
 
   const professorName = useMemo(() => {
     const p = (professors as any[]).find((x) => x.id === professorId);
@@ -319,12 +358,49 @@ function EditForm({
       specializationId &&
       academicYearId,
   );
-  const canSubmit =
-    step1Valid &&
-    picked.length >= 1 &&
-    picked.length <= maxStudents &&
-    leaderId &&
-    !updateTopic.isPending;
+  const studentsValid = picked.length >= 1 && picked.length <= maxStudents && !!leaderId;
+  // The topic alone is saved without its team; the assigned topic, with it.
+  const canSubmit = step1Valid && (mode === "topic" || studentsValid) && !updateTopic.isPending;
+  const stepValid = stepKey === "topic" ? step1Valid : stepKey === "students" ? studentsValid : canSubmit;
+
+  // ── the review: each field as it will be saved, and what it was ──
+  const { data: typeOptions } = useTopicTypeOptions(specializationId || undefined);
+  const { data: professorOptions } = useProfessorOptions();
+  const coName = (id: string) => {
+    if (!id) return "";
+    const p = (professorOptions ?? []).find((x) => x.id === id);
+    if (p) return personName(p);
+    return topic.coSupervisor?.id === id ? fullName(topic.coSupervisor.user) : "";
+  };
+  const typeName = (id: string) => {
+    if (!id) return "";
+    const ty = (typeOptions ?? []).find((x) => x.id === id);
+    if (ty) return `${ty.code} · ${ty.name}`;
+    return topic.type?.id === id ? `${topic.type.code} · ${topic.type.name}` : "";
+  };
+  const before = extrasOf(topic);
+  const list = (xs: string[]) => xs.filter((x) => x.trim()).join("، ");
+  const cap = (v: CapValue | number | null | undefined) => (v === "" || v == null ? t("admin.maxRequestsNone") : String(v));
+  const line = (key: string, label: string, after: string, was: string): ReviewLine => ({ key, label, after, before: was, changed: after !== was });
+  const topicLines: ReviewLine[] = [
+    line("title", t("admin.topicTitle"), title.trim(), topic.title ?? ""),
+    line("description", t("admin.topicDescription"), description.trim(), (topic.description ?? "").trim()),
+    line("requirements", t("admin.requirements"), list(requirements), list(topic.requirements ?? [])),
+    line("objectives", t("admin.objectives"), list(objectives), list(topic.objectives ?? [])),
+    line("summary", t("topicExtras.summary"), extras.summary.trim(), before.summary.trim()),
+  ];
+  const placementLines: ReviewLine[] = [
+    line("professor", t("admin.supervisor"), professorName, fullName(topic.professor?.user) || topic.professor?.universityEmail || ""),
+    line("coSupervisor", t("topicExtras.coSupervisor"), coName(extras.coSupervisorId), coName(before.coSupervisorId)),
+    line("type", t("topicExtras.type"), typeName(extras.typeId), typeName(before.typeId)),
+    line("specialization", t("admin.specialization"), specName, topic.specialization?.name ?? ""),
+    line("level", t("admin.level"), chosenLevel, levelName(topic.specialization?.level, t)),
+    line("year", t("admin.academicYear"), yearName, topic.academicYear?.title ?? ""),
+    line("maxStudents", t("admin.maxStudents"), String(maxStudents), String(topic.maxStudents ?? "")),
+    line("maxRequests", t("admin.maxRequests"), cap(capPayload(maxRequests)), cap(topic.maxRequests)),
+  ];
+  const seededIds = new Set(seededMembers.map((m) => m.id));
+  const reviewStudents = picked.map((p) => ({ id: p.id, name: p.name, reg: p.reg, leader: p.id === leaderId, added: !seededIds.has(p.id) }));
 
   function submit() {
     setError(null);
@@ -342,8 +418,9 @@ function EditForm({
           academicYearId,
           requirements,
           objectives,
-          memberStudentIds: picked.map((p) => p.id),
-          leaderStudentId: leaderId,
+          // The topic alone: no team sent, so none touched.
+          ...(mode === "topic" ? {} : { memberStudentIds: picked.map((p) => p.id), leaderStudentId: leaderId }),
+          ...extrasPayload(extras, true),
         },
       },
       {
@@ -366,19 +443,19 @@ function EditForm({
       {/* شريط الخطوات المشترك — كما في حوار الإنشاء تماماً. */}
       <div className="shrink-0 border-b border-forest/10 bg-cream px-6 py-4">
         <Stepper
-          steps={[
-            { key: "topic", label: t("admin.stepTopicTitle") },
-            { key: "students", label: t("admin.stepStudentsTitle") },
-          ]}
-          current={step - 1}
-          onGo={(i) => setStep((i + 1) as 1 | 2)}
-          ariaLabel={t("admin.editAssignedTopicTitle")}
+          steps={steps.map((key) => ({
+            key,
+            label: t(key === "topic" ? "admin.stepTopicTitle" : key === "students" ? "admin.stepStudentsTitle" : "admin.stepReview"),
+          }))}
+          current={stepIdx}
+          onGo={(i) => setStepIdx(i)}
+          ariaLabel={t(mode === "topic" ? "admin.editTopicOnlyTitle" : "admin.editAssignedTopicTitle")}
         />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-6 lg:p-7">
         {/* ══════════ STEP 1 ══════════ */}
-        {step === 1 && (
+        {stepKey === "topic" && (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.55fr_1fr]">
             <section className="space-y-5">
               <SectionHead
@@ -411,6 +488,7 @@ function EditForm({
                   label={t("admin.requirements")}
                   note={t("admin.optional")}
                   hint={t("admin.requirementsHint")}
+                  group
                 >
                   <ListInput
                     value={requirements}
@@ -422,6 +500,7 @@ function EditForm({
                   label={t("admin.objectives")}
                   note={t("admin.optional")}
                   hint={t("admin.objectivesHint")}
+                  group
                 >
                   <ListInput
                     value={objectives}
@@ -430,6 +509,15 @@ function EditForm({
                   />
                 </Field>
               </div>
+
+              {/* ── its type, its co-supervisor, its short description ── */}
+              <SectionHead title={t("topicExtras.section")} hint={t("topicExtras.sectionHint")} />
+              <TopicExtrasFields
+                value={extras}
+                onChange={setExtras}
+                specializationId={specializationId || undefined}
+                supervisorId={professorId || undefined}
+              />
             </section>
 
             <section className="space-y-4 rounded-2xl border border-forest/10 bg-cream p-5">
@@ -454,24 +542,20 @@ function EditForm({
                   />
                 </Field>
 
-                <Field label={t("admin.maxStudents")}>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={maxStudents}
-                    onChange={(e) => {
-                      const v = Math.max(
-                        1,
-                        Math.min(10, Number(e.target.value) || 1),
-                      );
-                      setMaxStudents(v);
+                {/* Set by the administration for the level — shown, never typed. */}
+                <Field label={t("admin.maxStudents")} group>
+                  <TeamSizeRuled
+                    rule={teamRule}
+                    seats={maxStudents}
+                    year={yearName}
+                    level={chosenLevel}
+                    admin
+                    onChoose={(v) => {
+                      setChosenMax(v);
                       // تقليص السعة يُلغي المقاعد الزائدة نصّاً وإصابةً.
                       setSeatText((prev) => prev.slice(0, v));
                       setSeatHit((prev) => prev.slice(0, v));
                     }}
-                    className={inputCls}
-                    dir="ltr"
                   />
                 </Field>
 
@@ -550,13 +634,26 @@ function EditForm({
                     ]}
                   />
                 </Field>
+                {/*
+                  The level is the specialization's: shown, never chosen. A text in a
+                  field's frame, not a field — and not in a <label>, which would hand a
+                  click to it — so nothing takes the focus: no ring, no caret.
+                */}
+                <Field label={t("admin.level")} note={t("admin.levelAuto")} group>
+                  <div
+                    data-testid="topic-level"
+                    className={`w-full cursor-default rounded-xl border border-forest/15 bg-forest/5 px-3.5 py-2.5 text-sm select-none ${chosenLevel ? "font-semibold text-forest" : "text-clay"}`}
+                  >
+                    {chosenLevel || t("admin.levelFromSpec")}
+                  </div>
+                </Field>
               </div>
             </section>
           </div>
         )}
 
         {/* ══════════ STEP 2 ══════════ */}
-        {step === 2 && (
+        {stepKey === "students" && (
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_1fr]">
             {/* ── seats ── */}
             <div className="rounded-2xl border border-forest/10 bg-cream p-4">
@@ -616,7 +713,7 @@ function EditForm({
                   </p>
                   <button
                     type="button"
-                    onClick={() => setStep(1)}
+                    onClick={() => goTo("topic")}
                     className="rounded-lg px-2 py-1 text-[11px] font-semibold text-forest/70 transition hover:bg-forest/5 hover:text-forest"
                   >
                     {t("admin.editStep")}
@@ -666,6 +763,17 @@ function EditForm({
           </div>
         )}
 
+        {/* ══════════ THE REVIEW ══════════ */}
+        {stepKey === "review" && (
+          <TopicReviewStep
+            topic={topicLines}
+            placement={placementLines}
+            students={mode === "topic" ? undefined : reviewStudents}
+            untouchedStudents={mode === "topic"}
+            onEdit={goTo}
+          />
+        )}
+
         {error && (
           <p className="mt-5 rounded-xl bg-red-500/10 px-3.5 py-2.5 text-sm text-red-600 dark:text-red-400">
             {error}
@@ -684,10 +792,10 @@ function EditForm({
         </button>
 
         <div className="flex items-center gap-2">
-          {step === 2 && (
+          {stepIdx > 0 && (
             <button
               type="button"
-              onClick={() => setStep(1)}
+              onClick={() => setStepIdx((i) => i - 1)}
               className="inline-flex items-center gap-1.5 rounded-xl border border-forest/15 px-4 py-2.5 text-sm font-medium text-forest transition hover:bg-forest/5"
             >
               <ChevronLeft size={16} className="ltr:rotate-180" />
@@ -695,12 +803,12 @@ function EditForm({
             </button>
           )}
 
-          {step === 1 ? (
+          {stepKey !== "review" ? (
             <button
               type="button"
-              onClick={() => setStep(2)}
-              disabled={!step1Valid}
-              title={!step1Valid ? t("admin.completeStepFirst") : undefined}
+              onClick={() => setStepIdx((i) => i + 1)}
+              disabled={!stepValid}
+              title={!stepValid ? t("admin.completeStepFirst") : undefined}
               className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t("admin.next")}
@@ -718,7 +826,7 @@ function EditForm({
               ) : (
                 <Save size={16} />
               )}
-              {t("admin.saveChanges")}
+              {t("admin.confirmSave")}
             </button>
           )}
         </div>

@@ -33,7 +33,8 @@ export function installMessageEvents(io: Server) {
     socket.on("typing", async (payload: unknown) => {
       const p = payload as { to?: unknown; active?: unknown } | null;
       const to = typeof p?.to === "string" ? p.to : null;
-      if (!to || to === me || to.length > 64) return;
+      // An id's shape (core/validation/id) — anything else is no one's id.
+      if (!to || to === me || !/^[A-Za-z0-9_-]{1,64}$/.test(to)) return;
       try {
         if (!(await allowed(me, to))) return;
         io.to(room.user(to)).emit("typing", { from: me, active: p?.active !== false });

@@ -44,6 +44,7 @@ import { statusChip } from "../../utils/status-styles";
 import { relative } from "../projects/project-utils";
 import { specChain } from "../academic/spec-utils";
 import { otherScriptName, personName } from "../../../../lib/person-name";
+import { stackOnPhone } from "../../../../lib/stack-table";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -172,6 +173,8 @@ export function SpecializationDetailPage() {
 
       <SpecializationFormDialog open={editing} onClose={() => setEditing(false)} specialization={spec} filiereId={spec.filiereId ?? spec.filiere?.id ?? ""} />
       <DeleteNodeDialog
+        kind="spec"
+        trail={[c.faculty?.name ?? "", c.dept?.name ?? "", c.filiere?.name ?? ""]}
         target={removing ? spec : null}
         title={t("admin.struct.deleteTitle.spec")}
         loading={deleteSpec.isPending}
@@ -271,7 +274,7 @@ function StudentsPanel({ specializationId }: { specializationId: string }) {
 
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] table-fixed text-[12.5px]" data-testid="spec-students">
+          <table ref={stackOnPhone} className="stack-sm w-full min-w-[820px] table-fixed text-[12.5px]" data-testid="spec-students">
             <colgroup>
               <col className="w-12" />
               <col className="w-[32%]" />

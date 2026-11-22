@@ -86,10 +86,9 @@ export async function buildProfessorImportTemplate(input: {
   const dep = L("department");
   formatDataRows(ws, PROFESSOR_COLUMNS, {
     textKeys: ["phone", "password", "employeeNumber"],
-    autoFormula: (k, r) =>
-      k === "faculty"
-        ? `IF($${dep}${r}="","",IFERROR(INDEX(${LISTS}!$${COL.depFac}$2:$${COL.depFac}$${depEnd},MATCH($${dep}${r},${LISTS}!$${COL.depLabel}$2:$${COL.depLabel}$${depEnd},0)),"${AUTO_UNKNOWN}"))`
-        : undefined,
+    // الكلية وحدها تُملأ من غيرها: من القسم، بقائمة الأقسام وكليّاتها.
+    autoFormula: (_k, r) =>
+      `IF($${dep}${r}="","",IFERROR(INDEX(${LISTS}!$${COL.depFac}$2:$${COL.depFac}$${depEnd},MATCH($${dep}${r},${LISTS}!$${COL.depLabel}$2:$${COL.depLabel}$${depEnd},0)),"${AUTO_UNKNOWN}"))`,
   });
 
   // ── the hidden helper ──
@@ -123,7 +122,6 @@ export async function buildProfessorImportTemplate(input: {
       verified: `${LISTS}!$${COL.verified}$2:$${COL.verified}$3`,
     },
     { firstNameLatin: "الاسم باللاتينية", lastNameLatin: "اللقب باللاتينية" },
-    true,
   );
   const uni = L("universityEmail");
   const at = `FIND("@",${uni}${FIRST})`;

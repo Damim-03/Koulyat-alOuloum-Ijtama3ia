@@ -88,6 +88,21 @@ async function projectFor(professorId: string, memberCount = 2) {
   return { topic, group, students };
 }
 
+/** طلبٌ حيٌّ لطالبٍ على موضوعٍ منشور — كما يتركه طلبٌ أرسله وما يزال ينتظر. */
+async function pendingRequestFor(studentId: string) {
+  const topic = await topicFor(f.professor2.id, "open");
+  await prisma.groupRequest.create({
+    data: {
+      topicId: topic.id,
+      leaderStudentId: studentId,
+      priority: 1,
+      status: "pending",
+      members: { create: [{ studentId }] },
+    },
+  });
+  return topic;
+}
+
 const milestone = (
   groupId: string,
   deadline: Date,
@@ -322,7 +337,6 @@ describe("لوحة الأستاذ — ما يحتاج انتباهاً", () => {
     await prisma.groupRequest.create({
       data: {
         topicId: asked.id,
-        activeTopicId: asked.id,
         leaderStudentId: leader!.id,
         priority: 1,
         status: "pending",
@@ -490,19 +504,43 @@ describe("البحث عن الطلبة", () => {
       []) as { id: string; registrationNumber: string }[];
 
   /**
-   * حرفٌ واحد يُجاب بقائمةٍ فارغة و**٢٠٠**، لا بـ٤٠٠. وهذا اختيارٌ مقصود
-   * شرحه المتحكّم: المنتقي يبحث مع كل ضغطة مفتاح، فأوّل حرفٍ يُكتب ليس خطأً
-   * يُصاح به — هو ببساطة لا يقدّم شيئاً بعد. توثيقه هنا يمنع «تصحيحه» يوماً
-   * إلى ٤٠٠ فتمتلئ الشاشة بأخطاء أثناء الكتابة العادية.
+   * حرفٌ واحد يكفي: الإدارة والأستاذ يكتبان حرفاً أو حرفين من الاسم واللقب
+   * بأيّ ترتيب (قرار المستخدم). وبلا مصطلحٍ ولا تخصّص: لا شيء — لا تُعرض
+   * الجامعة كلّها؛ وبتخصّصٍ: قائمة طلبته الأحرار ليُختار منها.
    */
-  it("حرفٌ واحد ⇒ 200 بقائمةٍ فارغة، لا خطأً", async () => {
-    const res = await search({ q: "خ" }).expect(200);
-    expect(rows(res.body)).toEqual([]);
-  });
+  it("حرفٌ واحد يجد؛ وبلا مصطلحٍ ولا تخصّص ⇒ 200 فارغة", async () => {
+    const [s] = f.nextStudents(1);
+    const user = (await prisma.student.findUnique({ where: { id: s!.id }, select: { user: { select: { id: true } } } }))!;
+    await prisma.user.update({ where: { id: user.user.id }, data: { firstName: `${TAG}ظ`, lastName: `${TAG}غ` } });
+    expect(rows((await search({ q: "ظ" }).expect(200)).body).map((r) => r.id)).toContain(s!.id);
 
-  it("وبلا مصطلحٍ إطلاقاً ⇒ 200 فارغة كذلك", async () => {
     const res = await search({}).expect(200);
     expect(rows(res.body)).toEqual([]);
+    expect(res.body.total).toBe(0);
+  });
+
+  it("وبالتخصّص وحده ⇒ طلبته الأحرار، بالاسم، ومعهم كم هم", async () => {
+    const res = await search({ specializationId: f.specialization.id }).expect(200);
+    const found = rows(res.body);
+    expect(found.length).toBeGreaterThan(0);
+    expect(res.body.total).toBeGreaterThanOrEqual(found.length);
+    const limited = await search({ specializationId: f.specialization.id, limit: "1" }).expect(200);
+    expect(rows(limited.body)).toHaveLength(1);
+    expect(limited.body.total).toBe(res.body.total);
+    // Another specialization: none of these.
+    const other = await search({ specializationId: "00000000-0000-4000-8000-000000000000" }).expect(200);
+    expect(rows(other.body)).toEqual([]);
+  });
+
+  it("وحروفٌ من الاسم واللقب، بأيّ ترتيب وباللاتينية أيضاً", async () => {
+    const [s] = f.nextStudents(1);
+    const user = (await prisma.student.findUnique({ where: { id: s!.id }, select: { user: { select: { id: true } } } }))!;
+    await prisma.user.update({
+      where: { id: user.user.id },
+      data: { firstName: `${TAG}سليمة`, lastName: `${TAG}بوزيد`, firstNameLatin: `${TAG}Salima`, lastNameLatin: `${TAG}Bouzid` },
+    });
+    for (const q of [`زيد ${TAG}سل`, `${TAG}سل بوز`, `Bouz ${TAG}Sal`])
+      expect(rows((await search({ q }).expect(200)).body).map((r) => r.id)).toContain(s!.id);
   });
 
   it("ورقم التسجيل يجد صاحبه", async () => {
@@ -547,6 +585,15 @@ describe("البحث عن الطلبة", () => {
     expect(rows(res.body).map((r) => r.id)).not.toContain(placed.id);
   });
 
+  /** وكذلك من له طلبٌ حيّ: اقتراحه يُردّ عند الإرسال، فلا يُعرض قبله. */
+  it("وطالبٌ في طلبٍ حيٍّ لا يظهر كذلك", async () => {
+    const [busy] = f.nextStudents(1);
+    await pendingRequestFor(busy!.id);
+
+    const res = await search({ q: busy!.reg }).expect(200);
+    expect(rows(res.body).map((r) => r.id)).not.toContain(busy!.id);
+  });
+
   it("ويُرشَّح بالتخصّص", async () => {
     const [s] = f.nextStudents(1);
 
@@ -563,9 +610,12 @@ describe("البحث عن الطلبة", () => {
     expect(rows(miss.body)).toEqual([]);
   });
 
-  it("ولا يُعيد أكثر من عشرة", async () => {
+  it("ولا يُعيد أكثر من عشرين، أو ممّا طُلب حتى خمسين", async () => {
     const res = await search({ q: `${TAG}-REG` }).expect(200);
-    expect(rows(res.body).length).toBeLessThanOrEqual(10);
+    expect(rows(res.body).length).toBeLessThanOrEqual(20);
+    expect(rows((await search({ q: `${TAG}-REG`, limit: "2" }).expect(200)).body).length).toBeLessThanOrEqual(2);
+    // Over fifty: refused quietly, as any term the picker cannot use.
+    expect(rows((await search({ q: `${TAG}-REG`, limit: "51" }).expect(200)).body)).toEqual([]);
   });
 
   it("ولا يُسرِّب من الطالب إلا ما يلزم لاختياره", async () => {
@@ -634,7 +684,10 @@ describe("اقتراح موضوعٍ مع فريقه", () => {
       include: { members: true },
     }))!;
     expect(req.status).toBe("pending");
-    expect(req.activeTopicId).toBe(topicId); // الحجز
+    // طلبُ الاقتراح معلّقٌ على موضوعه — ويُعدّ عليه.
+    expect(
+      (await prisma.graduationTopic.findUniqueOrThrow({ where: { id: topicId } })).pendingRequestCount,
+    ).toBe(1);
     expect(req.leaderStudentId).toBe(team[0]!.id);
     expect(req.members.map((m) => m.studentId).sort()).toEqual(
       team.map((s) => s.id).sort(),
@@ -690,6 +743,22 @@ describe("اقتراح موضوعٍ مع فريقه", () => {
       payload([free.reg, placed.reg], free.reg),
     ).expect(400);
     expect(res.body.message).toContain(placed.reg);
+  });
+
+  /**
+   * ليلى أرسلت طلباً وما يزال ينتظر، ثمّ يضمّها الأستاذ إلى فريقه. لو قُبل
+   * الاثنان لصار لها مشروعان — فيُردّ الاقتراح بالقاعدة التي يُردّ بها طالبٌ
+   * يضيف زميلاً في فريقٍ آخر.
+   */
+  it("وطالبٌ في طلبٍ حيٍّ ⇒ 400 يسمّيه ويسمّي موضوع طلبه، ولا يُنشأ شيء", async () => {
+    const [laila, free] = f.nextStudents(2);
+    const busyOn = await pendingRequestFor(laila!.id);
+    const body = payload([free!.reg, laila!.reg], free!.reg);
+
+    const res = await propose(body).expect(400);
+    expect(res.body.message).toContain(laila!.reg);
+    expect(res.body.message).toContain(busyOn.title);
+    expect(await prisma.graduationTopic.count({ where: { title: body.title } })).toBe(0);
   });
 
   it("وتخصّصٌ أو سنةٌ غير موجودة ⇒ 404", async () => {

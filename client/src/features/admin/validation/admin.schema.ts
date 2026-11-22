@@ -65,6 +65,10 @@ export const createStudentSchema = z.object({
   email: z.string().email({ error: () => t("validation.emailInvalid") }).optional().or(z.literal("")),
   password: z.string().min(6, { error: () => t("validation.passwordMin") }),
   gender,
+  // المعالج يسأل عنهما ويعرضهما في المراجعة؛ وما لا يذكره المخطّط يحذفه
+  // zod صامتاً، فكانت صورة الطالب وهاتفه يُرفعان ويُكتبان ثمّ لا يصلان.
+  phone: z.string().trim().optional().or(z.literal("")),
+  avatarUrl: z.string().trim().max(2048).optional().or(z.literal("")),
   registrationNumber: z.string().trim().min(1, { error: () => t("validation.regNumberRequired") }),
   specializationId: z.string().uuid({ error: () => t("validation.pickSpecialization") }),
   academicYearId: z.string().uuid({ error: () => t("validation.pickYear") }),
@@ -109,6 +113,10 @@ export const createProfessorSchema = z.object({
   gender,
   universityEmail,
   departmentId: z.string().uuid({ error: () => t("admin.selectDepartment") }),
+  // كالخلفية: الرتبة والصفة وسومٌ اختيارية. غيابهما هنا كان يُسقط ما كُتب
+  // في المعالج — يُعرض في المراجعة ولا يُرسل.
+  grade: z.array(z.string().trim().min(1)).max(20).optional(),
+  tags: z.array(z.string().trim().min(1)).max(20).optional(),
   isVerified: z.boolean().optional(),
 });
 export type CreateProfessorInput = z.infer<typeof createProfessorSchema>;
@@ -128,6 +136,8 @@ export type UpdateProfessorInput = z.infer<typeof updateProfessorSchema>;
 
 export const facultySchema = z.object({
   name: z.string().trim().min(1, { error: () => t("validation.nameRequired") }),
+  /** Optional: the name in Latin letters, for the topics list in English or French. */
+  nameLatin: z.string().trim().max(191).optional().or(z.literal("")),
   code: z.string().trim().min(1, { error: () => t("validation.codeRequired") }),
   /** Optional: empty means no cover. */
   coverUrl: z.string().trim().optional().or(z.literal("")),

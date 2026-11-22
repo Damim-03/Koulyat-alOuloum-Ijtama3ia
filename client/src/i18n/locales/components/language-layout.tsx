@@ -7,6 +7,7 @@ import {
   getLangDir,
   type LangCode,
 } from "../../i18n";
+import { SessionGuard } from "../../../components/session/session-guard";
 
 // Reads :lang from the URL, syncs i18n + <html lang/dir>,
 // and redirects invalid language codes to the default.
@@ -30,5 +31,14 @@ export function LanguageLayout() {
   // in the right locale — and cannot see that those also read the language;
   // remounting is what makes every such value follow it. Keyed by the language
   // i18n has actually switched to, not the URL: the URL can change first.
-  return <Outlet key={i18n.language} />;
+  //
+  // The session guard sits here, above every page, not inside the dashboard:
+  // ending a session signs the store out, ProtectedRoute then redirects to the
+  // login page — and a guard inside the dashboard unmounted with it, taking
+  // the "your session ended" dialog along before anyone could see it.
+  return (
+    <SessionGuard>
+      <Outlet key={i18n.language} />
+    </SessionGuard>
+  );
 }

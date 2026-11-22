@@ -4,12 +4,14 @@ import {
   studentLoginSchema,
   professorLoginSchema,
   adminLoginSchema,
+  adminTwoFactorSchema,
   refreshTokenSchema,
 } from "./auth.validation";
 import {
   studentLoginService,
   professorLoginService,
   adminLoginService,
+  adminTwoFactorLoginService,
   refreshTokenService,
   getMeService,
   logoutService,
@@ -20,9 +22,12 @@ import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { HTTPSTATUS } from "../../core/config/http/http.config";
 import {
   clearRefreshCookie,
+  ensureDeviceId,
   readRefreshCookie,
   setRefreshCookie,
 } from "../../core/auth/refresh-cookie";
+import { tr } from "../../core/i18n";
+import { deviceOf } from "../../core/auth/device";
 
 const handleLogin =
   (schema: any, service: any) =>
@@ -31,16 +36,18 @@ const handleLogin =
     if (!parsed.success) {
       return next(
         new BadRequestException(
-          "Validation error",
+          tr("request.validation"),
           ErrorCodeEnum.VALIDATION_ERROR,
         ),
       );
     }
     try {
-      const result = await service(parsed.data);
+      // The browser's own id rides along, to tell a known device from a new one.
+      const result = await service(parsed.data, { ...deviceOf(req), deviceId: ensureDeviceId(req, res) });
       // The web client keeps the refresh token in this httpOnly cookie, never
       // in page storage. The body copy remains for non-browser clients.
-      setRefreshCookie(res, result.refreshToken);
+      // (An administrator's first step has none: it asks for the code.)
+      if (result.refreshToken) setRefreshCookie(res, result.refreshToken);
       return res.status(HTTPSTATUS.OK).json({
         message: "Login successful",
         ...result,
@@ -63,14 +70,14 @@ export const refreshTokenController = async (
   if (!token) {
     return next(
       new BadRequestException(
-        "Refresh token is required",
+        tr("auth.refreshRequired"),
         ErrorCodeEnum.VALIDATION_ERROR,
       ),
     );
   }
 
   try {
-    const { accessToken, refreshToken } = await refreshTokenService(token);
+    const { accessToken, refreshToken } = await refreshTokenService(token, deviceOf(req));
     // The rotated token goes back the way the old one came: a cookie stays a
     // cookie, so page scripts never see one in a response body.
     if (refreshToken) setRefreshCookie(res, refreshToken);
@@ -100,6 +107,11 @@ export const adminLoginController = handleLogin(
   adminLoginService,
 );
 
+export const adminTwoFactorLoginController = handleLogin(
+  adminTwoFactorSchema,
+  adminTwoFactorLoginService,
+);
+
 export const getMeController = async (
   req: Request,
   res: Response,
@@ -125,7 +137,7 @@ export const logoutController = async (
     const token = header?.startsWith("Bearer ")
       ? header.substring(7).trim()
       : undefined;
-    const result = await logoutService(token, readRefreshCookie(req));
+    const result = await logoutService(token, readRefreshCookie(req), deviceOf(req));
     clearRefreshCookie(res);
     return res.status(HTTPSTATUS.OK).json(result);
   } catch (error) {
@@ -139,7 +151,7 @@ export const logoutAllController = async (
   next: NextFunction,
 ) => {
   try {
-    const result = await logoutAllService(req.user!.userId);
+    const result = await logoutAllService(req.user!.userId, deviceOf(req));
     clearRefreshCookie(res);
     return res.status(HTTPSTATUS.OK).json(result);
   } catch (error) {

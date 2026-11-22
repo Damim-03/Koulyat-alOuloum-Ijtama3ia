@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -10,6 +10,7 @@ import {
   SearchX,
   ChevronDown,
   RefreshCw,
+  Lightbulb,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { playCue } from "../../lib/sound";
@@ -43,65 +44,58 @@ export interface ErrorInfo {
   detail?: string;
 }
 
+/**
+ * لكلّ نوعٍ نبرته: لونٌ يُعرف به قبل أن يُقرأ — الخطأ الذي يمنع أحمر،
+ * والتصحيح المطلوب ذهبيّ، والاتصال أخضر هادئ، والمفقود بلون الطين.
+ */
+type Tone = { emblem: string; glow: string; text: string; wash: string; line: string };
+const TONES: Record<"brick" | "gold" | "sage" | "clay", Tone> = {
+  brick: {
+    emblem: "from-[#d66a4f] to-[#8c301d] text-white",
+    glow: "shadow-[0_12px_28px_-10px_rgba(168,68,45,0.8)]",
+    text: "text-brick",
+    wash: "from-brick/14",
+    line: "from-brick via-[#d66a4f] to-brick",
+  },
+  gold: {
+    emblem: "from-gold-soft to-gold text-[var(--t-brand-deep)]",
+    glow: "shadow-[0_12px_28px_-10px_rgba(193,150,90,0.85)]",
+    text: "text-gold",
+    wash: "from-gold/16",
+    line: "from-gold via-gold-soft to-gold",
+  },
+  sage: {
+    emblem: "from-[#6fa394] to-[#3d6b5f] text-white",
+    glow: "shadow-[0_12px_28px_-10px_rgba(74,112,102,0.85)]",
+    text: "text-sage",
+    wash: "from-sage/16",
+    line: "from-sage via-soft-sage to-sage",
+  },
+  clay: {
+    emblem: "from-[#8a8173] to-[#5a5348] text-white",
+    glow: "shadow-[0_12px_28px_-10px_rgba(107,99,87,0.8)]",
+    text: "text-clay",
+    wash: "from-clay/14",
+    line: "from-clay via-clay/60 to-clay",
+  },
+};
+
 const META: Record<
   ErrorKind,
   {
     titleKey: string;
     suggestionKey: string;
-    icon: React.ComponentType<{ size?: number; className?: string }>;
-    tint: string; // icon chip
-    accent: string; // left accent + button
+    icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+    tone: Tone;
   }
 > = {
-  validation: {
-    titleKey: "errorDialog.validationTitle",
-    suggestionKey: "errorDialog.validationBody",
-    icon: AlertTriangle,
-    tint: "bg-amber-100 text-amber-600",
-    accent: "border-amber-400",
-  },
-  permission: {
-    titleKey: "errorDialog.permissionTitle",
-    suggestionKey: "errorDialog.permissionBody",
-    icon: ShieldAlert,
-    tint: "bg-red-100 text-red-500",
-    accent: "border-red-400",
-  },
-  conflict: {
-    titleKey: "errorDialog.conflictTitle",
-    suggestionKey: "errorDialog.conflictBody",
-    icon: Ban,
-    tint: "bg-orange-100 text-orange-600",
-    accent: "border-orange-400",
-  },
-  notFound: {
-    titleKey: "errorDialog.notFoundTitle",
-    suggestionKey: "errorDialog.notFoundBody",
-    icon: SearchX,
-    tint: "bg-clay/15 text-clay",
-    accent: "border-clay",
-  },
-  network: {
-    titleKey: "errorDialog.networkTitle",
-    suggestionKey: "errorDialog.networkBody",
-    icon: WifiOff,
-    tint: "bg-sky-100 text-sky-600",
-    accent: "border-sky-400",
-  },
-  server: {
-    titleKey: "errorDialog.serverTitle",
-    suggestionKey: "errorDialog.serverBody",
-    icon: ServerCrash,
-    tint: "bg-red-100 text-red-500",
-    accent: "border-red-400",
-  },
-  unknown: {
-    titleKey: "errorDialog.unknownTitle",
-    suggestionKey: "errorDialog.unknownBody",
-    icon: AlertTriangle,
-    tint: "bg-red-100 text-red-500",
-    accent: "border-red-400",
-  },
+  validation: { titleKey: "errorDialog.validationTitle", suggestionKey: "errorDialog.validationBody", icon: AlertTriangle, tone: TONES.gold },
+  permission: { titleKey: "errorDialog.permissionTitle", suggestionKey: "errorDialog.permissionBody", icon: ShieldAlert, tone: TONES.brick },
+  conflict: { titleKey: "errorDialog.conflictTitle", suggestionKey: "errorDialog.conflictBody", icon: Ban, tone: TONES.brick },
+  notFound: { titleKey: "errorDialog.notFoundTitle", suggestionKey: "errorDialog.notFoundBody", icon: SearchX, tone: TONES.clay },
+  network: { titleKey: "errorDialog.networkTitle", suggestionKey: "errorDialog.networkBody", icon: WifiOff, tone: TONES.sage },
+  server: { titleKey: "errorDialog.serverTitle", suggestionKey: "errorDialog.serverBody", icon: ServerCrash, tone: TONES.brick },
+  unknown: { titleKey: "errorDialog.unknownTitle", suggestionKey: "errorDialog.unknownBody", icon: AlertTriangle, tone: TONES.brick },
 };
 
 interface Props {
@@ -113,6 +107,13 @@ interface Props {
   children?: ReactNode;
 }
 
+/**
+ * بطاقة الخطأ — تنزلق من زاوية الشاشة كإشعار، ولا توقف العمل.
+ *
+ * وتُغلق وحدها بعد مدّةٍ يراها المستعمل: شريطٌ في أسفلها يتناقص، ويتوقّف ما
+ * دام المؤشّر عليها — فالبطاقة التي تُقرأ لا تختفي من تحت العين. والشريط
+ * نفسه هو المؤقّت (نهاية حركته تُغلقها)، فلا يفترق ما يُرى عمّا يحدث.
+ */
 export function ErrorDialog({
   open,
   error,
@@ -123,13 +124,8 @@ export function ErrorDialog({
   const { t } = useTranslation();
   const [showDetail, setShowDetail] = useState(false);
   // Entry animates purely in CSS on mount; `leaving` only drives the exit,
-  // which is always triggered by a user action or the dwell timer.
+  // which is always triggered by a user action or the dwell bar.
   const [leaving, setLeaving] = useState(false);
-  const hovering = useRef(false);
-  // `window.setTimeout` لا `setTimeout` المجرّدة: الأولى تُرجع رقماً، والثانية
-  // صارت تُرجع `NodeJS.Timeout` بعد أن دخلت `@types/node` في نطاق الواجهة
-  // (تبعيةً لأنواع مولِّد رمز الاستجابة). والمرجع يتبع ما يملؤه.
-  const timer = useRef<number | null>(null);
 
   const dismiss = useCallback(() => {
     setLeaving(true);
@@ -145,26 +141,16 @@ export function ErrorDialog({
     // error-dialog cue.
     playCue(error.kind === "network" ? "networkError" : "errorDialog");
 
-    const tick = () => {
-      timer.current = window.setTimeout(() => {
-        if (hovering.current) return tick(); // hold while pointed at
-        dismiss();
-      }, DWELL_MS);
-    };
-    tick();
-
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && dismiss();
     window.addEventListener("keydown", onKey);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-      window.removeEventListener("keydown", onKey);
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, [open, error, dismiss]);
 
   if (!open || !error) return null;
 
   const meta = META[error.kind] ?? META.unknown;
   const Icon = meta.icon;
+  const tone = meta.tone;
   const title = error.title ?? t(meta.titleKey);
   const suggestion = error.suggestion ?? t(meta.suggestionKey);
 
@@ -172,32 +158,30 @@ export function ErrorDialog({
     <div
       role="alert"
       aria-live="assertive"
-      onMouseEnter={() => (hovering.current = true)}
-      onMouseLeave={() => (hovering.current = false)}
       /* Top-left, sliding in from off-screen like a console notification.
          Only transform/opacity animate, so it stays on the compositor. */
-      className={`fixed top-4 left-4 z-2147483647 w-[min(24rem,calc(100vw-2rem))] will-change-[transform,opacity] ${
+      className={`group fixed top-4 left-4 z-2147483647 w-[min(26rem,calc(100vw-2rem))] font-body will-change-[transform,opacity] ${
         leaving ? "toast-leave" : "toast-enter"
       }`}
     >
-      <div
-        className={`overflow-hidden rounded-2xl border border-forest/10 border-r-4 ${meta.accent} bg-cream-card shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-sm`}
-      >
-        <div className="flex items-start gap-3 p-4">
-          <div
-            className={`grid size-9 shrink-0 place-items-center rounded-full ${meta.tint}`}
-          >
-            <Icon size={18} />
+      <div className="relative overflow-hidden rounded-[22px] border border-gold/20 bg-cream-card shadow-[0_28px_70px_-18px_rgba(4,10,8,0.6)] ring-1 ring-black/5">
+        <div aria-hidden className={`absolute inset-x-0 top-0 h-[3px] bg-linear-to-l ${tone.line}`} />
+        <div aria-hidden className={`pointer-events-none absolute inset-x-0 top-0 h-28 bg-linear-to-b ${tone.wash} to-transparent`} />
+
+        <div className="relative flex items-start gap-3.5 p-4 pt-5">
+          <div aria-hidden className="relative grid size-12 shrink-0 place-items-center">
+            <span className={`animate-halo absolute inset-0 rounded-2xl bg-linear-to-br opacity-40 ${tone.emblem}`} />
+            <span className={`relative grid size-11 place-items-center rounded-2xl bg-linear-to-br ring-1 ring-white/20 ${tone.emblem} ${tone.glow}`}>
+              <Icon size={21} strokeWidth={2.2} />
+            </span>
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="font-serif text-sm font-bold text-forest">
-              {title}
-            </h3>
-            <p className="mt-0.5 text-[13px] leading-relaxed text-forest/90">
-              {error.message}
-            </p>
+            <p className={`text-[10.5px] font-bold tracking-[0.16em] ${tone.text}`}>{t("alert.kickerError")}</p>
+            <h3 className="mt-0.5 font-serif text-[16px] leading-snug font-bold text-forest">{title}</h3>
+            <p className="mt-1 text-[13.5px] leading-relaxed text-forest/85">{error.message}</p>
             {suggestion && (
-              <p className="mt-1.5 text-[11px] leading-relaxed text-clay">
+              <p className="mt-2.5 flex items-start gap-2 rounded-xl bg-cream-2 px-3 py-2 text-[12px] leading-relaxed text-clay ring-1 ring-forest/8">
+                <Lightbulb size={14} className={`mt-0.5 shrink-0 ${tone.text}`} />
                 {suggestion}
               </p>
             )}
@@ -209,14 +193,13 @@ export function ErrorDialog({
                   onClick={() => setShowDetail((s) => !s)}
                   className="inline-flex items-center gap-1 text-[11px] font-medium text-clay transition hover:text-forest"
                 >
-                  <ChevronDown
-                    size={12}
-                    className={`transition ${showDetail ? "rotate-180" : ""}`}
-                  />{t("errorDialog.technicalDetails")}</button>
+                  <ChevronDown size={12} className={`transition ${showDetail ? "rotate-180" : ""}`} />
+                  {t("errorDialog.technicalDetails")}
+                </button>
                 {showDetail && (
                   <pre
                     dir="ltr"
-                    className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap rounded-lg bg-forest-deep/90 p-2.5 text-left text-[10px] leading-relaxed text-cream/90"
+                    className="mt-1.5 max-h-32 overflow-auto rounded-lg bg-forest-deep/90 p-2.5 text-left text-[10px] leading-relaxed whitespace-pre-wrap text-cream/90"
                   >
                     {error.detail}
                   </pre>
@@ -227,24 +210,38 @@ export function ErrorDialog({
           <button
             onClick={dismiss}
             aria-label={t("admin.close")}
-            className="grid size-7 shrink-0 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
+            className="grid size-8 shrink-0 place-items-center rounded-xl text-clay ring-1 ring-forest/10 transition hover:bg-forest/5 hover:text-forest"
           >
             <X size={16} />
           </button>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-forest/10 px-4 py-2.5">
-            {onRetry && (
-              <button
-                onClick={onRetry}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-forest/20 px-3 py-1.5 text-xs font-semibold text-forest transition hover:bg-forest/5"
-              >
-                <RefreshCw size={13} />{t("errorDialog.retry")}</button>
-            )}
+        <div className="relative flex justify-end gap-2 border-t border-forest/8 bg-cream-2/60 px-4 py-3">
+          {onRetry && (
             <button
-              onClick={dismiss}
-              className="rounded-lg bg-forest px-4 py-1.5 text-xs font-semibold text-cream transition hover:bg-forest-deep"
-          >{t("errorDialog.ok")}</button>
+              onClick={onRetry}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-forest/15 bg-cream-card px-3.5 py-2 text-xs font-bold text-forest transition hover:bg-forest/5"
+            >
+              <RefreshCw size={13} />
+              {t("errorDialog.retry")}
+            </button>
+          )}
+          <button
+            onClick={dismiss}
+            className="rounded-xl bg-linear-to-b from-[#34574e] to-[#1a312d] px-5 py-2 text-xs font-bold text-[#f5edda] shadow-[0_8px_18px_-8px_rgba(26,49,45,0.9)] transition hover:brightness-115"
+          >
+            {t("errorDialog.ok")}
+          </button>
+        </div>
+
+        {/* المدّة الباقية — تتوقّف ما دام المؤشّر على البطاقة، وبنهايتها تُغلق. */}
+        <div className="h-1 bg-forest/6">
+          <div
+            key={`${error.kind}|${error.message}`}
+            onAnimationEnd={dismiss}
+            style={{ animationDuration: `${DWELL_MS}ms` }}
+            className={`animate-dwell h-full bg-linear-to-l ${tone.line} group-hover:[animation-play-state:paused] ltr:origin-left rtl:origin-right`}
+          />
         </div>
       </div>
     </div>,
@@ -273,11 +270,12 @@ export function toErrorInfo(err: any): ErrorInfo {
     data.message || data.error || err?.message;
   const code: string | undefined = data.errorCode;
 
-  // Field errors (e.g. "Validation error → email: Invalid email").
+  // Field errors (e.g. "Validation error → email: Invalid email"). And the
+  // server's own words, when another language replaced them on screen.
   const detail = [
     code && `code: ${code}`,
     status && `status: ${status}`,
-    serverMsg,
+    data.originalMessage ?? serverMsg,
   ]
     .filter(Boolean)
     .join("\n");
@@ -292,7 +290,8 @@ export function toErrorInfo(err: any): ErrorInfo {
 
   return {
     kind,
-    // Prefer the server's Arabic message when present, else a per-kind default.
+    // The server's message — already in the interface language (lib/api/localize) —
+    // else a per-kind default.
     message: serverMsg || translate(META[kind].titleKey),
     detail: detail || undefined,
   };

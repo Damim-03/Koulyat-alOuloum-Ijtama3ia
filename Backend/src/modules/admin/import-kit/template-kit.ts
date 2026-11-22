@@ -159,8 +159,19 @@ export function validator<K extends string>(ws: ExcelJS.Worksheet, range: (k: K)
   const validations = (
     ws as unknown as { dataValidations: { add(address: string, v: ExcelJS.DataValidation): void } }
   ).dataValidations;
+  // «تحذير» لا «إيقاف»: الإيقاف كان يردّ لصق عمودٍ من أرقام التسجيل — في WPS
+  // وجداول Google اللذين يطبّقان القاعدة على اللصق، وفي Excel حين يُلصق داخل
+  // الخانة — ويردّ أرقاماً بأرقامٍ عربية أو بمسافات يقبلها الخادم وينظّفها.
+  // والخادم يفحص كلّ صفٍّ عند الرفع بتقريرٍ مفصّل؛ فالنموذج هنا مرشدٌ لا
+  // حارس: ينبّه، والخانة الخاطئة تبقى حمراء بالتنسيق الشرطيّ.
   return (k: K, v: ExcelJS.DataValidation) =>
-    validations.add(range(k), { allowBlank: true, showErrorMessage: true, showInputMessage: true, ...v });
+    validations.add(range(k), {
+      allowBlank: true,
+      showErrorMessage: true,
+      showInputMessage: true,
+      errorStyle: "warning",
+      ...v,
+    });
 }
 
 /** قائمةٌ تبدأ من صفّ «تصفية» وتمتدّ بعدده — والعدد لا يقلّ عن واحد. */
@@ -175,9 +186,8 @@ export function personalValidations<K extends string>(
   L: (k: K | PersonKey) => string,
   lists: { gender: string; verified: string },
   headers: Record<"firstNameLatin" | "lastNameLatin", string>,
-  /** الطلبة والأساتذة: اللاتينيّ إلزاميّ. */
-  latinRequired = false,
 ): void {
+  // اللاتينيّ إلزاميّ للطلبة والأساتذة معاً — كقاعدة الخادم (checkPerson).
   for (const [k, example] of [["firstNameLatin", "Youcef"], ["lastNameLatin", "HAMADI"]] as const) {
     // الطول وحده قاعدةٌ مانعة؛ الحروف اللاتينية تلوينٌ لا منع (أدناه)،
     // والخادم هو من يفرضها.
@@ -188,7 +198,7 @@ export function personalValidations<K extends string>(
       errorTitle: "اسمٌ طويل",
       error: "60 حرفاً على الأكثر.",
       promptTitle: headers[k],
-      prompt: `${latinRequired ? "إلزامي" : "اختياري"}. بالحروف اللاتينية، مثل ${example}. الحرف العربي يُلوّن الخانة بالأحمر.`,
+      prompt: `إلزامي. بالحروف اللاتينية، مثل ${example}. الحرف العربي يُلوّن الخانة بالأحمر.`,
     });
   }
   dv("gender", {

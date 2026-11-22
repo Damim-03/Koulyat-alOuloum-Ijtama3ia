@@ -19,6 +19,7 @@ import request from "supertest";
 import app from "../../src/app";
 import ExcelJS from "exceljs";
 import { prisma } from "../../src/core/prisma/client";
+import { tr } from "../../src/core/i18n";
 import {
   seed,
   teardown,
@@ -155,7 +156,7 @@ describe("POST /api/admin/defenses", () => {
         .post("/api/admin/defenses")
         .send({ groupId: group.id, date: soon(9), room: `${TAG}-B3` }),
     );
-    expect(res.body.message).toMatch(/already scheduled|مجدولة/i);
+    expect(res.body.message).toBe(tr("defense.alreadyScheduled"));
   });
 
   it("ومشروعٌ غير موجود ⇒ 404", async () => {

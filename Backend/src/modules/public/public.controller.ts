@@ -10,6 +10,7 @@ import {
   listPublicDepartmentsService,
   getPublicTopicFiltersService,
 } from "./public.service";
+import { tr } from "../../core/i18n";
 
 export const listPublicTopicsController = async (
   req: Request,
@@ -20,7 +21,7 @@ export const listPublicTopicsController = async (
   if (!parsed.success) {
     return next(
       new BadRequestException(
-        "Validation error",
+        tr("request.validation"),
         ErrorCodeEnum.VALIDATION_ERROR,
       ),
     );

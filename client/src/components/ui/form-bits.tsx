@@ -19,12 +19,20 @@ export function SectionHead({ title, hint }: { title: string; hint: string }) {
   );
 }
 
-/** A labelled control, optionally flagged as optional and explained below. */
+/**
+ * A labelled control, optionally flagged as optional and explained below.
+ *
+ * `group` for a field of several controls (a list of rows, a team picker): a
+ * <label> passes every click on its text to its first control — there the
+ * first row's remove button, so clicking the field's name or its hint removed
+ * an item without a word.
+ */
 export function Field({
   label,
   note,
   hint,
   error,
+  group,
   children,
 }: {
   label: string;
@@ -32,10 +40,12 @@ export function Field({
   hint?: string;
   /** Validation message; it replaces the hint rather than stacking on it. */
   error?: string;
+  group?: boolean;
   children: ReactNode;
 }) {
+  const Tag = group ? "div" : "label";
   return (
-    <label className="block">
+    <Tag className="block" role={group ? "group" : undefined} aria-label={group ? label : undefined}>
       <span className="mb-1.5 flex items-baseline justify-between gap-2">
         <span className="text-[11px] font-medium text-clay">{label}</span>
         {note && (
@@ -56,7 +66,7 @@ export function Field({
           </span>
         )
       )}
-    </label>
+    </Tag>
   );
 }
 

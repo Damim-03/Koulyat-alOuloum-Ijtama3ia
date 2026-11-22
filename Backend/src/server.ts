@@ -15,6 +15,7 @@ import { config, isAllowedOrigin } from "./core/config/app.config";
 import { setRealtimeServer } from "./core/realtime/realtime";
 import { installSocketSecurity } from "./core/realtime/socket-auth";
 import { installMessageEvents } from "./modules/messages/messages.socket";
+import { warnAboutDemoAccounts } from "./core/security/startup-checks";
 
 const server = http.createServer(app);
 
@@ -46,6 +47,18 @@ const PORT = config.PORT;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT} in ${config.NODE_ENV}`);
   console.log("Socket.IO ready (authenticated handshake required)");
+  // What a deployer most often gets wrong, in one place to check.
+  console.log(`Allowed origins: ${config.CORS_ORIGINS.join(", ") || "(none)"}`);
+  console.log(`Trusted proxy hops: ${config.TRUST_PROXY_HOPS}`);
+  console.log(`Refresh cookie Secure: ${config.AUTH_COOKIE_SECURE}`);
+  console.log(
+    `Administrators: two-step verification ${config.REQUIRE_ADMIN_2FA ? "required" : "OPTIONAL"}, ` +
+      `sessions ${config.ADMIN_SESSION_HOURS}h max / ${config.ADMIN_IDLE_MINUTES} min idle`,
+  );
+  if (config.IS_PRODUCTION && !config.REQUIRE_ADMIN_2FA) {
+    console.warn("WARNING: REQUIRE_ADMIN_2FA=false — administrators can sign in with a password alone.");
+  }
+  void warnAboutDemoAccounts();
 });
 
 export { server };

@@ -522,6 +522,7 @@ export function AcademicStructureWizard({
                     className="md:col-span-5"
                   >
                     <RefSelect
+                      label={t("admin.department")}
                       value={d.departmentRef}
                       onChange={(v) =>
                         patch(setDomains, d.key, { departmentRef: v })
@@ -614,6 +615,7 @@ export function AcademicStructureWizard({
                       className="md:col-span-4"
                     >
                       <RefSelect
+                        label={t("admin.department")}
                         value={f.departmentRef}
                         onChange={(v) =>
                           patch(setFilieres, f.key, {
@@ -629,6 +631,7 @@ export function AcademicStructureWizard({
                       className="md:col-span-3"
                     >
                       <RefSelect
+                        label={t("admin.domainLabel")}
                         value={f.domainRef}
                         onChange={(v) =>
                           patch(setFilieres, f.key, { domainRef: v })
@@ -671,6 +674,7 @@ export function AcademicStructureWizard({
                         <Labeled label={t("admin.level")} className="shrink-0">
                           <Select
                             value={s.level}
+                            aria-label={t("admin.level")}
                             onChange={(v) =>
                               patchSpec(setFilieres, f.key, i, {
                                 level: v as StructureSpecialization["level"],
@@ -859,11 +863,14 @@ function Labeled({
 }
 
 function RefSelect({
+  label,
   value,
   onChange,
   options,
   emptyLabel,
 }: {
+  /** The heading above it is a plain span, so the control is named here. */
+  label: string;
   value: string;
   onChange: (v: string) => void;
   options: { ref: string; label: string; isExisting: boolean }[];
@@ -873,6 +880,7 @@ function RefSelect({
   return (
     <Select
       value={value}
+      aria-label={label}
       onChange={onChange}
       options={[
         ...(emptyLabel ? [{ value: "", label: emptyLabel }] : []),

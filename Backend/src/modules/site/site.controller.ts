@@ -14,6 +14,7 @@ import {
   slidePlacementQuerySchema,
   aboutPageSchema,
   loginPageSchema,
+  siteTextsSchema,
   updateHomeSlideSchema,
   type SlidePlacementDTO,
 } from "./site.validation";
@@ -43,15 +44,14 @@ import {
   saveAboutPageService,
 } from "./about.service";
 import { getLoginPageService, saveLoginPageService } from "./login.service";
+import { getSiteTextsService, saveSiteTextsService } from "./texts.service";
+import { issuesMessage, tr } from "../../core/i18n";
 
 function parse<T>(schema: { safeParse: (v: unknown) => any }, value: unknown) {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i: any) => `${i.path.join(".") || "(root)"}: ${i.message}`)
-      .join(" | ");
     throw new BadRequestException(
-      `Validation error → ${issues}`,
+      issuesMessage(parsed.error.issues),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
@@ -346,6 +346,38 @@ export const saveLoginPageController = async (
     const data = parse(loginPageSchema, req.body);
     const content = await saveLoginPageService(data as never);
     return res.status(HTTPSTATUS.OK).json({ message: "Saved", content });
+  } catch (e) {
+    next(e);
+  }
+};
+
+//
+// ─── نصوص الموقع ─────────────────────────────────────────────
+//
+
+/** للزائر وللإدارة سواء: كلّ صفحةٍ تقرؤها قبل أن تُعرض. */
+export const getSiteTextsController = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const texts = await getSiteTextsService();
+    return res.status(HTTPSTATUS.OK).json({ texts });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const saveSiteTextsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parse(siteTextsSchema, req.body);
+    const texts = await saveSiteTextsService(data as never);
+    return res.status(HTTPSTATUS.OK).json({ message: "Saved", texts });
   } catch (e) {
     next(e);
   }

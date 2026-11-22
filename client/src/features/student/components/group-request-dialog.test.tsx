@@ -21,10 +21,9 @@ vi.mock("react-i18next", () => ({
 }));
 vi.mock("i18next", () => ({ t: (key: string) => key }));
 
+type MutateOpts = { onSuccess?: () => void; onError?: (e: unknown) => void };
 const createReq = {
-  mutate: vi.fn((_v: unknown, o?: { onSuccess?: () => void }) =>
-    o?.onSuccess?.(),
-  ),
+  mutate: vi.fn((_v: unknown, o?: MutateOpts) => o?.onSuccess?.()),
   isPending: false,
 };
 
@@ -192,6 +191,43 @@ describe("معالج طلب المجموعة", () => {
       "202039012346",
       SECOND_REG,
     ]);
+  });
+
+  /**
+   * رفضُ الخادم يشرح ما يُفعل بعده، فيُقرأ في النافذة فوق زرّ الإرسال — لا في
+   * تنبيهٍ عابر. ويبقى حتى يُخفى، أو يتغيّر الفريق فلا يعود الرفضُ عنه.
+   */
+  it("ورفضُ الخادم يظهر في النافذة بنصّه، ويُخفى، ويزول إذا تغيّر الفريق", async () => {
+    const said = "أنت عضوٌ في طلبٍ قائم أرسله يوسف حمادي على موضوع «bbb».";
+    const refuse = (_v: unknown, o?: MutateOpts) =>
+      o?.onError?.({ isAxiosError: true, response: { status: 400, data: { message: said } } });
+    createReq.mutate.mockImplementationOnce(refuse).mockImplementationOnce(refuse);
+
+    open();
+    await next();
+    await fillSeat(2, "202039012346");
+    await fillSeat(3, SECOND_REG);
+    await next();
+    expect(screen.queryByTestId("request-error")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("request-submit"));
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveAttribute("data-testid", "request-error");
+    expect(within(alert).getByText(said)).toBeInTheDocument();
+    expect(within(alert).getByText("stu.sendFailedTitle")).toBeInTheDocument();
+    expect(current()).toBe("step-review"); // لا يُغلق ولا يُعاد إلى أوّله
+
+    await userEvent.click(within(alert).getByRole("button", { name: "stu.dismissError" }));
+    expect(screen.queryByTestId("request-error")).toBeNull();
+
+    // يُرفض ثانيةً، ثم يُعدَّل الفريق: الرسالة كانت عن فريقٍ لم يعد.
+    await userEvent.click(screen.getByTestId("request-submit"));
+    expect(screen.getByTestId("request-error")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("request-back"));
+    await userEvent.type(within(screen.getByTestId("seat-3")).getByRole("textbox"), "{backspace}7");
+    await next();
+    expect(current()).toBe("step-review");
+    expect(screen.queryByTestId("request-error")).toBeNull();
   });
 
   /**
@@ -407,5 +443,60 @@ describe("معالج طلب المجموعة", () => {
       expect(screen.queryByTestId("seat-2-busy")).not.toBeInTheDocument();
       expect(screen.getByTestId("request-next")).toBeEnabled();
     });
+  });
+});
+
+describe("معالج طلب المجموعة: التنقّل والإغلاق", () => {
+  beforeEach(() => {
+    createReq.mutate.mockClear();
+    lookupResult = sameSpec;
+    lookupByTerm = { [SECOND_REG]: second };
+    lookedUp.length = 0;
+    useAuthStore.setState({
+      user: { id: "u-1", role: "student", registrationNumber: MY_REG },
+    });
+  });
+
+  it("رقم المرسِل بالأرقام الفارسية يُكشف كذلك", async () => {
+    open();
+    await next();
+    await fillSeat(3, SECOND_REG);
+    await fillSeat(2, "۲۰۲۰۳۹۰۱۲۳۴۵");
+    expect(screen.getByTestId("seat-2-self")).toBeInTheDocument();
+  });
+
+  it("الخطوة السابقة تُفتح من شريط الخطوات؛ وEnter في مقعدٍ مكتملٍ يعني «التالي»", async () => {
+    open(2);
+    await next();
+    expect(current()).toBe("step-members");
+    await userEvent.click(within(screen.getByTestId("step-terms")).getByRole("button"));
+    expect(current()).toBe("step-terms");
+
+    await next();
+    // مقعدٌ فارغ: Enter لا يتجاوزه.
+    const box = within(screen.getByTestId("seat-2")).getByRole("textbox");
+    await userEvent.type(box, "{Enter}");
+    expect(current()).toBe("step-members");
+    await userEvent.type(box, "202039012346{Enter}");
+    expect(current()).toBe("step-review");
+    expect(createReq.mutate).not.toHaveBeenCalled();
+  });
+
+  it("«إلغاء» يُغلق ويعيد المعالج إلى أوّله؛ وموضوعٌ آخر يُرسل بمعرّفه", async () => {
+    const onClose = vi.fn();
+    const view = render(<GroupRequestDialog open onClose={onClose} topic={{ ...topic, maxStudents: 1 } as never} />);
+    // لطالبٍ واحد: خطوة الفريق بلا مقاعد، تُتجاوز في الحال.
+    await next();
+    await next();
+    expect(current()).toBe("step-review");
+    await userEvent.click(screen.getByRole("button", { name: "stu.cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(current()).toBe("step-terms");
+
+    view.rerender(<GroupRequestDialog open onClose={onClose} topic={{ ...topic, id: "t-2", maxStudents: 1 } as never} />);
+    await next();
+    await next();
+    await userEvent.click(screen.getByTestId("request-submit"));
+    expect((createReq.mutate.mock.calls[0]![0] as { topicId: string }).topicId).toBe("t-2");
   });
 });

@@ -14,6 +14,7 @@ import {
   IdCard,
   Inbox,
   Layers,
+  Lock,
   Search,
   Send,
   Star,
@@ -26,7 +27,10 @@ import {
   useMyGroupRequests,
   useCancelGroupRequest,
   useMyProject,
+  useStudentSelectionWindow,
 } from "../hooks/Student-hook";
+import { SelectionBanner } from "../components/selection-banner";
+import { periodState, selectionOf } from "../../../lib/proposal-window";
 import type {
   DashPerson,
   GroupRequest,
@@ -107,6 +111,9 @@ export function StudentMyRequestsPage() {
   const { data: requests, isLoading, isError, refetch } = useMyGroupRequests();
   const { data: project } = useMyProject();
   const cancel = useCancelGroupRequest();
+  // After the deadline a request sent in time is the administration's: it is not withdrawn.
+  const { data: selection } = useStudentSelectionWindow();
+  const locked = !!selection && periodState(selectionOf(selection)) === "closed";
 
   const [filter, setFilter] = useState<Filter>("all");
   const [sheetTopicId, setSheetTopicId] = useState<string | null>(null);
@@ -130,6 +137,8 @@ export function StudentMyRequestsPage() {
   return (
     <div className="font-body">
       <Hero counts={counts} filter={filter} onFilter={setFilter} />
+
+      <SelectionBanner className="mb-5" />
 
       {/* the project, when there is one — the thing these requests were for */}
       {project && (
@@ -162,6 +171,8 @@ export function StudentMyRequestsPage() {
             <RequestCard
               key={req.id}
               req={req}
+              hasProject={!!project}
+              locked={locked}
               onCancel={() => setToCancel(req)}
               onOpenSheet={(id) => setSheetTopicId(id)}
             />
@@ -283,7 +294,7 @@ function Hero({
 
       <div className="relative">
         <div className="mb-6 flex items-center gap-4">
-          <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-gold-soft to-gold text-[var(--t-brand-deep)] shadow-[0_8px_24px_rgba(193,150,90,0.35)]">
+          <span className="hidden size-14 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-gold-soft to-gold text-[var(--t-brand-deep)] shadow-[0_8px_24px_rgba(193,150,90,0.35)] sm:grid">
             <Inbox size={26} />
           </span>
           <div className="min-w-0">
@@ -408,10 +419,15 @@ function EmptyState({ hasProject }: { hasProject: boolean }) {
 
 function RequestCard({
   req,
+  hasProject,
+  locked,
   onCancel,
   onOpenSheet,
 }: {
   req: GroupRequest;
+  hasProject: boolean;
+  /** The deadline to choose has passed: a pending request stays as sent. */
+  locked: boolean;
   onCancel: () => void;
   onOpenSheet: (topicId: string) => void;
 }) {
@@ -573,6 +589,8 @@ function RequestCard({
         <Actions
           req={req}
           isLeader={isLeader}
+          hasProject={hasProject}
+          locked={locked}
           onCancel={onCancel}
           onOpenSheet={onOpenSheet}
         />
@@ -687,24 +705,43 @@ function Tracker({
   );
 }
 
+/** A topic a team can still ask for — the statuses the server takes a request on. */
+const TAKES_REQUESTS = new Set(["open", "approved"]);
+
 function Actions({
   req,
   isLeader,
+  hasProject,
+  locked,
   onCancel,
   onOpenSheet,
 }: {
   req: GroupRequest;
   isLeader: boolean;
+  /** The student is already in a project: no request of theirs can be sent again. */
+  hasProject: boolean;
+  locked: boolean;
   onCancel: () => void;
   onOpenSheet: (topicId: string) => void;
 }) {
   const { t } = useTranslation();
   const { localePath } = useLanguage();
   const topicId = req.topic?.id ?? null;
+  // The topic went to another team, or was withdrawn: sending again there
+  // would only be refused, so the way on is another topic. A status the
+  // payload does not carry is given the benefit of the doubt.
+  const topicGone = !!req.topic?.status && !TAKES_REQUESTS.has(req.topic.status);
 
   let content: React.ReactNode = null;
 
-  if (req.status === "pending") {
+  if (req.status === "pending" && locked) {
+    content = (
+      <p className="inline-flex items-center gap-1.5 text-xs text-clay" data-testid="request-locked">
+        <Lock size={13} />
+        {t("stu.selection.locked")}
+      </p>
+    );
+  } else if (req.status === "pending") {
     content = isLeader ? (
       <button
         type="button"
@@ -739,6 +776,20 @@ function Actions({
           {t("stu.viewProjectDetails")}
         </Link>
       </>
+    );
+  } else if (req.status === "rejected" && hasProject) {
+    // Placed elsewhere — the accepted request's card leads to the project.
+    content = null;
+  } else if (req.status === "rejected" && (topicGone || !topicId)) {
+    content = (
+      <Link
+        to={localePath(PATHS.topics)}
+        data-testid="choose-another-topic"
+        className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft active:scale-95"
+      >
+        <Search size={16} />
+        {t("stu.chooseAnotherTopic")}
+      </Link>
     );
   } else if (req.status === "rejected" && topicId) {
     content = (

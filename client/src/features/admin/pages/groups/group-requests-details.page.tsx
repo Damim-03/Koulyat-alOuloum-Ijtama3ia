@@ -39,6 +39,8 @@ import { useDates } from "../../../../hooks/use-dates";
 import { None } from "../../../../lib/none";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { personName } from "../../../../lib/person-name";
+import { CharCount } from "../../../../components/ui/char-count";
+import { REASON_MAX } from "../../../../lib/limits";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -361,14 +363,18 @@ export function AdminGroupRequestDetailPage() {
               <label className="text-xs font-semibold text-forest">
                 {t("admin.rejectionReason", { defaultValue: t("stu.rejectionReason") })}
               </label>
-              <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={4}
-                autoFocus
-                placeholder={t("admin.rejectionReasonPlaceholder")}
-                className="w-full resize-y rounded-2xl border border-forest/15 bg-cream-2 p-4 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-              />
+              <div>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={4}
+                  maxLength={REASON_MAX}
+                  autoFocus
+                  placeholder={t("admin.rejectionReasonPlaceholder")}
+                  className="w-full resize-y rounded-2xl border border-forest/15 bg-cream-2 p-4 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
+                />
+                <CharCount value={reason} max={REASON_MAX} className="mt-1" />
+              </div>
               <p className="text-[11px] text-clay">{t("admin.rejectionReachesLeader")}</p>
               <div className="flex flex-wrap gap-2">
                 <button

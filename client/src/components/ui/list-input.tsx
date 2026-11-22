@@ -140,6 +140,10 @@ export function ListInput({ value, onChange, placeholder, max = 50 }: Props) {
         />
         <button
           type="button"
+          // Taking focus would blur the field first: the blur commits the
+          // draft, the emptied draft disables this button, and the click then
+          // never lands — so focus was left nowhere after every item.
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             commit(draft);
             inputRef.current?.focus();

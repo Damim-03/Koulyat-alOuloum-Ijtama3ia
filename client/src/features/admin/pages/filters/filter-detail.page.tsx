@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { joinList } from "../../../../lib/join-list";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { BookOpen, GitBranch, GraduationCap, Pencil, Plus, Trash2, Users } from "lucide-react";
@@ -230,7 +231,7 @@ export function FiliereDetailPage() {
                       setDialogOpen(true);
                     }}
                     onDelete={() => setRemoving(s)}
-                    deleteBlocked={blockers.length ? t("admin.struct.blocked", { what: blockers.join("، ") }) : null}
+                    deleteBlocked={blockers.length ? t("admin.struct.blocked", { what: joinList(blockers) }) : null}
                   />
                 );
               })}
@@ -242,6 +243,8 @@ export function FiliereDetailPage() {
       <SpecializationFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} specialization={editing} filiereId={filiereId} />
       <FiliereFormDialog open={editSelf} onClose={() => setEditSelf(false)} filiere={filiere ?? null} domainId={domainId} />
       <DeleteNodeDialog
+        kind="spec"
+        trail={[faculty?.name ?? "", department?.name ?? "", domain?.name ?? "", filiere?.name ?? ""]}
         target={removing}
         title={t("admin.struct.deleteTitle.spec")}
         loading={deleteSpecialization.isPending}
@@ -249,6 +252,8 @@ export function FiliereDetailPage() {
         onClose={() => setRemoving(null)}
       />
       <DeleteNodeDialog
+        kind="filiere"
+        trail={[faculty?.name ?? "", department?.name ?? "", domain?.name ?? ""]}
         target={removeSelf && filiere ? filiere : null}
         title={t("admin.struct.deleteTitle.filiere")}
         loading={deleteFiliere.isPending}

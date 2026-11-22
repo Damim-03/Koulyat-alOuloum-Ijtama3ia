@@ -1,6 +1,7 @@
 import { prisma } from "../../core/prisma/client";
 import { Prisma, NotificationType, Role } from "../../generated/prisma";
 import { pushNotification, emitToUsers } from "../../core/realtime/realtime";
+import { LANGS, currentLang, tr, type Lang, type MessageKey, type Params } from "../../core/i18n";
 
 /**
  * Reusable notification layer.
@@ -14,12 +15,35 @@ import { pushNotification, emitToUsers } from "../../core/realtime/realtime";
 // Either the singleton client or a transaction client.
 type Db = Prisma.TransactionClient | typeof prisma;
 
+/** نصٌّ من فهرس الرسائل بقيمه — يُكتب باللغات الثلاث. */
+export interface NotifyText {
+  key: MessageKey;
+  params?: Params;
+}
+
 export interface NotifyInput {
   userId: string;
   type?: NotificationType;
-  title: string;
-  message: string;
+  title: NotifyText;
+  message: NotifyText;
   link?: string;
+}
+
+/**
+ * الإشعار باللغات الثلاث، وبالعربية في عمودَي العنوان والرسالة (لما يقرأ
+ * بلا لغة). فالقارئ يراه بلغة واجهته — ولو كتبه فعلُ غيره بلغةٍ أخرى.
+ */
+function written(input: NotifyInput) {
+  const i18n = Object.fromEntries(
+    LANGS.map((lang) => [
+      lang,
+      {
+        title: tr(input.title.key, input.title.params, lang),
+        message: tr(input.message.key, input.message.params, lang),
+      },
+    ]),
+  ) as Record<Lang, { title: string; message: string }>;
+  return { title: i18n.ar.title, message: i18n.ar.message, i18n };
 }
 
 // Create a single notification for one user.
@@ -31,8 +55,7 @@ export const createNotification = async (
     data: {
       userId: input.userId,
       type: input.type ?? "general",
-      title: input.title,
-      message: input.message,
+      ...written(input),
       link: input.link,
     },
   });
@@ -52,8 +75,7 @@ export const createNotifications = async (
     data: inputs.map((i) => ({
       userId: i.userId,
       type: i.type ?? "general",
-      title: i.title,
-      message: i.message,
+      ...written(i),
       link: i.link,
     })),
   });
@@ -99,24 +121,41 @@ export const notifyAdmins = (
  * و`await` مقصود رغم أن النتيجة مُهمَلة: الترتيب يبقى محدَّداً، فيقرأ
  * الاختبار الأثر بعد الردّ مباشرةً بلا انتظارٍ عشوائي.
  */
-export const notifyAdminsQuietly = async (
+export const notifyAdminsQuietly = (
   input: Omit<NotifyInput, "userId">,
   db: Db = prisma,
-) => {
+) => quietly("notifyAdmins", input, () => notifyAdmins(input, db));
+
+/**
+ * القاعدة نفسها لأيّ دور: إشعار الأساتذة بفترة اقتراح المواضيع لا يُفشِل
+ * حفظ الفترة. و`scope` ما يُسجَّل به السقوط.
+ */
+export const notifyRolesQuietly = (
+  roles: Role[],
+  input: Omit<NotifyInput, "userId">,
+  scope: string,
+  db: Db = prisma,
+) => quietly(scope, input, () => notifyRoles(roles, input, db));
+
+async function quietly(
+  scope: string,
+  input: Omit<NotifyInput, "userId">,
+  send: () => Promise<{ count: number }>,
+) {
   try {
-    return await notifyAdmins(input, db);
+    return await send();
   } catch (error) {
     console.error(
       JSON.stringify({
         level: "error",
-        scope: "notifyAdmins",
-        title: input.title,
+        scope,
+        title: input.title.key,
         message: (error as Error)?.message,
       }),
     );
     return { count: 0 };
   }
-};
+}
 
 //
 // ─── READ SIDE (the bell) ─────────────────────────────────────
@@ -146,7 +185,14 @@ export const listNotificationsService = async (
     prisma.notification.count({ where: { userId, isRead: false } }),
   ]);
 
-  return { items, total, unread, page, limit };
+  // بلغة القارئ: ما كُتب باللغات الثلاث يُقرأ بلغة واجهته، وما سبق ذلك بالعربية.
+  const lang = currentLang();
+  const read = items.map((n) => {
+    const own = (n.i18n as Record<string, { title?: string; message?: string }> | null)?.[lang];
+    return { ...n, title: own?.title ?? n.title, message: own?.message ?? n.message };
+  });
+
+  return { items: read, total, unread, page, limit };
 };
 
 export const unreadCountService = async (userId: string) => {

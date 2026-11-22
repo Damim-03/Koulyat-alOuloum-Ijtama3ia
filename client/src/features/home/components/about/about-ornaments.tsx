@@ -50,14 +50,15 @@ export function SectionHeading({
   onDark = false,
   children,
 }: {
-  eyebrow: string;
+  /** The small line above — absent when the admin hid it. */
+  eyebrow?: string;
   title: string;
   onDark?: boolean;
   children?: ReactNode;
 }) {
   return (
     <Reveal className="mx-auto mb-14 max-w-2xl text-center">
-      <p className="mb-3 text-[12px] font-bold uppercase tracking-[0.2em] text-gold">{eyebrow}</p>
+      {eyebrow && <p className="mb-3 text-[12px] font-bold uppercase tracking-[0.2em] text-gold">{eyebrow}</p>}
       <h2
         dir="auto"
         className={`font-serif text-3xl font-bold leading-snug md:text-[2.6rem] ${onDark ? "text-cream" : "text-forest"}`}

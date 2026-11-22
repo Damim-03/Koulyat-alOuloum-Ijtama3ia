@@ -1,8 +1,24 @@
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&family=IBM+Plex+Serif:wght@500;600;700&family=Tajawal:wght@400;500;700&family=Work+Sans:wght@400;500;600;700&display=swap");
+/* الخطوط مستضافة مع التطبيق (Fontsource) لا من Google Fonts: سيرفر الجامعة
+   قد يعمل على شبكةٍ داخلية بلا إنترنت، فتسقط الخطوط إلى خطوط النظام. */
+@import "@fontsource/cairo/600.css";
+@import "@fontsource/cairo/700.css";
+@import "@fontsource/cairo/800.css";
+@import "@fontsource/ibm-plex-serif/500.css";
+@import "@fontsource/ibm-plex-serif/600.css";
+@import "@fontsource/ibm-plex-serif/700.css";
+@import "@fontsource/tajawal/400.css";
+@import "@fontsource/tajawal/500.css";
+@import "@fontsource/tajawal/700.css";
+@import "@fontsource/work-sans/400.css";
+@import "@fontsource/work-sans/500.css";
+@import "@fontsource/work-sans/600.css";
+@import "@fontsource/work-sans/700.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+/* A short window (a laptop's, a phone's): the pages built to fit one screen tighten their spacing. */
+@custom-variant short (@media (max-height: 780px));
 
 @theme {
   --font-sans: "Tajawal", ui-sans-serif, system-ui, sans-serif;
@@ -115,6 +131,289 @@
   }
   to {
     opacity: 1;
+  }
+}
+
+/* The activation desk (admin): a student's file slides in beside the list,
+   from the side it sits on, and slides back out the same way when closed. */
+.desk-file {
+  --desk-from: 36px;
+}
+[dir="rtl"] .desk-file {
+  --desk-from: -36px;
+}
+@keyframes deskFileIn {
+  from {
+    opacity: 0;
+    transform: translateX(var(--desk-from)) scale(0.985);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+@keyframes deskFileOut {
+  to {
+    opacity: 0;
+    transform: translateX(var(--desk-from)) scale(0.985);
+    filter: blur(3px);
+  }
+}
+.desk-file-in {
+  animation: deskFileIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.desk-file-out {
+  animation: deskFileOut 0.22s cubic-bezier(0.55, 0, 1, 0.45) both;
+}
+/* The message bell (dashboards' header): a message arrives — the bell swings
+   from its top, a gold ring spreads from it, the count pops, and a bubble
+   grows out of it towards the page. */
+@keyframes bellSwing {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  10% {
+    transform: rotate(18deg);
+  }
+  22% {
+    transform: rotate(-16deg);
+  }
+  34% {
+    transform: rotate(12deg);
+  }
+  46% {
+    transform: rotate(-9deg);
+  }
+  58% {
+    transform: rotate(5deg);
+  }
+  70% {
+    transform: rotate(-2deg);
+  }
+  80% {
+    transform: rotate(0);
+  }
+}
+.bell-swing {
+  animation: bellSwing 1.15s ease-in-out both;
+  transform-origin: 50% 10%;
+}
+@keyframes bellHalo {
+  from {
+    opacity: 0.75;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+.bell-halo {
+  animation: bellHalo 1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes badgePop {
+  0% {
+    transform: scale(0.2);
+  }
+  55% {
+    transform: scale(1.4);
+  }
+  78% {
+    transform: scale(0.88);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.badge-pop {
+  animation: badgePop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+/* Out of the bell: from its corner — the end side, under it. */
+.bubble-from {
+  transform-origin: top right;
+}
+[dir="rtl"] .bubble-from {
+  transform-origin: top left;
+}
+@keyframes bubbleIn {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.3);
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes bubbleOut {
+  to {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.55);
+  }
+}
+.bubble-in {
+  animation: bubbleIn 0.55s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}
+.bubble-out {
+  animation: bubbleOut 0.22s cubic-bezier(0.55, 0, 1, 0.45) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bell-swing,
+  .bell-halo,
+  .badge-pop,
+  .bubble-in,
+  .bubble-out {
+    animation: none;
+  }
+  .bell-halo {
+    display: none;
+  }
+}
+
+/* The users page's switch (admin): a light sweeps over the gold pill as it lands. */
+@keyframes hubShine {
+  from {
+    transform: translateX(-160%) skewX(-18deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-18deg);
+  }
+}
+.hub-shine {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.hub-shine::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: hubShine 0.95s cubic-bezier(0.4, 0, 0.2, 1) 0.4s both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-shine::after {
+    display: none;
+  }
+}
+/* The rows of the list fall into place, one after another, when it changes shape. */
+@keyframes deskRowIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.desk-row-in {
+  animation: deskRowIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .desk-file-in,
+  .desk-file-out,
+  .desk-row-in {
+    animation: none;
+  }
+}
+
+/* A structure card's cover (admin): the picture is the hero. It fades in,
+   drifts closer under the pointer while a light passes over it, a brand wash
+   at its foot carries the name, and a gold hairline seals it off from the
+   card. The washes use the brand token, which stays dark in both themes. */
+.node-cover {
+  overflow: hidden;
+  isolation: isolate;
+  background-color: var(--t-brand);
+  background-image: radial-gradient(circle at 80% 15%, color-mix(in oklab, var(--t-gold) 22%, transparent), transparent 55%);
+}
+.node-cover::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--t-gold) 90%, transparent), transparent);
+}
+.node-cover-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.08);
+  transition:
+    opacity 0.7s ease,
+    transform 1.6s cubic-bezier(0.2, 0.7, 0.2, 1),
+    filter 0.7s ease;
+}
+.node-cover-img[data-ready="true"] {
+  opacity: 1;
+  transform: scale(1.02);
+}
+.group:hover .node-cover-img[data-ready="true"] {
+  transform: scale(1.1);
+  filter: saturate(1.2) brightness(1.06);
+}
+.node-cover-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      to top,
+      color-mix(in oklab, var(--t-brand-deep) 95%, transparent) 0%,
+      color-mix(in oklab, var(--t-brand-deep) 68%, transparent) 28%,
+      color-mix(in oklab, var(--t-brand-deep) 12%, transparent) 60%,
+      transparent 100%
+    ),
+    linear-gradient(to bottom, color-mix(in oklab, var(--t-brand-deep) 38%, transparent), transparent 36%),
+    radial-gradient(110% 70% at 50% 118%, color-mix(in oklab, var(--t-gold) 28%, transparent), transparent 62%);
+}
+.node-cover-shine {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.node-cover-shine::after {
+  content: "";
+  position: absolute;
+  inset-block: -20%;
+  left: 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  transform: translateX(-160%) skewX(-18deg);
+}
+.group:hover .node-cover-shine::after {
+  animation: hubShine 1.1s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.node-cover-glass {
+  border: 1px solid color-mix(in oklab, var(--t-on-brand) 18%, transparent);
+  background-color: color-mix(in oklab, var(--t-brand-deep) 50%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(1.3);
+  backdrop-filter: blur(10px) saturate(1.3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .node-cover-img,
+  .node-cover-img[data-ready="true"],
+  .group:hover .node-cover-img[data-ready="true"] {
+    transform: none;
+    transition: opacity 0.3s ease;
+  }
+  .node-cover-shine {
+    display: none;
   }
 }
 
@@ -239,6 +538,36 @@
   --color-cream-card: var(--t-cream-card);
   --color-clay: var(--t-clay);
   --color-brick: var(--t-brick);
+}
+
+/* شريط التمرير: نحيفٌ بلون الواجهة، بلا زرَّي الأسهم اللذين يرسمهما شريط
+   ويندوز الأصليّ في طرفيه. Chromium وSafari يأخذانه من ::-webkit-scrollbar؛
+   وFirefox لا يعرفه، فيأخذ شريطه النحيف (وهو بلا أسهم أيضاً). ولا يُعطى
+   Chromium scrollbar-width ولا scrollbar-color: إن أُعطيهما ترك هذا كلّه. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--t-forest) 28%, transparent) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklab, var(--t-forest) 45%, transparent);
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--t-forest) 28%, transparent) transparent;
+  }
 }
 
 /* The base layer paints <body> through the shadcn `text-foreground` chain,
@@ -468,6 +797,43 @@ body {
       );
   }
 
+  /* صفحات استعادة كلمة المرور: حلقاتٌ ذهبيّة خافتة كختم الجامعة خلف البطاقة،
+     تبهت نحو الأطراف. ولونها من الرمز، فتصحّ على الفاتح والداكن. */
+  .gold-rings {
+    background: repeating-radial-gradient(
+      circle at center,
+      transparent 0 44px,
+      color-mix(in oklab, var(--t-gold) 18%, transparent) 44px 45px
+    );
+    -webkit-mask-image: radial-gradient(circle at center, #000 0%, transparent 66%);
+    mask-image: radial-gradient(circle at center, #000 0%, transparent 66%);
+  }
+
+  /* بريقٌ يعبر الزرّ الذهبيّ عند المرور عليه — تحت النصّ لا فوقه. */
+  .btn-sheen {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .btn-sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.5) 50%,
+      transparent 70%
+    );
+    transform: translateX(-120%);
+    transition: transform 0.75s ease;
+    pointer-events: none;
+  }
+  .btn-sheen:hover:not(:disabled)::after {
+    transform: translateX(120%);
+  }
+
   /* A single band of light crossing the university seal once it lands. */
   .logo-shine::after {
     content: "";
@@ -498,7 +864,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .logo-shine::after {
+  .logo-shine::after,
+  .btn-sheen::after {
     display: none;
   }
 }
@@ -579,6 +946,51 @@ body {
 .animate-scale-in   { animation: scaleIn   .3s  cubic-bezier(.22,.61,.36,1) both }
 .animate-float      { animation: floatY    3s   ease-in-out infinite }
 .animate-pulse-soft { animation: pulseSoft 2s   ease-in-out infinite }
+
+/* رقم العدّ التنازليّ حين يتغيّر: ينزل في لوحه ويستقرّ، كلوحٍ قُلب. */
+@keyframes digitIn {
+  from { opacity: 0; transform: translateY(-38%) }
+  to   { opacity: 1; transform: translateY(0) }
+}
+.animate-digit { animation: digitIn .38s cubic-bezier(.22,.61,.36,1) both }
+
+/* هالة شعار التنبيه: تتّسع وتخبو بهدوء، كنبضٍ لا كإنذار. */
+@keyframes haloPulse {
+  0%        { transform: scale(.8);  opacity: .7 }
+  70%, 100% { transform: scale(1.3); opacity: 0 }
+}
+.animate-halo { animation: haloPulse 2.6s cubic-bezier(.22,.61,.36,1) infinite }
+/* بريق حلقة الشعار: قوسٌ ذهبيّ يخفت ذيله، ورأسه حيث النقطة، يدور ببطء. */
+@keyframes emblemOrbit { to { transform: rotate(1turn) } }
+.animate-orbit { animation: emblemOrbit 7s linear infinite }
+.emblem-arc {
+  background: conic-gradient(from 0deg, transparent 0 62%, color-mix(in oklab, var(--color-gold) 30%, transparent) 80%, var(--color-gold-soft) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-orbit { animation: none }
+}
+
+/* نقرة المؤشّر في شرح الدخول: دائرةٌ تتّسع وتخبو مرّةً واحدة. */
+@keyframes tapRipple {
+  from { transform: scale(.3); opacity: .85 }
+  to   { transform: scale(1.7); opacity: 0 }
+}
+.animate-tap { animation: tapRipple .55s ease-out both }
+@media (prefers-reduced-motion: reduce) {
+  .animate-tap { animation: none; opacity: 0 }
+}
+
+/* المدّة الباقية لبطاقةٍ تُغلق وحدها: شريطٌ يتناقص حتى يفنى. */
+@keyframes dwell {
+  from { transform: scaleX(1) }
+  to   { transform: scaleX(0) }
+}
+.animate-dwell { animation: dwell 7s linear forwards }
+@media (prefers-reduced-motion: reduce) {
+  .animate-halo { animation: none; opacity: .35 }
+}
 
 /* ── Staggered entrance ──
    ضع className="stagger" على أي حاوية (grid/flex) لتظهر أبناؤها تِباعاً.
@@ -662,6 +1074,7 @@ body {
   .animate-scale-in,
   .animate-float,
   .animate-pulse-soft,
+  .animate-digit,
   .faculty-pulse,
   .faculty-breathe,
   .faculty-spin,
@@ -945,5 +1358,146 @@ select {
   100% {
     inset-inline-start: calc(100% - 0.75rem);
     opacity: 0;
+  }
+}
+
+/* ── Tables on phones ─────────────────────────────────────────
+   A table that scrolls sideways shows a phone two or three columns; the rest
+   — the actions among them — sit off-screen with nothing saying they exist.
+   Below `md`, a table marked `stack-sm` lays each row out as a card instead:
+   one line per cell, its column's name beside it (copied onto the cell as
+   `data-label` by `stackOnPhone`, lib/stack-table.ts). */
+@media (max-width: 767.98px) {
+  table.stack-sm {
+    min-width: 0 !important;
+    width: 100%;
+  }
+  table.stack-sm thead {
+    display: none;
+  }
+  table.stack-sm tbody,
+  table.stack-sm tr {
+    display: block;
+  }
+  table.stack-sm tr {
+    padding: 0.85rem 1rem;
+  }
+  table.stack-sm td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-width: 0;
+    padding: 0.3rem 0 !important;
+    text-align: end;
+    overflow-wrap: anywhere;
+  }
+  table.stack-sm td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    max-width: 45%;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: start;
+    color: var(--color-clay);
+  }
+  table.stack-sm td:not([data-label])::before {
+    content: none;
+  }
+  table.stack-sm td:not([data-label]) {
+    justify-content: flex-end;
+  }
+  /* A cell set left-to-right (an email, a number) would put its label on the
+     wrong side; keep the label on the start side of the card. */
+  [dir="rtl"] table.stack-sm td[dir="ltr"] {
+    flex-direction: row-reverse;
+  }
+  /* Loading, empty and error rows span the table: centred, no label. */
+  table.stack-sm td[colspan] {
+    display: block;
+    text-align: center;
+  }
+  /* The card list grows with the page; a second scroll area inside a phone
+     screen is hard to use. */
+  :has(> table.stack-sm) {
+    max-height: none !important;
+  }
+}
+
+/* ── Phones, tablets and touch screens ────────────────────────
+   Two things the desktop design can afford and a phone cannot, measured page
+   by page at 320–430px:
+   - Labels set at 8–10.5px. Arabic loses its dots at that size on a phone
+     screen; 11px is the floor here.
+   - Controls drawn with a thin padding (`py-1`, `size-7`…) came out 16–31px
+     tall — chips, language buttons, small actions. A fingertip needs about
+     40px; 36px is the floor here, reached by min-height so nothing that is
+     already larger moves.
+   Unlayered on purpose: it must outrank Tailwind's utilities layer. A
+   pointer-driven desktop keeps the original, denser design. */
+@media (max-width: 1023.98px), (pointer: coarse) {
+  .text-\[8px\],
+  .text-\[9px\],
+  .text-\[9\.5px\],
+  .text-\[10px\] {
+    font-size: 11px;
+  }
+  .text-\[10\.5px\] {
+    font-size: 11.5px;
+  }
+
+  :is(button, a[href], [role="button"], [role="tab"]):is(.py-px, .py-0\.5, .py-1, .py-1\.5) {
+    min-height: 2.25rem;
+  }
+  :is(button, a[href], [role="button"]):is(.size-5, .size-6, .size-7, .size-8, .p-0\.5, .p-1, .p-1\.5) {
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+  }
+
+  /* Text links — a topic's title, a name, "سجلّ السنة" — measured 17–23px
+     tall. Padding grows the area a finger can hit; the equal negative margin
+     takes it back, so nothing on the page moves. Anything with its own
+     padding, margin or height keeps its own design. */
+  :is(a[href], button):is(.text-start, [class*="hover:text-"]):not(
+      [class^="p-"], [class*=" p-"], [class^="py-"], [class*=" py-"],
+      [class*=" pt-"], [class*=" pb-"],
+      [class^="m-"], [class*=" m-"], [class^="my-"], [class*=" my-"],
+      [class^="mt-"], [class*=" mt-"], [class^="mb-"], [class*=" mb-"],
+      [class^="h-"], [class*=" h-"], [class^="size-"], [class*=" size-"],
+      /* A clamped title would show its hidden line in the added padding. */
+      [class*="line-clamp"], .truncate
+    ) {
+    padding-block: 0.5rem;
+    margin-block: -0.5rem;
+  }
+}
+
+/* ── The item a page was opened for ──────────────────────────
+   Arriving on «طلبات المجموعات» from a topic's «البتّ في الطلب»: its card
+   pulses gold three times, then keeps a quiet gold ring — found at a glance,
+   and still marked after the pulse is over. */
+@keyframes focus-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(193, 150, 90, 0.55),
+      0 4px 20px rgba(38, 66, 61, 0.05);
+  }
+  50% {
+    box-shadow:
+      0 0 0 6px rgba(193, 150, 90, 0.35),
+      0 0 42px 10px rgba(193, 150, 90, 0.4);
+  }
+}
+.focus-glow {
+  box-shadow:
+    0 0 0 2px rgba(193, 150, 90, 0.55),
+    0 4px 20px rgba(38, 66, 61, 0.05);
+  animation: focus-glow 1.4s ease-in-out 3;
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-glow {
+    animation: none;
   }
 }

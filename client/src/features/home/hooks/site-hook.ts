@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { applySiteTexts } from "../../../i18n/i18n";
 import { siteApi } from "../api/site.api";
 import type { SlidePlacement } from "../../../types/site.types";
 
@@ -13,6 +15,8 @@ export const SITE_NEWS_KEY = ["site", "news"] as const;
 export const SITE_DIRECTOR_KEY = ["site", "director-message"] as const;
 export const SITE_ABOUT_KEY = ["site", "about-page"] as const;
 export const SITE_LOGIN_KEY = ["site", "login-page"] as const;
+/** «site-texts» كما يسمّيه مسار الإدارة — فيصل حفظها حيّاً إلى كلّ شاشةٍ مفتوحة. */
+export const SITE_TEXTS_KEY = ["site", "site-texts"] as const;
 
 // المحتوى يتغيّر نادراً، ولا يُعاد تحميله في كلّ رجوعٍ إلى الصفحة.
 const STALE = 5 * 60 * 1000;
@@ -60,4 +64,20 @@ export function useLoginContent() {
     staleTime: STALE,
     retry: 1,
   });
+}
+
+/**
+ * عبارات الإدارة في الواجهة كلّها — مرّةً في جذر التطبيق. وما حُفظ منها في
+ * المتصفّح يُرسم أوّلاً، ثم يُحدَّث بما يردّه الخادم.
+ */
+export function useSiteTextsSync() {
+  const { data } = useQuery({
+    queryKey: SITE_TEXTS_KEY,
+    queryFn: siteApi.getTexts,
+    staleTime: STALE,
+    retry: 1,
+  });
+  useEffect(() => {
+    if (data) applySiteTexts(data);
+  }, [data]);
 }

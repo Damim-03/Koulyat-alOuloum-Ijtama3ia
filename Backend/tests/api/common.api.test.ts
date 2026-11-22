@@ -250,10 +250,11 @@ describe("لا تُسرّب القوائم ما لا يخصّها", () => {
       expect(Object.keys(row).sort()).toEqual(["code", "id", "name"]);
   });
 
-  it("والسنوات: معرّف وعنوان وحالة النشاط لا غير", async () => {
+  // وفترة اقتراح المواضيع: بها يعرف الأستاذ لأيّ سنةٍ يقترح الآن، ومتى.
+  it("والسنوات: معرّف وعنوان وحالة النشاط وفترة الاقتراح وعدد الطلبة لكلّ مستوى، لا غير", async () => {
     const res = await as("/api/common/academic-years", "admin").expect(200);
     for (const row of rows(res.body))
-      expect(Object.keys(row).sort()).toEqual(["id", "isActive", "title"]);
+      expect(Object.keys(row).sort()).toEqual(["id", "isActive", "proposalsCloseAt", "proposalsOpenAt", "teamSizes", "title"]);
   });
 
   it("ولا تحمل أي قائمة تواريخ إنشاء ولا صور غلاف", async () => {

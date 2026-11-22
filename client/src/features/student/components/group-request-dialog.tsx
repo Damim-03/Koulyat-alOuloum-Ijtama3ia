@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
@@ -36,6 +36,7 @@ import { Stepper } from "../../../components/ui/stepper";
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import type { BrowseTopic, LookupStudent } from "../../../types/student.types";
 import { personName } from "../../../lib/person-name";
+import { serverMessage } from "../../../lib/api/error";
 
 interface Props {
   open: boolean;
@@ -377,6 +378,7 @@ export function GroupRequestDialog({
   onSubmitted,
 }: Props) {
   const { t } = useTranslation();
+  const titleId = useId();
   const createReq = useCreateGroupRequest();
   const [stepIndex, setStepIndex] = useState(0);
 
@@ -384,6 +386,8 @@ export function GroupRequestDialog({
   const seats = Math.max(0, (topic?.maxStudents ?? 1) - 1);
   const [slots, setSlots] = useState<string[]>([]);
   const [meta, setMeta] = useState<Record<string, MemberMeta>>({});
+  /** ما ردّ به الخادم آخرَ إرسال — يبقى في النافذة حتى يُغيَّر شيء. */
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const {
     handleSubmit,
@@ -440,6 +444,7 @@ export function GroupRequestDialog({
     while (next.length < seats) next.push("");
     next[i] = text;
     setSlots(next);
+    setSendError(null); // الفريق تغيّر، فالرفض السابق لم يعد عنه
     setValue(
       "memberRegistrationNumbers",
       next.map((s) => s.trim()).filter(Boolean),
@@ -484,6 +489,7 @@ export function GroupRequestDialog({
 
   function closeAll() {
     setStepIndex(0);
+    setSendError(null);
     onClose();
   }
 
@@ -507,9 +513,13 @@ export function GroupRequestDialog({
       setStepIndex(steps.findIndex((s) => s.key === "members"));
       return;
     }
+    setSendError(null);
     createReq.mutate(data, {
+      onError: (e) => setSendError(serverMessage(e, t("toast.requestSendFailed"))),
       onSuccess: () => {
-        reset();
+        // `keepFieldsRef` — see MilestoneFormDialog: the dialog stays mounted,
+        // and a plain reset would leave its fields unregistered next time.
+        reset(undefined, { keepFieldsRef: true });
         setMeta({});
         setSlots([]);
         setStepIndex(0);
@@ -530,12 +540,18 @@ export function GroupRequestDialog({
 
       {/* إطارٌ ثابتٌ لا أقصى: الخطوات الثلاث تختلف طولاً، ولو تمدّد الإطار
           بطول محتواه لقفز في كل انتقال وتحرّك زرّ «التالي» تحت الإصبع. */}
-      <div className="relative z-10 flex h-[min(90vh,720px)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-cream-card shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative z-10 flex h-[min(90dvh,720px)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-cream-card shadow-[0_20px_50px_rgba(0,0,0,0.3)]"
+      >
         {/* header */}
         <div className="relative shrink-0 bg-forest px-8 py-6">
           <button
             type="button"
             onClick={closeAll}
+            aria-label={t("admin.close")}
             className="absolute left-6 top-6 text-cream/50 transition hover:text-cream"
           >
             <X size={22} />
@@ -545,7 +561,7 @@ export function GroupRequestDialog({
               <Send size={26} />
             </div>
             <div className="min-w-0">
-              <h2 className="font-serif text-2xl font-bold leading-tight text-cream">
+              <h2 id={titleId} className="font-serif text-2xl font-bold leading-tight text-cream">
                 {t("stu.requestModalTitle")}
               </h2>
               <p className="mt-0.5 truncate text-sm text-soft-sage">
@@ -799,6 +815,31 @@ export function GroupRequestDialog({
             )}
           </div>
         </form>
+
+        {/* رفضُ الخادم يشرح ما يُفعل بعده — «أنت في فريقٍ آخر»، «فلان له مشروع»
+            — فيُقرأ بتمهّل. كان تنبيهاً يمرّ أعلى الشاشة فوق عنوان النافذة
+            ويختفي؛ وهنا يبقى فوق زرّ الإرسال، خارج ما يُمرَّر فلا يغيب. */}
+        {isLast && sendError && (
+          <div
+            role="alert"
+            data-testid="request-error"
+            className="animate-slide-up mx-8 mb-3 flex shrink-0 items-start gap-3 rounded-2xl border border-brick/30 bg-brick/8 px-4 py-3 shadow-[0_6px_18px_-10px_rgba(168,68,45,0.5)]"
+          >
+            <TriangleAlert size={20} className="mt-0.5 shrink-0 text-brick" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-brick">{t("stu.sendFailedTitle")}</p>
+              <p className="mt-1 text-sm leading-relaxed text-forest">{sendError}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSendError(null)}
+              aria-label={t("stu.dismissError")}
+              className="grid size-7 shrink-0 place-items-center rounded-lg text-clay transition hover:bg-brick/10 hover:text-brick"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         {/* footer */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-clay/10 bg-cream-2/40 px-8 py-4">

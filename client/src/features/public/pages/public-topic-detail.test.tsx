@@ -50,6 +50,11 @@ let topicQuery: Record<string, unknown> = { data: topic, isLoading: false };
 vi.mock("../hooks/public-hook", () => ({
   usePublicTopic: () => topicQuery,
 }));
+// The student's deadline to choose, and their project (their own flows tests): none here.
+vi.mock("../../student/hooks/Student-hook", () => ({
+  useStudentSelectionWindow: () => ({ data: null }),
+  useMyProject: () => ({ data: null, isPending: false }),
+}));
 vi.mock("../../../hooks/use-auth", () => ({ useAuth: () => auth }));
 
 const { PublicTopicDetailPage } = await import("./public-topic-detail.page");

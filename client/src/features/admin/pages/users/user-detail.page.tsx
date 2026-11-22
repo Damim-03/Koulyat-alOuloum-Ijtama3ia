@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Mail,
@@ -214,6 +214,8 @@ function Modal({
   icon: typeof Mail;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
+  const titleId = useId();
   // close on Escape
   useEffect(() => {
     if (!open) return;
@@ -229,16 +231,21 @@ function Modal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className="w-full max-w-md rounded-2xl border border-forest/10 bg-cream-card p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="flex items-center gap-2 font-serif text-lg font-bold text-forest">
+          <h3 id={titleId} className="flex items-center gap-2 font-serif text-lg font-bold text-forest">
             <Icon size={18} />
             {title}
           </h3>
           <button
+            type="button"
             onClick={onClose}
+            aria-label={t("admin.close")}
             className="grid size-8 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
           >
             <X size={18} />
@@ -702,6 +709,8 @@ export function AdminUserDetailPage() {
                 <button
                   type="button"
                   onClick={() => setShowPw((v) => !v)}
+                  aria-label={t("auth.togglePassword")}
+                  aria-pressed={showPw}
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-clay transition hover:text-forest"
                 >
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}

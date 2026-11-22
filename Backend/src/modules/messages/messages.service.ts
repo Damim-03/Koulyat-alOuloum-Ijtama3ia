@@ -5,7 +5,7 @@ import {
 } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { emitEvent, emitToUsers, isOnline } from "../../core/realtime/realtime";
-import type { Prisma } from "../../generated/prisma";
+import type { Prisma, Role } from "../../generated/prisma";
 import {
   SendMessageDTO,
   ReplyMessageDTO,
@@ -14,7 +14,11 @@ import {
   ListMessagesDTO,
   ContactsDTO,
   ChatDTO,
+  EditMessageDTO,
 } from "./messages.validation";
+import { tr } from "../../core/i18n";
+import { ATTACHMENT_SELECT, attachmentsOf, claimAttachments, deleteFilesOf, type AttachmentInfo } from "./attachments";
+import { audit } from "../../core/audit/audit";
 
 /**
  * Messages between the people of the platform.
@@ -56,7 +60,7 @@ type UserLite = {
 };
 
 const notFound = () =>
-  new NotFoundException("Message not found", ErrorCodeEnum.RESOURCE_NOT_FOUND);
+  new NotFoundException(tr("notFound.message"), ErrorCodeEnum.RESOURCE_NOT_FOUND);
 const bad = (message: string) =>
   new BadRequestException(message, ErrorCodeEnum.VALIDATION_ERROR);
 
@@ -76,6 +80,7 @@ function announceNew(
   },
   sender: UserLite,
   recipientIds: string[],
+  attachments: AttachmentInfo[] = [],
 ) {
   emitToUsers(recipientIds, "messages", "created", message.id);
   emitEvent(recipientIds, "message:new", {
@@ -86,6 +91,8 @@ function announceNew(
     broadcast: message.broadcast,
     createdAt: message.createdAt.toISOString(),
     sender,
+    // A file alone has no text to preview: the bell and the toast name it.
+    attachments: attachments.map((a) => ({ fileName: a.fileName, mimeType: a.mimeType })),
   });
   // The sender's other tabs show it in "sent" without a refresh.
   emitToUsers([sender.id], "messages", "created", message.id);
@@ -133,7 +140,7 @@ async function studentCircle(userId: string): Promise<Map<string, Relation>> {
       },
     },
   });
-  if (!student) throw bad("ملف الطالب غير موجود");
+  if (!student) throw bad(tr("messages.studentProfileMissing"));
 
   const circle = new Map<string, Relation>();
   const supervisor = (id?: string | null) => id && circle.set(id, "supervisor");
@@ -206,28 +213,28 @@ async function assertMayWrite(
     const circle = await studentCircle(sender.id);
     if (others.some((r) => !circle.has(r.id)))
       throw bad(
-        "لا يمكنك مراسلة مستخدمين لا تربطك بهم علاقة أكاديمية (أستاذك المشرف أو أعضاء فريقك أو الإدارة).",
+        tr("messages.studentScope"),
       );
     return;
   }
 
-  if (sender.role === "professor") {
-    const students = recipients.filter((r) => r.role === "student");
-    if (students.length === 0) return;
-    const professor = await prisma.professor.findUnique({
-      where: { userId: sender.id },
-      select: { id: true },
-    });
-    if (!professor) throw bad("ملف الأستاذ غير موجود");
-    const allowed = await professorStudents(
-      professor.id,
-      students.map((s) => s.id),
+  // A professor (the administration and students returned above). Any other
+  // role would have no professor profile, and so may write to no student.
+  const students = recipients.filter((r) => r.role === "student");
+  if (students.length === 0) return;
+  const professor = await prisma.professor.findUnique({
+    where: { userId: sender.id },
+    select: { id: true },
+  });
+  if (!professor) throw bad(tr("messages.professorProfileMissing"));
+  const allowed = await professorStudents(
+    professor.id,
+    students.map((s) => s.id),
+  );
+  if (students.some((s) => !allowed.has(s.id)))
+    throw bad(
+      tr("messages.professorScope"),
     );
-    if (students.some((s) => !allowed.has(s.id)))
-      throw bad(
-        "يمكنك مراسلة الطلبة المرتبطين بمواضيعك فقط (أعضاء مذكراتك أو أصحاب طلبات المجموعات عليها).",
-      );
-  }
 }
 
 async function activeSender(senderId: string) {
@@ -236,8 +243,8 @@ async function activeSender(senderId: string) {
     select: { ...userLite, status: true },
   });
   if (!sender)
-    throw new NotFoundException("Sender not found", ErrorCodeEnum.RESOURCE_NOT_FOUND);
-  if (sender.status !== "active") throw bad("الحساب موقوف — لا يمكن إرسال رسائل");
+    throw new NotFoundException(tr("notFound.sender"), ErrorCodeEnum.RESOURCE_NOT_FOUND);
+  if (sender.status !== "active") throw bad(tr("messages.senderSuspended"));
   const { status: _status, ...lite } = sender;
   return lite as UserLite;
 }
@@ -251,6 +258,8 @@ async function deliver(input: {
   broadcast?: string | null;
   threadId?: string | null;
   replyToId?: string | null;
+  /** Drafts of the sender, claimed by this message (./attachments). */
+  attachmentIds?: string[];
 }) {
   const message = await prisma.$transaction(async (tx) => {
     const msg = await tx.message.create({
@@ -266,9 +275,12 @@ async function deliver(input: {
     await tx.messageRecipient.createMany({
       data: input.recipientIds.map((userId) => ({ messageId: msg.id, userId })),
     });
+    // A file that cannot be claimed refuses the whole message.
+    await claimAttachments(tx, input.sender.id, input.attachmentIds, msg.id);
     return msg;
   });
-  announceNew(message, input.sender, input.recipientIds);
+  const files = input.attachmentIds?.length ? ((await attachmentsOf([message.id])).get(message.id) ?? []) : [];
+  announceNew(message, input.sender, input.recipientIds, files);
   return message;
 }
 
@@ -279,15 +291,15 @@ export const sendMessageService = async (senderId: string, dto: SendMessageDTO) 
   const sender = await activeSender(senderId);
 
   const recipientIds = [...new Set(dto.recipientIds)].filter((id) => id !== senderId);
-  if (recipientIds.length === 0) throw bad("حدّد مستلماً واحداً على الأقل");
+  if (recipientIds.length === 0) throw bad(tr("messages.noRecipient"));
 
   const recipients = await prisma.user.findMany({
     where: { id: { in: recipientIds } },
     select: { id: true, role: true, status: true },
   });
-  if (recipients.length !== recipientIds.length) throw bad("بعض المستلمين غير موجودين");
+  if (recipients.length !== recipientIds.length) throw bad(tr("messages.recipientsMissing"));
   if (recipients.some((r) => r.status !== "active"))
-    throw bad("بعض المستلمين حساباتهم موقوفة — أزلهم من القائمة ثمّ أعد الإرسال");
+    throw bad(tr("messages.recipientsSuspended"));
 
   await assertMayWrite(sender, recipients);
 
@@ -296,6 +308,7 @@ export const sendMessageService = async (senderId: string, dto: SendMessageDTO) 
     recipientIds,
     subject: dto.subject,
     body: dto.body,
+    attachmentIds: dto.attachmentIds,
   });
   return shapeOne(senderId, message.id);
 };
@@ -331,7 +344,7 @@ export const replyMessageService = async (
   let checkIds: string[] = [];
   if (mine) {
     if (parent.broadcast)
-      throw bad("لا يُردّ على تعميمٍ أرسلتَه — أرسل تعميماً جديداً أو رسالةً مباشرة");
+      throw bad(tr("messages.noReplyToBroadcast"));
     recipientIds = parent.recipients.map((r) => r.userId);
   } else {
     const others =
@@ -347,7 +360,7 @@ export const replyMessageService = async (
     where: { id: { in: recipientIds }, status: "active" },
     select: { id: true, role: true },
   });
-  if (users.length === 0) throw bad("لم يعد في المحادثة من يستقبل الرسالة");
+  if (users.length === 0) throw bad(tr("messages.nobodyLeft"));
   if (checkIds.length)
     await assertMayWrite(
       sender,
@@ -360,6 +373,7 @@ export const replyMessageService = async (
     body: dto.body,
     threadId: parent.threadId ?? parent.id,
     replyToId: parent.id,
+    attachmentIds: dto.attachmentIds,
   });
   return shapeOne(userId, message.id);
 };
@@ -476,9 +490,9 @@ export const audiencePreviewService = async (senderId: string, dto: AudienceDTO)
 
 export const broadcastMessageService = async (senderId: string, dto: BroadcastMessageDTO) => {
   const sender = await activeSender(senderId);
-  const { subject, body, ...audience } = dto;
+  const { subject, body, attachmentIds, ...audience } = dto;
   const userIds = await audienceUserIds(audience, senderId);
-  if (userIds.length === 0) throw bad("لا يوجد مستلمون مطابقون لهذا الجمهور");
+  if (userIds.length === 0) throw bad(tr("messages.emptyAudience"));
 
   const message = await deliver({
     sender,
@@ -486,6 +500,7 @@ export const broadcastMessageService = async (senderId: string, dto: BroadcastMe
     subject,
     body,
     broadcast: await audienceTag(audience),
+    attachmentIds,
   });
   return { id: message.id, recipients: userIds.length };
 };
@@ -521,32 +536,35 @@ function nameFilter(term?: string): Prisma.UserWhereInput {
   };
 }
 
+/**
+ * Whom each role may find among its contacts — one rule per role, and a new
+ * role does not compile until it has its own (rather than falling into one).
+ * Each also notes how the people it adds relate to the viewer.
+ */
+const CONTACT_SCOPE: Record<
+  Role,
+  (userId: string, relation: Map<string, Relation>) => Promise<Prisma.UserWhereInput>
+> = {
+  admin: async () => ({}),
+  professor: async (userId, relation) => {
+    const professor = await prisma.professor.findUnique({ where: { userId }, select: { id: true } });
+    const students = professor ? await professorStudents(professor.id) : new Set<string>();
+    students.forEach((id) => relation.set(id, "student"));
+    return { OR: [{ role: { in: ["admin", "professor"] } }, { id: { in: [...students] } }] };
+  },
+  student: async (userId, relation) => {
+    const circle = await studentCircle(userId);
+    circle.forEach((rel, id) => relation.set(id, rel));
+    return { OR: [{ role: "admin" }, { id: { in: [...circle.keys()] } }] };
+  },
+};
+
 export const contactsService = async (userId: string, q: ContactsDTO) => {
   const me = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
   if (!me) throw notFound();
 
-  let ids: string[] | null = null; // null = anyone (admin)
   const relation = new Map<string, Relation>();
-
-  if (me.role === "student") {
-    const circle = await studentCircle(userId);
-    circle.forEach((rel, id) => relation.set(id, rel));
-    ids = [...circle.keys()];
-  } else if (me.role === "professor") {
-    const professor = await prisma.professor.findUnique({ where: { userId }, select: { id: true } });
-    if (professor) {
-      const students = await professorStudents(professor.id);
-      students.forEach((id) => relation.set(id, "student"));
-      ids = [...students];
-    } else ids = [];
-  }
-
-  const roleWhere: Prisma.UserWhereInput =
-    me.role === "admin"
-      ? {}
-      : me.role === "professor"
-        ? { OR: [{ role: { in: ["admin", "professor"] } }, { id: { in: ids ?? [] } }] }
-        : { OR: [{ role: "admin" }, { id: { in: ids ?? [] } }] };
+  const roleWhere = await CONTACT_SCOPE[me.role](userId, relation);
 
   // With nothing typed, people you have corresponded with come first.
   let recentIds: string[] = [];
@@ -593,7 +611,8 @@ export const contactsService = async (userId: string, q: ContactsDTO) => {
             orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
           }),
         ]);
-        recent.sort((a, b) => (byRecent.get(a.id) ?? 0) - (byRecent.get(b.id) ?? 0));
+        // Fetched by `id in recentIds`, so every one of them has its place.
+        recent.sort((a, b) => byRecent.get(a.id)! - byRecent.get(b.id)!);
         const seen = new Set<string>();
         return [...recent, ...rest]
           .filter((u) => (seen.has(u.id) ? false : (seen.add(u.id), true)))
@@ -642,6 +661,7 @@ function searchWhere(term?: string): Prisma.MessageWhereInput {
       { body: { contains: term } },
       { sender: { firstName: { contains: term } } },
       { sender: { lastName: { contains: term } } },
+      { attachments: { some: { fileName: { contains: term } } } },
     ],
   };
 }
@@ -673,7 +693,9 @@ export const listInboxService = async (userId: string, q: ListMessagesDTO) => {
             threadId: true,
             replyToId: true,
             createdAt: true,
+            editedAt: true,
             sender: { select: userLite },
+            attachments: { select: ATTACHMENT_SELECT, orderBy: { createdAt: "asc" } },
           },
         },
       },
@@ -701,6 +723,7 @@ export const listSentService = async (userId: string, q: ListMessagesDTO) => {
       include: {
         recipients: { include: { user: { select: userLite } }, take: 4 },
         _count: { select: { recipients: true } },
+        attachments: { select: ATTACHMENT_SELECT, orderBy: { createdAt: "asc" } },
       },
       orderBy: { createdAt: "desc" },
       skip: (q.page - 1) * q.limit,
@@ -776,6 +799,7 @@ async function shapeMany(
     threadId: string | null;
     replyToId: string | null;
     createdAt: Date;
+    editedAt: Date | null;
     sender: UserLite;
     _count: { recipients: number };
   }[],
@@ -784,7 +808,7 @@ async function shapeMany(
   const sentIds = list.filter((m) => m.senderId === userId).map((m) => m.id);
   const directIds = list.filter((m) => m.senderId !== userId && !m.broadcast).map((m) => m.id);
 
-  const [mineRows, sentRecipients, reads, directRecipients] = await Promise.all([
+  const [mineRows, sentRecipients, reads, directRecipients, files] = await Promise.all([
     prisma.messageRecipient.findMany({
       where: { messageId: { in: ids }, userId },
       select: { messageId: true, readAt: true },
@@ -811,6 +835,7 @@ async function shapeMany(
           take: 20 * directIds.length,
         })
       : [],
+    attachmentsOf(ids),
   ]);
   const mine = new Map(mineRows.map((r) => [r.messageId, r.readAt]));
   const readCount = new Map(reads.map((r) => [r.messageId, r._count._all]));
@@ -826,10 +851,12 @@ async function shapeMany(
       threadId: m.threadId,
       replyToId: m.replyToId,
       createdAt: m.createdAt,
+      editedAt: m.editedAt,
       sender: m.sender,
       mine: isMine,
       readAt: mine.get(m.id) ?? null,
       recipientsCount: m._count.recipients,
+      attachments: files.get(m.id) ?? [],
       ...(isMine
         ? {
             readCount: readCount.get(m.id) ?? 0,
@@ -907,9 +934,11 @@ export const getMessageService = async (userId: string, messageId: string) => {
    READ / UNREAD / DELETE (for the recipient)
    ════════════════════════════════════════════════════════════ */
 
-/** Receipts reach the senders of whatever was just read, and my other tabs. */
+/**
+ * Receipts reach the senders of whatever was just read, and my other tabs.
+ * Every caller has at least one message: those with nothing new return first.
+ */
 async function announceRead(userId: string, messageIds: string[]) {
-  if (messageIds.length === 0) return;
   const senders = await prisma.message.findMany({
     where: { id: { in: messageIds } },
     select: { senderId: true },
@@ -1023,7 +1052,13 @@ const counterpartSelect = {
 
 type Counterpart = Prisma.UserGetPayload<{ select: typeof counterpartSelect }>;
 
-function shapeCounterpart(u: Counterpart, viewerRole: string) {
+/**
+ * `known`: whether the viewer has any business with this person — may write
+ * to them, or already exchanged messages. Without it, a name and a face are
+ * all a chat shows: when someone last signed in, and whether they are online
+ * right now, are not for whoever happens to hold their id.
+ */
+function shapeCounterpart(u: Counterpart, viewerRole: string, known = true) {
   return {
     id: u.id,
     firstName: u.firstName,
@@ -1036,9 +1071,30 @@ function shapeCounterpart(u: Counterpart, viewerRole: string) {
     detail: u.student?.specialization?.name ?? u.professor?.department?.name ?? null,
     handle: viewerRole === "admin" ? (u.student?.registrationNumber ?? null) : null,
     active: u.status === "active",
-    online: isOnline(u.id),
-    lastLoginAt: u.lastLoginAt,
+    online: known && isOnline(u.id),
+    lastLoginAt: known ? u.lastLoginAt : null,
   };
+}
+
+/**
+ * Of these people, the ones this person has exchanged messages with, either
+ * way — two lookups, whatever the length of the history.
+ */
+async function correspondents(userId: string, ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const [wroteToMe, iWroteTo] = await Promise.all([
+    prisma.message.findMany({
+      where: { senderId: { in: ids }, recipients: { some: { userId } } },
+      select: { senderId: true },
+      distinct: ["senderId"],
+    }),
+    prisma.messageRecipient.findMany({
+      where: { userId: { in: ids }, message: { senderId: userId } },
+      select: { userId: true },
+      distinct: ["userId"],
+    }),
+  ]);
+  return new Set([...wroteToMe.map((m) => m.senderId), ...iWroteTo.map((r) => r.userId)]);
 }
 
 export const conversationsService = async (userId: string, limit = 60) => {
@@ -1087,7 +1143,16 @@ export const conversationsService = async (userId: string, limit = 60) => {
     prisma.user.findMany({ where: { id: { in: top.map(([id]) => id) } }, select: counterpartSelect }),
     prisma.message.findMany({
       where: { id: { in: top.map(([, a]) => a.lastId) } },
-      select: { id: true, subject: true, body: true, broadcast: true, createdAt: true },
+      select: {
+        id: true,
+        subject: true,
+        body: true,
+        broadcast: true,
+        createdAt: true,
+        // A file alone has no text: the list names the first one instead.
+        attachments: { select: { fileName: true, mimeType: true }, orderBy: { createdAt: "asc" }, take: 1 },
+        _count: { select: { attachments: true } },
+      },
     }),
   ]);
   const userBy = new Map(users.map((u) => [u.id, u]));
@@ -1106,6 +1171,7 @@ export const conversationsService = async (userId: string, limit = 60) => {
                 id: last.id,
                 subject: last.subject,
                 preview: last.body.slice(0, 140),
+                file: last.attachments[0] ? { ...last.attachments[0], count: last._count.attachments } : null,
                 broadcast: last.broadcast,
                 createdAt: last.createdAt,
                 mine: a.mine,
@@ -1149,24 +1215,35 @@ export const chatService = async (userId: string, otherId: string, q: ChatDTO) =
       threadId: true,
       replyToId: true,
       createdAt: true,
+      editedAt: true,
       _count: { select: { recipients: true } },
     },
   });
   const hasMore = rows.length > q.limit;
   const page = rows.slice(0, q.limit).reverse();
 
-  const receipts = page.length
-    ? await prisma.messageRecipient.findMany({
-        where: { messageId: { in: page.map((m) => m.id) }, userId: { in: [userId, otherId] } },
-        select: { messageId: true, userId: true, readAt: true },
-      })
-    : [];
+  const [receipts, files] = await Promise.all([
+    page.length
+      ? prisma.messageRecipient.findMany({
+          where: { messageId: { in: page.map((m) => m.id) }, userId: { in: [userId, otherId] } },
+          select: { messageId: true, userId: true, readAt: true },
+        })
+      : [],
+    attachmentsOf(page.map((m) => m.id)),
+  ]);
   const readOf = (messageId: string, who: string) =>
     receipts.find((r) => r.messageId === messageId && r.userId === who)?.readAt ?? null;
 
+  const canWrite = await mayWrite(userId, otherId);
+  const known =
+    me.role === "admin" ||
+    canWrite ||
+    page.length > 0 ||
+    (await correspondents(userId, [otherId])).has(otherId);
+
   return {
-    user: shapeCounterpart(other, me.role),
-    canWrite: await mayWrite(userId, otherId),
+    user: shapeCounterpart(other, me.role, known),
+    canWrite,
     hasMore,
     items: page.map((m) => {
       const mine = m.senderId === userId;
@@ -1179,10 +1256,12 @@ export const chatService = async (userId: string, otherId: string, q: ChatDTO) =
         threadId: m.threadId,
         replyToId: m.replyToId,
         createdAt: m.createdAt,
+        editedAt: m.editedAt,
         mine,
         // Mine: when they read it. Theirs: when I did.
         readAt: readOf(m.id, mine ? otherId : userId),
         recipientsCount: m._count.recipients,
+        attachments: files.get(m.id) ?? [],
       };
     }),
   };
@@ -1203,6 +1282,88 @@ export const markChatReadService = async (userId: string, otherId: string) => {
   return { updated: unread.length };
 };
 
-export const presenceService = (ids: string[]) => ({
-  online: Object.fromEntries(ids.slice(0, 100).map((id) => [id, isOnline(id)])),
-});
+/**
+ * Who of these is online. The administration may ask about anyone; everyone
+ * else only about the people they correspond with — the rest read as offline,
+ * so presence cannot be polled to follow someone's comings and goings.
+ */
+export const presenceService = async (userId: string, role: string, ids: string[]) => {
+  const asked = ids.slice(0, 100);
+  const visible = role === "admin" ? null : await correspondents(userId, asked);
+  return {
+    online: Object.fromEntries(asked.map((id) => [id, (!visible || visible.has(id)) && isOnline(id)])),
+  };
+};
+
+/* ════════════════════════════════════════════════════════════
+   EDIT (everyone) / WITHDRAW FOR EVERYONE (the administration)
+   ════════════════════════════════════════════════════════════ */
+
+/**
+ * How long after sending its text may be changed: long enough to mend a
+ * slip, not so long that what someone already read and answered is
+ * rewritten under their reply.
+ */
+export const EDIT_WINDOW_MS = 15 * 60_000;
+
+/** Everyone the message reached, and its sender — whose screens show it. */
+async function audienceOf(messageId: string, senderId: string) {
+  const rows = await prisma.messageRecipient.findMany({ where: { messageId }, select: { userId: true } });
+  return [senderId, ...rows.map((r) => r.userId)];
+}
+
+/**
+ * Its sender changes a message's text, within EDIT_WINDOW_MS of sending —
+ * the files stay as they were. Marked "edited" for everyone who sees it.
+ */
+export const editMessageService = async (userId: string, messageId: string, dto: EditMessageDTO) => {
+  await activeSender(userId);
+  const m = await prisma.message.findUnique({
+    where: { id: messageId },
+    select: { id: true, senderId: true, body: true, createdAt: true, _count: { select: { attachments: true } } },
+  });
+  // Someone else's message: as if it did not exist.
+  if (!m || m.senderId !== userId) throw notFound();
+  if (Date.now() - m.createdAt.getTime() > EDIT_WINDOW_MS)
+    throw bad(tr("messages.editWindowPassed", { minutes: EDIT_WINDOW_MS / 60_000 }));
+  const body = dto.body.trim();
+  if (!body && m._count.attachments === 0) throw bad(tr("messages.bodyOrFile"));
+
+  if (body !== m.body) {
+    await prisma.message.update({ where: { id: m.id }, data: { body, editedAt: new Date() } });
+    emitToUsers(await audienceOf(m.id, userId), "messages", "updated", m.id);
+  }
+  return shapeOne(userId, m.id);
+};
+
+/**
+ * The administration deletes what it sent, for everyone, without a trace:
+ * the message, its files and every inbox's copy are gone, as if never sent —
+ * no "this message was deleted" left in its place, and nothing left unread.
+ * Only its own messages — the route is for administrators, and someone
+ * else's message reads as not found. The audit log keeps that a message was
+ * deleted, by whom and to how many — never what it said.
+ */
+export const deleteForEveryoneService = async (userId: string, messageId: string) => {
+  const m = await prisma.message.findUnique({
+    where: { id: messageId },
+    select: { id: true, senderId: true, broadcast: true, _count: { select: { recipients: true } } },
+  });
+  if (!m || m.senderId !== userId) throw notFound();
+
+  // Who had it on screen — asked before the rows that say so are gone.
+  const audience = await audienceOf(m.id, userId);
+  const files = await deleteFilesOf(m.id);
+  // Its recipients' rows go with it (onDelete: Cascade).
+  await prisma.message.delete({ where: { id: m.id } });
+
+  audit({
+    action: "message.deletedForEveryone",
+    actor: { id: userId, role: "admin" },
+    targetType: "message",
+    targetId: m.id,
+    details: { broadcast: !!m.broadcast, recipients: m._count.recipients, files },
+  });
+  emitToUsers(audience, "messages", "deleted", m.id);
+  return { ok: true };
+};

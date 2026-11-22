@@ -15,6 +15,7 @@ import { prisma } from "../../src/core/prisma/client";
 import { config } from "../../src/core/config/app.config";
 import { signRefreshToken } from "../../src/core/auth/tokens";
 import { Roles } from "../../src/core/enums/role.enum";
+import { tr } from "../../src/core/i18n";
 import {
   seed,
   teardown,
@@ -243,6 +244,25 @@ describe("POST /api/auth/refresh", () => {
     await refresh(forged).expect(401);
   });
 
+  /**
+   * رموزٌ صدرت قبل أن يحمل الرمز جيلَ الحساب: تُعدّ الجيلَ صفراً. فتبقى صالحةً
+   * ما دام الحساب في جيله الأوّل، وتسقط معه حين يتقدّم («الخروج من كل الأجهزة»).
+   */
+  it("رمز تحديثٍ بلا جيل يُعدّ الجيلَ صفراً — صالحٌ حتى يتقدّم جيل الحساب", async () => {
+    const s = f.students[3]!;
+    const legacy = jwt.sign(
+      { userId: s.userId, role: Roles.STUDENT, refId: s.id, typ: "refresh" },
+      config.JWT_REFRESH_SECRET,
+      { algorithm: "HS256", expiresIn: "1h", issuer: config.JWT_ISSUER, audience: config.JWT_AUDIENCE },
+    );
+
+    await refresh(legacy).expect(200);
+
+    await prisma.user.update({ where: { id: s.userId }, data: { tokenVersion: { increment: 1 } } });
+    const res = await refresh(legacy).expect(401);
+    expect(res.body.message).toBe(tr("auth.sessionRevoked"));
+  });
+
   it("رمز تحديث لمستخدم محذوف ⇒ 401", async () => {
     const orphan = signRefreshToken({
       userId: "00000000-0000-0000-0000-000000000000",
@@ -252,7 +272,7 @@ describe("POST /api/auth/refresh", () => {
     });
 
     const res = await refresh(orphan).expect(401);
-    expect(res.body.message).toBe("User no longer exists");
+    expect(res.body.message).toBe(tr("auth.userNotFound"));
   });
 
   /**
@@ -260,7 +280,7 @@ describe("POST /api/auth/refresh", () => {
    * وبدونه يبقى رمز التحديث المسروق صالحاً أسبوعاً كاملاً بعد أن يُبلِّغ
    * المستخدم عن اختراق حسابه ويُخرج جلساته.
    */
-  it("رمز تحديث بجيل قديم ⇒ 401 «Session has been revoked»", async () => {
+  it("رمز تحديث بجيل قديم ⇒ 401 «أُنهيت الجلسة»", async () => {
     const { refreshToken } = await loginAdmin();
 
     // «الخروج من كل الأجهزة» يرفع الجيل.
@@ -270,7 +290,7 @@ describe("POST /api/auth/refresh", () => {
     });
 
     const res = await refresh(refreshToken).expect(401);
-    expect(res.body.message).toBe("Session has been revoked");
+    expect(res.body.message).toBe(tr("auth.sessionRevoked"));
   });
 
   it("والخروج من جلسة واحدة يُبطل رمز تحديثها هي", async () => {
@@ -282,7 +302,7 @@ describe("POST /api/auth/refresh", () => {
       .expect(200);
 
     const res = await refresh(pair.refreshToken).expect(401);
-    expect(res.body.message).toBe("Session has been revoked");
+    expect(res.body.message).toBe(tr("auth.sessionRevoked"));
   });
 
   it("وحساب أُوقف بعد إصدار الرمز ⇒ يُرفض تحديثه", async () => {

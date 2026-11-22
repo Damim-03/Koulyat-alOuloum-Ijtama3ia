@@ -288,8 +288,8 @@ describe("PATCH /api/admin/group-requests/:id/reject", () => {
    * الرفضُ يُعلّم ولا يمحو.
    *
    * كان يحذف الصفّ، فيذهب معه السببُ المكتوب وأثرُ المحاولة — وسقفُ الطلبات
-   * معهما، لأنّه يَعدّ الصفوف. والإفراجُ عن الموضوع لا يحتاج حذفاً: إفراغُ
-   * `activeTopicId` يكفي، فالفهرس الفريد لا يقارن NULL.
+   * معهما. والإفراجُ عن الموضوع لا يحتاج حذفاً: الطلبُ المرفوض لا يُعدّ على
+   * سقفه.
    */
   it("الرفض ⇒ 200، ويُعلَّم الطلب مرفوضاً بسببه، ويعود الموضوع للتداول", async () => {
     const { topic: t, request: r } = await withPendingRequest("APJ reject");
@@ -304,7 +304,10 @@ describe("PATCH /api/admin/group-requests/:id/reject", () => {
     expect(after).not.toBeNull();
     expect(after?.status).toBe("rejected");
     expect(after?.rejectionReason).toBe("الفريق غير مكتمل");
-    expect(after?.activeTopicId).toBeNull(); // الإفراج عن الموضوع
+    // الإفراج عن الموضوع: لا طلب معلّقاً عليه.
+    expect(
+      (await prisma.graduationTopic.findUniqueOrThrow({ where: { id: t.id } })).pendingRequestCount,
+    ).toBe(0);
 
     // وأعضاؤه يبقون: «مَن طلبه» جزءٌ من الأثر لا يقلّ عن «لماذا رُفض».
     expect(

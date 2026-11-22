@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { joinList } from "../../../../lib/join-list";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { BookOpen, Building2, GitBranch, GraduationCap, Layers, Network, Pencil, Plus, Trash2, UserCog, Users } from "lucide-react";
@@ -191,7 +192,7 @@ export function FacultyDetailPage() {
                       setDialogOpen(true);
                     }}
                     onDelete={() => setRemoving(d)}
-                    deleteBlocked={blockers.length ? t("admin.struct.blocked", { what: blockers.join("، ") }) : null}
+                    deleteBlocked={blockers.length ? t("admin.struct.blocked", { what: joinList(blockers) }) : null}
                   />
                 );
               })}
@@ -203,6 +204,8 @@ export function FacultyDetailPage() {
       <DepartmentFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} department={editing} facultyId={facultyId} />
       <FacultyFormDialog open={editSelf} onClose={() => setEditSelf(false)} faculty={faculty ?? null} />
       <DeleteNodeDialog
+        kind="department"
+        trail={[faculty?.name ?? ""]}
         target={removing}
         title={t("admin.struct.deleteTitle.department")}
         loading={deleteDepartment.isPending}
@@ -210,6 +213,7 @@ export function FacultyDetailPage() {
         onClose={() => setRemoving(null)}
       />
       <DeleteNodeDialog
+        kind="faculty"
         target={removeSelf && faculty ? faculty : null}
         title={t("admin.struct.deleteTitle.faculty")}
         loading={deleteFaculty.isPending}

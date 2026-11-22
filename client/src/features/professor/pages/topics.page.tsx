@@ -28,15 +28,19 @@ import {
   useDeleteTopic,
   useSpecializations,
   useAcademicYears,
+  useProfessorTopicQuota,
 } from "../hooks/Professor-hook";
 import { TopicFormDialog } from "../components/topic-form-dialog";
-import type { Topic } from "../../../types/professor.types";
+import { ProposalBanner } from "../components/proposal-banner";
+import { acceptsProposals } from "../../../lib/proposal-window";
+import type { Topic, TopicQuota } from "../../../types/professor.types";
 import { Select } from "../../../components/ui/select";
 import { DangerConfirm } from "../../../components/dialog/danger-confirm";
 import { SupervisionDialog } from "../../supervision/components/supervision-dialog";
 import { StatusPill } from "../../../components/ui/status-pill";
 import { STATUS_TONE } from "../../../lib/status-tone";
 import { noneText } from "../../../lib/none-text";
+import { stackOnPhone } from "../../../lib/stack-table";
 
 /**
  * The professor's topics: a header whose status counts are also the
@@ -163,6 +167,19 @@ export function ProfessorTopicsPage() {
     }
   }
 
+  // Proposing is open while some year takes a new topic: its period is open,
+  // or it has none. The server refuses the rest with the dates.
+  const proposalYear = (years ?? []).find((y) => y.isActive) ?? years?.[0];
+  const canPropose = !years?.length || years.some((y) => acceptsProposals(y));
+  // His limit for that year, if the administration set one: reached, and no other year takes
+  // proposals, both ways to propose are off — and the hero says why.
+  const { data: quota } = useProfessorTopicQuota(proposalYear?.id, !!proposalYear);
+  const quotaFull =
+    !!quota?.year &&
+    quota.max !== null &&
+    quota.used >= quota.max &&
+    (years ?? []).filter((y) => acceptsProposals(y)).every((y) => y.id === quota.year!.id);
+
   const actions = {
     onEdit: openEdit,
     onDelete: (tp: Topic) => setPendingDelete(tp),
@@ -182,7 +199,12 @@ export function ProfessorTopicsPage() {
         }}
         onCreate={openCreate}
         onCreateWithGroup={openCreateWithGroup}
+        closed={!canPropose}
+        quota={quota}
+        full={quotaFull}
       />
+
+      <ProposalBanner year={proposalYear} />
 
       {/* ── the rest of the filters ── */}
       <section className={`overflow-hidden ${CARD}`}>
@@ -245,6 +267,7 @@ export function ProfessorTopicsPage() {
             <div className="grid grid-cols-1 gap-3 border-t border-forest/10 p-4 md:grid-cols-2">
               <Select
                 value={specializationId}
+                aria-label={t("pro.specialization")}
                 onChange={(v) => {
                   setSpecializationId(v);
                   setPage(1);
@@ -259,6 +282,7 @@ export function ProfessorTopicsPage() {
               />
               <Select
                 value={academicYearId}
+                aria-label={t("pro.academicYear")}
                 onChange={(v) => {
                   setAcademicYearId(v);
                   setPage(1);
@@ -297,7 +321,7 @@ export function ProfessorTopicsPage() {
           <>
             {/* wide screens: the table */}
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full">
+              <table ref={stackOnPhone} className="stack-sm w-full">
                 <thead>
                   <tr className="border-b border-forest/10 bg-cream-2/70 text-[11px] font-semibold tracking-wide text-clay">
                     <th className="px-6 py-3.5 text-start">{t("pro.title")}</th>
@@ -404,6 +428,7 @@ export function ProfessorTopicsPage() {
                     icon={ChevronRight}
                     disabled={current <= 1}
                     onClick={() => setPage(current - 1)}
+                    label={t("admin.proj.prev")}
                   />
                   <span
                     dir="ltr"
@@ -415,6 +440,7 @@ export function ProfessorTopicsPage() {
                     icon={ChevronLeft}
                     disabled={current >= totalPages}
                     onClick={() => setPage(current + 1)}
+                    label={t("admin.proj.next")}
                   />
                 </div>
               )}
@@ -505,6 +531,9 @@ function Hero({
   onStatus,
   onCreate,
   onCreateWithGroup,
+  closed,
+  quota,
+  full,
 }: {
   total: number;
   counts: Record<string, number>;
@@ -512,6 +541,12 @@ function Hero({
   onStatus: (s: string) => void;
   onCreate: () => void;
   onCreateWithGroup: () => void;
+  /** Outside every proposal period: both ways to propose are off, and say why. */
+  closed: boolean;
+  /** His limit of topics for the year, and his count — shown when there is one. */
+  quota?: TopicQuota;
+  /** The limit reached: both ways to propose are off too. */
+  full: boolean;
 }) {
   const { t } = useTranslation();
   const present = STATUSES.filter((s) => (counts[s] ?? 0) > 0);
@@ -538,7 +573,7 @@ function Hero({
 
       <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-4">
-          <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-gold-soft to-gold text-[var(--t-brand-deep)] shadow-[0_8px_24px_rgba(193,150,90,0.35)]">
+          <span className="hidden size-14 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-gold-soft to-gold text-[var(--t-brand-deep)] shadow-[0_8px_24px_rgba(193,150,90,0.35)] sm:grid">
             <FileText size={26} />
           </span>
           <div className="min-w-0">
@@ -551,12 +586,14 @@ function Hero({
           </div>
         </div>
 
+        <div className="flex flex-col items-start gap-2.5 lg:items-end">
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={onCreateWithGroup}
-            title={t("pro.withGroupSubtitle")}
-            className="inline-flex items-center gap-2 rounded-2xl border border-gold/50 px-4 py-3 text-sm font-semibold text-gold-soft transition hover:bg-gold/15 active:scale-95"
+            disabled={closed || full}
+            title={closed ? t("pro.proposals.closedButton") : full ? t("pro.quota.fullButton") : t("pro.withGroupSubtitle")}
+            className="inline-flex items-center gap-2 rounded-2xl border border-gold/50 px-4 py-3 text-sm font-semibold text-gold-soft transition hover:bg-gold/15 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100"
           >
             <Users size={18} />
             {t("pro.newTopicWithGroup")}
@@ -564,12 +601,28 @@ function Hero({
           <button
             type="button"
             onClick={onCreate}
-            title={t("pro.topicDialogSubtitle")}
-            className="inline-flex items-center gap-2 rounded-2xl bg-gold px-5 py-3 text-sm font-bold text-[var(--t-brand-deep)] shadow-[0_8px_20px_rgba(193,150,90,0.3)] transition hover:bg-gold-soft active:scale-95"
+            disabled={closed || full}
+            title={closed ? t("pro.proposals.closedButton") : full ? t("pro.quota.fullButton") : t("pro.topicDialogSubtitle")}
+            className="inline-flex items-center gap-2 rounded-2xl bg-gold px-5 py-3 text-sm font-bold text-[var(--t-brand-deep)] shadow-[0_8px_20px_rgba(193,150,90,0.3)] transition hover:bg-gold-soft active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100"
           >
             <Plus size={18} />
             {t("pro.sendNewTopic")}
           </button>
+        </div>
+
+        {/* The administration's limit for the year: how much of it is his. */}
+        {quota?.year && quota.max !== null && (
+          <div data-testid="topic-quota-meter" data-full={full || undefined} className="flex items-center gap-2.5 text-[12px] text-cream/75">
+            <span>{t("pro.quota.meter", { year: quota.year.title, used: quota.used, max: quota.max })}</span>
+            <span aria-hidden className="h-1.5 w-24 overflow-hidden rounded-full bg-cream/15">
+              <span
+                className={`block h-full rounded-full ${quota.used >= quota.max ? "bg-amber-400" : "bg-gold"}`}
+                style={{ width: `${Math.min(100, Math.round((quota.used / quota.max) * 100))}%` }}
+              />
+            </span>
+            {quota.used >= quota.max && <span className="font-semibold text-amber-200">{t("pro.quota.reached")}</span>}
+          </div>
+        )}
         </div>
       </div>
 
@@ -746,16 +799,19 @@ function PageButton({
   icon: Icon,
   disabled,
   onClick,
+  label,
 }: {
   icon: LucideIcon;
   disabled: boolean;
   onClick: () => void;
+  label: string;
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
+      aria-label={label}
       className="grid size-9 place-items-center rounded-xl border border-forest/15 text-forest transition hover:border-gold/50 hover:bg-gold/10 disabled:pointer-events-none disabled:opacity-35"
     >
       <Icon size={16} className="ltr:rotate-180" />

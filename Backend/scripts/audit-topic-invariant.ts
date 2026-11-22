@@ -92,44 +92,47 @@ const record = async (
       }),
   );
 
-  // ─── I3 — activeTopicId ⟺ الطلب حيّ ──────────────────────────
+  // ─── I3 — عدّاد السقف يطابق الطلبات المعلّقة، وطلبٌ مقبولٌ واحد ───
   await record(
     "I3",
-    "طلب حيّ (pending/accepted) لا يحمل activeTopicId — لا يحجز موضوعه",
-    "violation",
-    () =>
-      prisma.groupRequest.findMany({
-        where: {
-          status: { in: ["pending", "accepted"] },
-          activeTopicId: null,
-        },
-        select: { id: true },
-      }),
-  );
-
-  await record(
-    "I3",
-    "طلب مرفوض ما يزال يحمل activeTopicId — يحجز موضوعاً بلا حقّ",
-    "violation",
-    () =>
-      prisma.groupRequest.findMany({
-        where: { status: "rejected", NOT: { activeTopicId: null } },
-        select: { id: true },
-      }),
-  );
-
-  await record(
-    "I3",
-    "طلب حيّ يحمل activeTopicId لا يطابق topicId",
+    "pendingRequestCount لا يطابق عدد الطلبات المعلّقة على الموضوع",
     "violation",
     async () => {
-      const rows = await prisma.groupRequest.findMany({
-        where: { status: { in: ["pending", "accepted"] } },
-        select: { id: true, topicId: true, activeTopicId: true },
+      const topics = await prisma.graduationTopic.findMany({
+        select: { id: true, pendingRequestCount: true, _count: { select: { groupRequests: { where: { status: "pending" } } } } },
       });
-      return rows
-        .filter((r) => r.activeTopicId !== r.topicId)
-        .map((r) => ({ id: r.id }));
+      return topics
+        .filter((t) => t.pendingRequestCount !== t._count.groupRequests)
+        .map((t) => ({ id: t.id }));
+    },
+  );
+
+  await record(
+    "I3",
+    "موضوعٌ عليه أكثرُ من طلبٍ مقبول",
+    "violation",
+    async () => {
+      const rows = await prisma.groupRequest.groupBy({
+        by: ["topicId"],
+        where: { status: "accepted" },
+        _count: { _all: true },
+      });
+      return rows.filter((r) => r._count._all > 1).map((r) => ({ id: r.topicId }));
+    },
+  );
+
+  await record(
+    "I3",
+    "موضوعٌ طلباتُه المعلّقة فوق سقفه",
+    "violation",
+    async () => {
+      const topics = await prisma.graduationTopic.findMany({
+        where: { maxRequests: { not: null } },
+        select: { id: true, maxRequests: true, pendingRequestCount: true },
+      });
+      return topics
+        .filter((t) => t.pendingRequestCount > (t.maxRequests ?? Infinity))
+        .map((t) => ({ id: t.id }));
     },
   );
 
@@ -149,20 +152,17 @@ const record = async (
       }),
   );
 
+  // عدّة طلباتٍ معلّقة على موضوعٍ واحد مشروعةٌ الآن — حتى سقفه. والخرقُ أن
+  // يبقى طلبٌ معلّقٌ بجانب طلبٍ مقبول: القبولُ يُلغي البقيّة.
   await record(
     "I4",
-    "موضوعان حيّان أو أكثر على نفس الموضوع (الحجز مكسور)",
+    "طلبٌ معلّقٌ على موضوعٍ قُبل عليه فريق (القبولُ لم يُلغِ البقيّة)",
     "violation",
-    async () => {
-      const grouped = await prisma.groupRequest.groupBy({
-        by: ["topicId"],
-        where: { status: { in: ["pending", "accepted"] } },
-        _count: { _all: true },
-      });
-      return grouped
-        .filter((g) => g._count._all > 1)
-        .map((g) => ({ id: g.topicId }));
-    },
+    () =>
+      prisma.groupRequest.findMany({
+        where: { status: "pending", topic: { groupRequests: { some: { status: "accepted" } } } },
+        select: { id: true },
+      }),
   );
 
   // ─── I5 — كل مجموعة قائمة لها قائد واحد بالضبط ───────────────

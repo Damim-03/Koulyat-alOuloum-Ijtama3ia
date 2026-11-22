@@ -26,6 +26,8 @@ export interface NewMessagePayload {
   threadId: string | null;
   subject: string | null;
   preview: string;
+  /** A file sent alone has no text: the bell and the toast name it instead. */
+  attachments?: { fileName: string; mimeType: string }[];
   broadcast: string | null;
   createdAt: string;
   sender: {
@@ -47,6 +49,11 @@ export interface ServerToClientEvents {
   "message:new": (payload: NewMessagePayload) => void;
   /** Someone is (or stopped) writing to me. */
   typing: (payload: { from: string; active: boolean }) => void;
+  /**
+   * This session was signed out from elsewhere — another device, a password
+   * change, an administrator. Sent just before the server cuts the connection.
+   */
+  "session:revoked": (payload: Record<string, never>) => void;
 }
 
 // The client no longer asks to join rooms: the server derives them from the
@@ -63,7 +70,13 @@ export function createSocket(): AppSocket {
   const options = {
     autoConnect: false, // we connect manually once authenticated
     withCredentials: true,
-    transports: ["websocket"],
+    // WebSocket first. A proxy that does not pass the upgrade through (a
+    // missing `Upgrade`/`Connection` header in Nginx is the usual cause) used
+    // to leave the page with no live updates at all, silently; it now falls
+    // back to plain HTTP long-polling — slower, but messages, notifications and
+    // sign-outs still arrive.
+    transports: ["websocket", "polling"],
+    tryAllTransports: true,
     // Read at connect time (not at module load) so a reconnect after a token
     // refresh presents the current token rather than the one from page load.
     auth: (cb: (data: { token: string }) => void) =>

@@ -11,7 +11,7 @@
  * any test can hand to supertest, which opens an ephemeral port of its own.
  */
 import "dotenv/config";
-import express, { Request, Response } from "express";
+import express, { NextFunction, Request, Response } from "express";
 import path from "node:path";
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -28,6 +28,9 @@ import { HTTPSTATUS } from "./core/config/http/http.config";
 import { globalLimiter } from "./core/middleware/rateLimit.middleware";
 import mainRoute from "./routes/mainRoutes";
 import { prisma } from "./core/prisma/client";
+import { languageMiddleware, tr } from "./core/i18n";
+import { NotFoundException } from "./core/utils/appErros";
+import "./core/i18n/zod";
 
 export const app = express();
 
@@ -41,6 +44,35 @@ export const app = express();
    ============================================================ */
 app.set("trust proxy", config.TRUST_PROXY_HOPS);
 app.disable("x-powered-by");
+
+// Requests that arrive through a proxy while none is trusted all look as if
+// they came from the proxy: one IP for everyone, so the per-IP limits lump
+// every user together and the list of devices shows the proxy's address.
+// Nothing fails visibly, so say it once, in the log the deployer reads.
+if (config.IS_PRODUCTION && config.TRUST_PROXY_HOPS === 0) {
+  let warned = false;
+  app.use((req, _res, next) => {
+    if (!warned && req.headers["x-forwarded-for"]) {
+      warned = true;
+      console.warn(
+        "WARNING: requests arrive through a proxy (X-Forwarded-For is set) but " +
+          "TRUST_PROXY_HOPS=0. Set TRUST_PROXY_HOPS=1 behind one Nginx, or every " +
+          "user shares the proxy's IP address.",
+      );
+    }
+    next();
+  });
+}
+
+// The sign-in check (modules/auth/captcha) cannot run in a browser on a
+// plain-HTTP page, so `auto` leaves it off there — and guessing is slowed by
+// the locks alone. Say so once, where the deployer reads.
+if (config.IS_PRODUCTION && !config.LOGIN_CAPTCHA) {
+  console.warn(
+    "WARNING: the sign-in check (LOGIN_CAPTCHA) is off. It turns on by itself when " +
+      "FRONTEND_ORIGIN/CORS_ORIGINS are served over HTTPS; browsers cannot run it on plain HTTP.",
+  );
+}
 
 /* ============================================================
    SECURITY HEADERS
@@ -103,6 +135,13 @@ app.use(
 );
 
 /* ============================================================
+   LANGUAGE — the interface's language, for every message the
+   server writes during this request (core/i18n). Before the
+   limiter, whose refusal is a message too.
+   ============================================================ */
+app.use(languageMiddleware);
+
+/* ============================================================
    RATE LIMITING — global floor; auth routes add a stricter layer
    ============================================================ */
 app.use(globalLimiter);
@@ -125,8 +164,8 @@ app.use(compression());
    ============================================================ */
 morgan.token("safe-url", (req) => {
   // Query strings can carry search terms and ids; keep the path only.
-  const url = (req as Request).originalUrl ?? "";
-  return url.split("?")[0];
+  // (Express's router sets originalUrl before the first middleware runs.)
+  return (req as Request).originalUrl.split("?")[0];
 });
 
 app.use(
@@ -188,6 +227,14 @@ app.get(
 
 app.use("/api", mainRoute);
 
+// An API path that does not exist: a JSON 404 like every other API error —
+// not Express's own HTML page ("Cannot GET …"), which names the framework and
+// replaces the app's security policy with a thinner one of its own (a ZAP
+// scan's one finding).
+app.use("/api", (_req: Request, _res: Response, next: NextFunction) =>
+  next(new NotFoundException(tr("notFound.route"))),
+);
+
 /* ============================================================
    SPA (production single-origin deployments)
    ============================================================ */
@@ -195,7 +242,18 @@ if (config.IS_PRODUCTION) {
   const frontendPath = path.join(__dirname, "../../client/dist");
   const spaCsp = spaContentSecurityPolicy(path.join(frontendPath, "index.html"));
 
-  app.use(express.static(frontendPath, { dotfiles: "deny", index: false }));
+  app.use(
+    express.static(frontendPath, {
+      dotfiles: "deny",
+      index: false,
+      // A script started as a worker — the PDF reader's — runs under the
+      // policy it is served with. The API's (`script-src 'none'`) would stop
+      // it compiling the WebAssembly that decodes images in scanned PDFs.
+      setHeaders: (res, filePath) => {
+        if (/\.m?js$/.test(filePath)) res.setHeader("Content-Security-Policy", spaCsp);
+      },
+    }),
+  );
 
   // Only non-API GETs fall through to the SPA shell; an unknown /api path
   // must return JSON 404, not index.html.
@@ -203,6 +261,12 @@ if (config.IS_PRODUCTION) {
     // The API's own policy (`script-src 'none'`) would stop the app's scripts
     // from running at all; the shell gets the policy written for it.
     res.setHeader("Content-Security-Policy", spaCsp);
+    // The account's activation photographs the card and the face with the
+    // camera — this page's own, never a frame's. The rest stays off.
+    res.setHeader(
+      "Permissions-Policy",
+      "camera=(self), microphone=(), geolocation=(), payment=(), usb=()",
+    );
     res.sendFile(path.join(frontendPath, "index.html"));
   });
 }
@@ -214,9 +278,9 @@ app.use(errorHandler);
  * The SPA shell's policy. Its scripts come from this origin only, plus the
  * one inline script in `index.html` (the theme bootstrap), allowed by its
  * hash — read from the built file, so the policy follows whatever was built.
- * Fonts come from Google Fonts; the default photo of the head of department
- * from Unsplash. Everything else — the API, uploads, the socket — is this
- * origin.
+ * Everything else — fonts, images, the API, uploads, the socket — is this
+ * origin too: the client bundles its fonts and default images, so the site
+ * works on a university intranet with no internet access.
  */
 function spaContentSecurityPolicy(indexPath: string): string {
   let hashes: string[] = [];
@@ -230,11 +294,13 @@ function spaContentSecurityPolicy(indexPath: string): string {
   }
   return [
     "default-src 'self'",
-    `script-src 'self' ${hashes.join(" ")}`.trim(),
-    // React writes style attributes; Google Fonts serves a stylesheet.
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: blob: https://images.unsplash.com",
+    // 'wasm-unsafe-eval': WebAssembly only — the face detector of the
+    // activation photo (MediaPipe) — never eval() or new Function().
+    `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(" ")}`.trim(),
+    // React writes style attributes.
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
+    "img-src 'self' data: blob:",
     "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

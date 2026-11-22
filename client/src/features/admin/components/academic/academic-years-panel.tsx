@@ -199,7 +199,8 @@ export function AcademicYearsPanel() {
 
       <AcademicYearFormDialog open={open} onClose={() => setOpen(false)} year={editing} />
       <DeleteNodeDialog
-        target={removing ? { name: removing.title } : null}
+        kind="year"
+        target={removing ? { name: removing.title, isActive: removing.isActive, archivedAt: removing.archivedAt, counts: { students: removing.counts.students, topics: removing.counts.topics } } : null}
         title={t("admin.struct.deleteTitle.year")}
         loading={deleteYear.isPending}
         onConfirm={() => removing && deleteYear.mutate(removing.id, { onSuccess: () => setRemoving(null) })}

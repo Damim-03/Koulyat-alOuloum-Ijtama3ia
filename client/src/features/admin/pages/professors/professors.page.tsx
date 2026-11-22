@@ -32,6 +32,8 @@ import { Select as UiSelect } from "../../../../components/ui/select";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
 import { NameCell } from "../../components/ui/name-cell";
+import { stackOnPhone } from "../../../../lib/stack-table";
+import { isPhoneNow } from "../../../../hooks/use-media-query";
 
 const PAGE_SIZE = 10;
 
@@ -52,7 +54,8 @@ export function AdminProfessorsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  // Open from a tablet up; on a phone the filters alone would fill the screen.
+  const [filtersOpen, setFiltersOpen] = useState(() => !isPhoneNow());
 
   // debounced search terms
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -400,8 +403,8 @@ export function AdminProfessorsPage() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="max-h-[70vh] overflow-auto">
-          <table className="w-full min-w-240 text-start">
+        <div className="max-h-[70dvh] overflow-auto">
+          <table ref={stackOnPhone} className="stack-sm w-full min-w-240 text-start">
             <thead className="sticky top-0 z-10">
               <tr className="bg-forest text-cream">
                 <th className="w-20 px-4 py-3 text-xs font-medium">
@@ -634,10 +637,16 @@ function StatTile({
 }
 
 function Chip({ label, onClear }: { label: string; onClear: () => void }) {
+  const { t } = useTranslation();
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-forest/8 px-2.5 py-1 text-[11px] text-forest">
       {label}
-      <button onClick={onClear} className="text-clay hover:text-red-500">
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={`${t("admin.proj.removeFilter")}: ${label}`}
+        className="text-clay hover:text-red-500"
+      >
         <X size={12} />
       </button>
     </span>

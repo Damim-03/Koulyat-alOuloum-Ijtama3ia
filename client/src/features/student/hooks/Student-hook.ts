@@ -3,13 +3,21 @@ import { toast } from "sonner";
 import { studentApi } from "../api/Student-api";
 import type { CreateGroupRequestInput } from "../validation/student.schema";
 import { t } from "i18next";
+import { serverMessage } from "../../../lib/api/error";
 
 const KEYS = {
   dashboard: ["student", "dashboard"] as const,
   lookup: (reg: string) => ["student", "lookup", reg] as const,
   requests: ["student", "group-requests"] as const,
   project: ["student", "my-project"] as const,
+  selection: ["student", "selection-window"] as const,
 };
+
+// ─── the deadline to choose topics ─────────────────────────────
+/** The deadline for the student's own year: its days; the page reads where it stands by the clock. */
+export function useStudentSelectionWindow(enabled = true) {
+  return useQuery({ queryKey: KEYS.selection, queryFn: studentApi.selectionWindow, staleTime: 60_000, enabled });
+}
 
 // ─── dashboard ─────────────────────────────────────────────────
 export function useStudentDashboard() {
@@ -50,11 +58,7 @@ export function useCreateGroupRequest() {
       qc.invalidateQueries({ queryKey: KEYS.dashboard });
       toast.success(t("toast.groupRequestSent"));
     },
-    onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { message?: string } } })
-        ?.response?.data?.message;
-      toast.error(msg || t("toast.requestSendFailed"));
-    },
+    // والرفضُ لا يُعلَن هنا: نافذة الطلب تعرضه في مكانه، فوق زرّ الإرسال.
   });
 }
 export function useCancelGroupRequest() {
@@ -66,11 +70,13 @@ export function useCancelGroupRequest() {
       qc.invalidateQueries({ queryKey: KEYS.dashboard });
       toast.success(t("toast.requestCancelled"));
     },
-    onError: () => toast.error(t("toast.requestCancelFailed")),
+    // Past the deadline the server says why it stays: said as it is.
+    onError: (e) => toast.error(serverMessage(e, t("toast.requestCancelFailed"))),
   });
 }
 
 // ─── my project ────────────────────────────────────────────────
-export function useMyProject() {
-  return useQuery({ queryKey: KEYS.project, queryFn: studentApi.myProject });
+/** The student's project, once a request was accepted — off for anyone who is not a student. */
+export function useMyProject(enabled = true) {
+  return useQuery({ queryKey: KEYS.project, queryFn: studentApi.myProject, enabled });
 }

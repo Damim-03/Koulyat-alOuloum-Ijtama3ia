@@ -1,5 +1,7 @@
 import { prisma } from "../../core/prisma/client";
-import { setTopicDecision } from "../../core/topic/topic-status";
+import { resolveTopicExtras, topicExtrasSelect } from "../../core/topic/topic-extras";
+import { computeTopicStatus, setTopicDecision } from "../../core/topic/topic-status";
+import type { TopicStatus } from "../../generated/prisma";
 import {
   NotFoundException,
   UnauthorizedException,
@@ -7,6 +9,10 @@ import {
 } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { assertYearOpen } from "../../core/academic/year-open";
+import { assertProposalsOpen } from "../../core/academic/proposal-window";
+import { assertTeamSize } from "../../core/academic/team-size";
+import { assertTopicQuota, lockProfessor, topicQuotaOf } from "../../core/academic/topic-quota";
+import { nameSearchFilter } from "../../core/search/name-search";
 import {
   CreateTopicDTO,
   CreateTopicWithGroupDTO,
@@ -20,6 +26,7 @@ import {
   createNotification,
   notifyAdminsQuietly,
 } from "../notification/notification.service";
+import { tr } from "../../core/i18n";
 
 //
 // ─── GET PROFESSOR BY USERID ─────────────────────────────────
@@ -32,7 +39,7 @@ const getProfessor = async (userId: string) => {
 
   if (!professor) {
     throw new NotFoundException(
-      "Professor not found",
+      tr("notFound.professor"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
@@ -50,37 +57,63 @@ export const createTopicService = async (
 ) => {
   const professor = await getProfessor(userId);
   await assertYearOpen(data.academicYearId);
+  await assertProposalsOpen(data.academicYearId);
+  await assertTeamSize(data.academicYearId, data.specializationId, data.maxStudents);
+  const extras = await resolveTopicExtras(data, { professorId: professor.id, specializationId: data.specializationId });
 
-  const topic = await prisma.graduationTopic.create({
-    data: {
-      title: data.title,
-      description: data.description,
-      maxStudents: data.maxStudents,
-      maxRequests: data.maxRequests ?? null,
-      specializationId: data.specializationId,
-      academicYearId: data.academicYearId,
-      requirements: data.requirements ?? [],
-      objectives: data.objectives ?? [],
-      references: data.references ?? [],
-      professorId: professor.id,
-      status: "pending",
-    },
-    include: {
-      specialization: true,
-      academicYear: true,
-    },
+  // Counted and created under his lock: two sends at once do not both slip under the limit.
+  const topic = await prisma.$transaction(async (tx) => {
+    await lockProfessor(tx, professor.id);
+    await assertTopicQuota(data.academicYearId, professor.id, tx);
+    return tx.graduationTopic.create({
+      data: {
+        ...extras,
+        title: data.title,
+        description: data.description,
+        maxStudents: data.maxStudents,
+        maxRequests: data.maxRequests ?? null,
+        specializationId: data.specializationId,
+        academicYearId: data.academicYearId,
+        requirements: data.requirements,
+        objectives: data.objectives,
+        references: data.references,
+        professorId: professor.id,
+        status: "pending",
+      },
+      include: {
+        specialization: true,
+        academicYear: true,
+      },
+    });
   });
 
   // الموضوع يولد «قيد الانتظار»، أي أنه ينتظر قرار الإدارة. ولا يعلم به أحدٌ
   // منها حتى الآن إلا إن فتح اللوحة وتصفّح — فالجرس هو ما يُقصّر ذلك.
   await notifyAdminsQuietly({
     type: "general",
-    title: "موضوعٌ جديد بانتظار القرار",
-    message: `اقترح أستاذٌ موضوع: «${topic.title}».`,
+    title: { key: "notif.topicProposed.title" },
+    message: { key: "notif.topicProposed.message", params: { title: topic.title } },
     link: "/admin/topics",
   });
 
   return topic;
+};
+
+//
+// ─── HOW MANY TOPICS HE MAY STILL SEND ───────────────────────
+//
+
+/**
+ * The professor's limit for a year — the one asked, else the current — and
+ * how much of it he has used: «2 of 3». `max` null: no limit.
+ */
+export const topicQuotaService = async (userId: string, academicYearId?: string) => {
+  const professor = await getProfessor(userId);
+  const yearId =
+    academicYearId ??
+    (await prisma.academicYear.findFirst({ where: { isActive: true, archivedAt: null }, select: { id: true } }))?.id;
+  const quota = yearId ? await topicQuotaOf(yearId, professor.id) : null;
+  return quota ?? { year: null, max: null, used: 0 };
 };
 
 //
@@ -108,15 +141,19 @@ export const createTopicWithGroupService = async (
   ]);
   if (!specialization)
     throw new NotFoundException(
-      "Specialization not found",
+      tr("notFound.specialization"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   if (!academicYear)
     throw new NotFoundException(
-      "Academic year not found",
+      tr("notFound.academicYear"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   await assertYearOpen(academicYear.id);
+  await assertProposalsOpen(academicYear.id);
+  await assertTeamSize(academicYear.id, data.specializationId, data.maxStudents);
+  // Said before the team is checked; checked again, locked, as the topic is created.
+  await assertTopicQuota(academicYear.id, professor.id);
 
   // ── resolve the registration numbers ──
   const numbers = Array.from(
@@ -134,7 +171,7 @@ export const createTopicWithGroupService = async (
     const found = new Set(students.map((s) => s.registrationNumber));
     const missing = numbers.filter((r) => !found.has(r));
     throw new BadRequestException(
-      `أرقام تسجيل غير موجودة: ${missing.join(", ")}`,
+      tr("student.unknownRegistrations", { list: missing.join(", ") }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
@@ -144,13 +181,13 @@ export const createTopicWithGroupService = async (
   );
   if (!leader)
     throw new BadRequestException(
-      "المرسِل يجب أن يكون ضمن الطلبة المُختارين",
+      tr("professor.leaderNotInTeam"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
   if (students.length > data.maxStudents)
     throw new BadRequestException(
-      `عدد الطلبة يتجاوز الحدّ الأقصى للموضوع (${data.maxStudents})`,
+      tr("professor.teamTooBig", { max: data.maxStudents }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -161,19 +198,44 @@ export const createTopicWithGroupService = async (
   });
   if (placed)
     throw new BadRequestException(
-      `الطالب ${placed.student.registrationNumber} لديه مذكرة بالفعل`,
+      tr("professor.studentHasProject", { reg: placed.student.registrationNumber }),
+      ErrorCodeEnum.VALIDATION_ERROR,
+    );
+
+  // ولا من هو في طلبٍ حيٍّ لفريقٍ آخر — القاعدةُ نفسها التي يُفحص بها زملاء
+  // الطالب حين يُرسل طلبه. لو قُبل الطلبان لصار له مشروعان.
+  const requested = await prisma.groupRequestMember.findFirst({
+    where: {
+      studentId: { in: students.map((s) => s.id) },
+      request: { status: { in: ["pending", "accepted"] } },
+    },
+    select: {
+      student: { select: { registrationNumber: true } },
+      request: { select: { topic: { select: { title: true } } } },
+    },
+  });
+  if (requested)
+    throw new BadRequestException(
+      tr("professor.studentInRequest", {
+        reg: requested.student.registrationNumber,
+        title: requested.request.topic.title,
+      }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
   // ── the topic and the proposal, together or not at all ──
+  const extras = await resolveTopicExtras(data, { professorId: professor.id, specializationId: data.specializationId });
   const topic = await prisma.$transaction(async (tx) => {
+    await lockProfessor(tx, professor.id);
+    await assertTopicQuota(data.academicYearId, professor.id, tx);
     const created = await tx.graduationTopic.create({
       data: {
+        ...extras,
         title: data.title,
         description: data.description,
-        requirements: data.requirements ?? [],
-        objectives: data.objectives ?? [],
-        references: data.references ?? [],
+        requirements: data.requirements,
+        objectives: data.objectives,
+        references: data.references,
         maxStudents: data.maxStudents,
         maxRequests: data.maxRequests ?? null,
         status: "pending", // the administration still approves it
@@ -183,11 +245,11 @@ export const createTopicWithGroupService = async (
       },
     });
 
+    // The proposal's own request. The topic is not published, and an
+    // unpublished topic takes one request only — so it stays theirs.
     await tx.groupRequest.create({
       data: {
         topicId: created.id,
-        // The proposal reserves the topic exactly as a student request does.
-        activeTopicId: created.id,
         leaderStudentId: leader.id,
         priority: 1,
         status: "pending",
@@ -196,14 +258,15 @@ export const createTopicWithGroupService = async (
         },
       },
     });
+    await computeTopicStatus(tx, created.id);
 
     return created;
   });
 
   await notifyAdminsQuietly({
     type: "general",
-    title: "موضوعٌ جديد بفريقه بانتظار القرار",
-    message: `اقترح أستاذٌ موضوع: «${topic.title}» مع فريقٍ من ${students.length} طالب/طلبة.`,
+    title: { key: "notif.topicProposedWithTeam.title" },
+    message: { key: "notif.topicProposedWithTeam.message", params: { title: topic.title, count: students.length } },
     link: "/admin/topics",
   });
 
@@ -212,8 +275,8 @@ export const createTopicWithGroupService = async (
     await createNotification({
       userId: s.userId,
       type: "general",
-      title: "اقترح أستاذك موضوعاً لكم",
-      message: `اقترح الأستاذ موضوع: «${topic.title}» لفريقكم. بانتظار موافقة الإدارة.`,
+      title: { key: "notif.teamProposedForYou.title" },
+      message: { key: "notif.teamProposedForYou.message", params: { title: topic.title } },
       link: "/student/requests",
     });
   }
@@ -231,8 +294,18 @@ export const createTopicWithGroupService = async (
  *
  * Three things keep this from being a way to read the student roster: the
  * term is required (see searchStudentsSchema), only students with no project
- * are returned — the only ones that could be proposed anyway — and the answer
- * is capped at ten rows carrying nothing beyond what the picker displays.
+ * and no live request are returned — the only ones that could be proposed
+ * anyway — and the answer is capped at ten rows carrying nothing beyond what
+ * the picker displays.
+ */
+/**
+ * The students a professor may name for a proposed team: free ones — on no
+ * project, in no live request.
+ *
+ * Typed: a registration number, or letters of the names — each word in the
+ * first or last name, Arabic or Latin, in any order: «خا مر» finds «خالد
+ * مرابط», and one letter is enough. Not typed: the specialization's students,
+ * to choose from a list — never the whole university.
  */
 export const searchStudentsService = async (
   userId: string,
@@ -241,47 +314,45 @@ export const searchStudentsService = async (
   await getProfessor(userId); // role is guarded upstream; this proves the profile
 
   const term = q.q.trim();
-  const words = term.split(/\s+/).filter(Boolean);
+  if (!term && !q.specializationId) return { students: [], total: 0 };
+  const byName = term ? nameSearchFilter(term, (f) => ({ user: f })) : null;
 
-  const students = await prisma.student.findMany({
-    where: {
-      // Already on a project → not proposable, so not shown.
-      projectMembers: { none: {} },
-      ...(q.specializationId ? { specializationId: q.specializationId } : {}),
-      OR: [
-        { registrationNumber: { contains: term } },
-        // Each word must appear in one of the two name fields, so "خالد مرابط"
-        // and "مرابط خالد" find the same person.
-        {
-          AND: words.map((w) => ({
-            OR: [
-              { user: { firstName: { contains: w } } },
-              { user: { lastName: { contains: w } } },
-            ],
-          })),
-        },
-      ],
+  const where = {
+    // Already on a project, or in a live request → not proposable, so not shown.
+    projectMembers: { none: {} },
+    groupRequestMembers: {
+      none: { request: { status: { in: ["pending", "accepted"] as ("pending" | "accepted")[] } } },
     },
-    select: {
-      id: true,
-      registrationNumber: true,
-      user: {
-        select: {
-          firstName: true,
-          lastName: true,
-          firstNameLatin: true,
-          lastNameLatin: true,
-          avatarUrl: true,
-          gender: true,
+    ...(q.specializationId ? { specializationId: q.specializationId } : {}),
+    ...(term ? { OR: [{ registrationNumber: { contains: term } }, ...(byName ? [byName] : [])] } : {}),
+  };
+
+  const [students, total] = await Promise.all([
+    prisma.student.findMany({
+      where,
+      select: {
+        id: true,
+        registrationNumber: true,
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            firstNameLatin: true,
+            lastNameLatin: true,
+            avatarUrl: true,
+            gender: true,
+          },
         },
+        specialization: { select: { id: true, name: true } },
       },
-      specialization: { select: { id: true, name: true } },
-    },
-    orderBy: { registrationNumber: "asc" },
-    take: 10,
-  });
+      // By name: a list read by eye.
+      orderBy: [{ user: { lastName: "asc" } }, { user: { firstName: "asc" } }, { registrationNumber: "asc" }],
+      take: q.limit,
+    }),
+    prisma.student.count({ where }),
+  ]);
 
-  return students;
+  return { students, total };
 };
 
 //
@@ -296,6 +367,9 @@ export const getMyTopicsService = async (userId: string) => {
     include: {
       specialization: true,
       academicYear: true,
+      // The co-supervisor and the type (core/topic/topic-extras); the summary is a column.
+      coSupervisor: topicExtrasSelect.coSupervisor,
+      type: topicExtrasSelect.type,
       _count: {
         select: { groupRequests: true },
       },
@@ -349,6 +423,9 @@ export const getTopicByIdService = async (userId: string, topicId: string) => {
     include: {
       specialization: true,
       academicYear: true,
+      // The co-supervisor and the type (core/topic/topic-extras); the summary is a column.
+      coSupervisor: topicExtrasSelect.coSupervisor,
+      type: topicExtrasSelect.type,
 
       groupRequests: {
         // Live requests first, then the rest; newest first within each.
@@ -375,14 +452,14 @@ export const getTopicByIdService = async (userId: string, topicId: string) => {
 
   if (!topic) {
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
 
   if (topic.professorId !== professor.id) {
     throw new UnauthorizedException(
-      "You do not own this topic",
+      tr("access.notOwner.topic"),
       ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     );
   }
@@ -407,14 +484,14 @@ export const updateTopicService = async (
 
   if (!topic) {
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
 
   if (topic.professorId !== professor.id) {
     throw new UnauthorizedException(
-      "You do not own this topic",
+      tr("access.notOwner.topic"),
       ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     );
   }
@@ -422,7 +499,7 @@ export const updateTopicService = async (
   // Can only edit if pending or rejected
   if (topic.status !== "pending" && topic.status !== "rejected") {
     throw new UnauthorizedException(
-      "Cannot edit a topic that is already approved or open",
+      tr("professor.cantEditDecided"),
       ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     );
   }
@@ -436,7 +513,7 @@ export const updateTopicService = async (
     });
     if (!found)
       throw new NotFoundException(
-        "Specialization not found",
+        tr("notFound.specialization"),
         ErrorCodeEnum.RESOURCE_NOT_FOUND,
       );
   }
@@ -447,10 +524,23 @@ export const updateTopicService = async (
     });
     if (!found)
       throw new NotFoundException(
-        "Academic year not found",
+        tr("notFound.academicYear"),
         ErrorCodeEnum.RESOURCE_NOT_FOUND,
       );
     await assertYearOpen(data.academicYearId);
+  }
+
+  // The rule of its year and level, when its number changes or it moves; kept as it is, in place, it stands.
+  if (data.maxStudents !== undefined || data.academicYearId || data.specializationId) {
+    const inPlace =
+      (!data.academicYearId || data.academicYearId === topic.academicYearId) &&
+      (!data.specializationId || data.specializationId === topic.specializationId);
+    await assertTeamSize(
+      data.academicYearId ?? topic.academicYearId,
+      data.specializationId ?? topic.specializationId,
+      data.maxStudents ?? topic.maxStudents,
+      inPlace ? topic.maxStudents : undefined,
+    );
   }
 
   // Editing a rejected topic *is* resubmitting it: it goes back into the
@@ -459,8 +549,25 @@ export const updateTopicService = async (
   // tell the administration it had been answered.
   const resubmitting = topic.status === "rejected";
 
+  // The co-supervisor, short description and type, checked against the topic as it will be.
+  const { coSupervisorId, summary, typeId, ...fields } = data;
+  const extras = await resolveTopicExtras(
+    { coSupervisorId, summary, typeId },
+    { professorId: topic.professorId, specializationId: data.specializationId ?? topic.specializationId },
+    topic,
+  );
+
+  // Resubmitting a rejected topic, or moving it to another year, adds it to a
+  // count it was not in: the limit of the year it will be in.
+  const yearAfter = data.academicYearId ?? topic.academicYearId;
+  const counts = resubmitting || yearAfter !== topic.academicYearId;
+
   const updated = await prisma.$transaction(async (tx) => {
-    await tx.graduationTopic.update({ where: { id: topicId }, data });
+    if (counts) {
+      await lockProfessor(tx, topic.professorId);
+      await assertTopicQuota(yearAfter, topic.professorId, tx);
+    }
+    await tx.graduationTopic.update({ where: { id: topicId }, data: { ...fields, ...extras } });
     // Resubmitting is a change of decision, so it goes through the one place
     // that writes decisions — which also clears the stale rejection reason.
     if (resubmitting) await setTopicDecision(tx, topicId, "pending");
@@ -483,14 +590,14 @@ export const deleteTopicService = async (userId: string, topicId: string) => {
 
   if (!topic) {
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
 
   if (topic.professorId !== professor.id) {
     throw new UnauthorizedException(
-      "You do not own this topic",
+      tr("access.notOwner.topic"),
       ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     );
   }
@@ -498,7 +605,7 @@ export const deleteTopicService = async (userId: string, topicId: string) => {
   // Can only delete if pending or rejected
   if (topic.status !== "pending" && topic.status !== "rejected") {
     throw new UnauthorizedException(
-      "Cannot delete a topic that is already approved or open",
+      tr("professor.cantDeleteDecided"),
       ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     );
   }
@@ -544,14 +651,14 @@ const getOwnedGroup = async (professorId: string, groupId: string) => {
 
   if (!group) {
     throw new NotFoundException(
-      "Project group not found",
+      tr("notFound.project"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
 
   if (group.topic.professorId !== professorId) {
     throw new UnauthorizedException(
-      "You do not own this project group",
+      tr("access.notOwner.group"),
       ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     );
   }
@@ -604,14 +711,14 @@ const getOwnedMilestone = async (professorId: string, milestoneId: string) => {
 
   if (!milestone) {
     throw new NotFoundException(
-      "Milestone not found",
+      tr("notFound.milestone"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
   }
 
   if (milestone.group.topic.professorId !== professorId) {
     throw new UnauthorizedException(
-      "You do not own this milestone",
+      tr("access.notOwner.milestone"),
       ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     );
   }
@@ -909,10 +1016,12 @@ export const getDashboardService = async (userId: string) => {
   ]);
 
   // ── counters ──
-  const breakdown: Record<string, number> = {
+  // Every status, by type: a status added to the schema and forgotten here
+  // fails to compile, instead of counting as NaN.
+  const breakdown: Record<TopicStatus, number> = {
     pending: 0, approved: 0, open: 0, full: 0, rejected: 0, archived: 0,
   };
-  for (const t of topics) breakdown[t.status] = (breakdown[t.status] ?? 0) + 1;
+  for (const t of topics) breakdown[t.status] += 1;
 
   const supervisedStudents = groups.reduce((n, g) => n + g.members.length, 0);
 

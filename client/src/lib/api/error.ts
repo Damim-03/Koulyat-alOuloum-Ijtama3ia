@@ -1,5 +1,6 @@
 import axios from "axios";
 import { t } from "i18next";
+import { fallbackFor } from "./localize";
 
 export interface AppError {
   status: number;
@@ -7,17 +8,17 @@ export interface AppError {
   message: string;
 }
 
-// Maps the backend ErrorCodeEnum to user-facing copy.
-// NOTE: confirm the field name your errorHandler returns ("errorCode" vs
-// "code") and adjust readCode() below if needed.
+// Maps the backend ErrorCodeEnum to user-facing copy — as translation KEYS,
+// read when the error is shown. They used to be strings translated once when
+// this module loaded, so they stayed in that language after a switch.
 const MESSAGES: Record<string, string> = {
-  AUTH_INVALID_CREDENTIALS: t("apiError.badCredentials"),
-  AUTH_ACCOUNT_SUSPENDED: t("apiError.suspended"),
-  AUTH_INVALID_TOKEN: t("apiError.sessionExpired"),
-  AUTH_USER_NOT_FOUND: t("apiError.accountGone"),
-  VALIDATION_ERROR: t("apiError.checkInput"),
-  RESOURCE_NOT_FOUND: t("apiError.notFound"),
-  ACCESS_UNAUTHORIZED: t("apiError.forbidden"),
+  AUTH_INVALID_CREDENTIALS: "apiError.badCredentials",
+  AUTH_ACCOUNT_SUSPENDED: "apiError.suspended",
+  AUTH_INVALID_TOKEN: "apiError.sessionExpired",
+  AUTH_USER_NOT_FOUND: "apiError.accountGone",
+  VALIDATION_ERROR: "apiError.checkInput",
+  RESOURCE_NOT_FOUND: "apiError.notFound",
+  ACCESS_UNAUTHORIZED: "apiError.forbidden",
 };
 
 function readCode(data: unknown): string {
@@ -50,8 +51,10 @@ export function serverMessage(error: unknown, fallback: string): string {
  */
 function tooMany(code: string, data: unknown): string {
   if (code === "AUTH_TOO_MANY_ATTEMPTS") {
-    const text = (data as { message?: string } | undefined)?.message ?? "";
-    const minutes = Number(/(\d+)\s*minute/i.exec(text)?.[1]);
+    // الخادم يرسل الدقائق رقماً (retryAfterMinutes)؛ والنصّ الإنجليزيّ القديم احتياط.
+    const d = data as { message?: string; originalMessage?: string; retryAfterMinutes?: number } | undefined;
+    const text = d?.originalMessage ?? d?.message ?? "";
+    const minutes = Number(d?.retryAfterMinutes ?? /(\d+)\s*minute/i.exec(text)?.[1]);
     if (minutes > 0) return t("apiError.accountLocked", { count: minutes });
   }
   return t("apiError.tooManyRequests");
@@ -64,9 +67,8 @@ export function normalizeError(error: unknown): AppError {
     const code = readCode(data);
     if (status === 429) return { status, code, message: tooMany(code, data) };
     const fallback =
-      (data as { message?: string } | undefined)?.message ??
-      t("apiError.unexpected");
-    return { status, code, message: MESSAGES[code] ?? fallback };
+      (data as { message?: string } | undefined)?.message ?? fallbackFor(status, code);
+    return { status, code, message: MESSAGES[code] ? t(MESSAGES[code]) : fallback };
   }
   return { status: 0, code: "UNKNOWN", message: t("apiError.unexpected") };
 }

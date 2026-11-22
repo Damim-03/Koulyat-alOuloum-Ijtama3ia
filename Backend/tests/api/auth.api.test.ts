@@ -18,6 +18,8 @@ import jwt from "jsonwebtoken";
 import { config } from "../../src/core/config/app.config";
 import { signAccessToken, signRefreshToken } from "../../src/core/auth/tokens";
 import { Roles } from "../../src/core/enums/role.enum";
+import { tr } from "../../src/core/i18n";
+import { getMeService } from "../../src/modules/auth/auth.service";
 import {
   seed,
   teardown,
@@ -149,12 +151,14 @@ describe("حارس المصادقة على مسار محميّ", () => {
       .expect(401);
   });
 
-  it("رمز مشوَّه ⇒ 401 «Invalid token»", async () => {
+  // الرسائل تُقرأ من الفهرس (core/i18n) لا تُكتب نصّاً هنا: ما يُحرَس هو أيّ
+  // رسالةٍ تُقال لأيّ حالة، لا صياغتها في لغةٍ بعينها.
+  it("رمز مشوَّه ⇒ 401 «جلسة غير صالحة»", async () => {
     const res = await withToken("aaa.bbb.ccc").expect(401);
-    expect(res.body.message).toBe("Invalid token");
+    expect(res.body.message).toBe(tr("auth.invalidToken"));
   });
 
-  it("رمز منتهٍ ⇒ 401 «Token expired» — رسالة مختلفة ليعرف العميل أن يُجدّد", async () => {
+  it("رمز منتهٍ ⇒ 401 «انتهت الصلاحية» — رسالة مختلفة ليعرف العميل أن يُجدّد", async () => {
     const expired = jwt.sign(
       {
         userId: f.admin.id,
@@ -173,7 +177,8 @@ describe("حارس المصادقة على مسار محميّ", () => {
     );
 
     const res = await withToken(expired).expect(401);
-    expect(res.body.message).toBe("Token expired");
+    expect(res.body.message).toBe(tr("auth.tokenExpired"));
+    expect(res.body.message).not.toBe(tr("auth.invalidToken"));
   });
 
   it("رمز تحديث مُقدَّم كرمز وصول ⇒ 401", async () => {
@@ -181,7 +186,7 @@ describe("حارس المصادقة على مسار محميّ", () => {
     await withToken(refreshToken).expect(401);
   });
 
-  it("رمز لمستخدم محذوف ⇒ 401 «User not found»", async () => {
+  it("رمز لمستخدم محذوف ⇒ 401 «الحساب لم يعد موجوداً»", async () => {
     const orphan = signAccessToken({
       userId: "00000000-0000-0000-0000-000000000000",
       role: Roles.ADMIN,
@@ -190,7 +195,7 @@ describe("حارس المصادقة على مسار محميّ", () => {
     });
 
     const res = await withToken(orphan).expect(401);
-    expect(res.body.message).toBe("User not found");
+    expect(res.body.message).toBe(tr("auth.userNotFound"));
   });
 
   it("رمز صحيح ⇒ 200", async () => {
@@ -214,7 +219,7 @@ describe("الحساب الموقوف", () => {
     });
 
     const res = await withToken(accessToken).expect(403);
-    expect(res.body.message).toBe("Your account has been suspended");
+    expect(res.body.message).toBe(tr("auth.suspended"));
 
     await prisma.user.update({
       where: { id: f.admin.id },
@@ -249,7 +254,7 @@ describe("الخروج يُبطل الرمز فعلاً", () => {
    * قبل وجود الإبطال كان الخروج يمسح المتصفّح ويترك الرمز صالحاً لكامل عمره.
    * هذان التأكيدان يحرسان الرافعتين: جلسة واحدة، وكل الجلسات.
    */
-  it("خروجٌ من جلسة واحدة يُبطل رمزها ⇒ 401 «Session has been revoked»", async () => {
+  it("خروجٌ من جلسة واحدة يُبطل رمزها ⇒ 401 «أُنهيت الجلسة»", async () => {
     const { accessToken } = await login();
     await withToken(accessToken).expect(200);
 
@@ -259,7 +264,19 @@ describe("الخروج يُبطل الرمز فعلاً", () => {
       .expect(200);
 
     const res = await withToken(accessToken).expect(401);
-    expect(res.body.message).toBe("Session has been revoked");
+    expect(res.body.message).toBe(tr("auth.sessionRevoked"));
+  });
+
+  /**
+   * الخروج مفتوحٌ عمداً بلا حارس (يعمل بعد انتهاء رمز الوصول). فطلبٌ بلا رمز،
+   * أو برمزٍ مشوَّه أو منتهٍ، لا شيء فيه يُبطَل — والخروج ناجحٌ مع ذلك: الصفحة
+   * تمسح ما عندها ولا تُرى خطأً على «تسجيل الخروج».
+   */
+  it("وخروجٌ بلا رمزٍ صالح ⇒ 200، ولا جلسة تُمسّ", async () => {
+    const before = await prisma.revokedSession.count();
+    await request(app).post("/api/auth/logout").expect(200);
+    await request(app).post("/api/auth/logout").set("Authorization", "Bearer aaa.bbb.ccc").expect(200);
+    expect(await prisma.revokedSession.count()).toBe(before);
   });
 
   it("و«الخروج من كل الأجهزة» يُبطل جلسةً أخرى لم تُلمَس", async () => {
@@ -316,5 +333,22 @@ describe("رمزٌ يدّعي دوراً لا يملكه صاحبه", () => {
     });
 
     await withToken(forged).expect(401);
+  });
+});
+
+//
+// ═══ «من أنا» ═══
+//
+
+describe("getMeService", () => {
+  /**
+   * الحارس يتحقّق من الحساب قبل أن تصل الخدمة؛ فحسابٌ يُحذف بينهما (طلبان
+   * متزامنان) يُقال عنه «غير موجود» بـ404 — لا رميةٌ على `null` بـ500.
+   */
+  it("حسابٌ زال بين الحارس والقراءة ⇒ 404 «المستخدم غير موجود»", async () => {
+    await expect(getMeService("00000000-0000-0000-0000-000000000000")).rejects.toMatchObject({
+      statusCode: 404,
+      message: tr("notFound.user"),
+    });
   });
 });

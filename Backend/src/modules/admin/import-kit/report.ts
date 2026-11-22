@@ -1,3 +1,4 @@
+import { tr } from "../../../core/i18n";
 import type { ColumnGroup, ColumnKind, ImportColumn } from "./columns";
 import type { FileInfo, RawRow } from "./parser";
 
@@ -67,7 +68,8 @@ export const columnsOf = (columns: ImportColumn[], info?: FileInfo): ReportColum
     letter: info?.columns[c.key] ?? null,
   }));
 
-export const REQUIRED = "إلزامي — الخانة فارغة.";
+/** «إلزامي — الخانة فارغة.» بلغة الطلب. */
+export const required = () => tr("imp.required");
 
 /**
  * خانات صفٍّ واحدٍ وما يُقال فيها، والحكم عليها يجري بها.
@@ -96,16 +98,13 @@ export class RowCheck<K extends string> {
       if (!rc || c.kind === "auto") continue;
       if (rc.excelError) {
         this.cells[c.key].value = rc.excelError;
-        this.error(c.key, `في الخانة خطأ Excel (${rc.excelError}) — اكتب القيمة نفسها.`);
+        this.error(c.key, tr("imp.excelError", { error: rc.excelError }));
       } else if (rc.pending)
-        this.error(c.key, "صيغةٌ لم تُحسب، فلا قيمة لها في الملف — افتحه في Excel واحفظه، أو اكتب القيمة نفسها.");
+        this.error(c.key, tr("imp.pendingFormula"));
       else if (rc.lossy)
-        this.error(
-          c.key,
-          "رقمٌ أطول من 15 خانة، وExcel لا يحفظ ما بعدها (صارت أصفاراً). اجعل العمود «نصّاً» وأعد كتابته.",
-        );
-      else if (rc.date) this.error(c.key, "Excel حفظ الخانة تاريخاً — اجعل العمود «نصّاً» وأعد كتابتها.");
-      else if (rc.formula && rc.text) this.info(c.key, "القيمة ناتج صيغةٍ في الملف.");
+        this.error(c.key, tr("imp.lossyNumber"));
+      else if (rc.date) this.error(c.key, tr("imp.storedAsDate"));
+      else if (rc.formula && rc.text) this.info(c.key, tr("imp.fromFormula"));
     }
   }
 
@@ -145,7 +144,7 @@ export class RowCheck<K extends string> {
     if (this.raw.hidden)
       this.rowIssues.push({
         level: "warning",
-        message: "هذا الصفّ مخفيٌّ في Excel (مُصفّى أو مطويّ) — لا تراه هناك، وسيُستورد مع غيره.",
+        message: tr("imp.hiddenRow"),
       });
     const all = [...Object.values<ReportCell>(this.cells).flatMap((c) => c.issues ?? []), ...this.rowIssues];
     return {

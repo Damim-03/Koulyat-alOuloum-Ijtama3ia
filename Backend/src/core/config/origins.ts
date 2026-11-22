@@ -40,3 +40,40 @@ export function isOriginAllowed(
   if (isProduction) return false;
   return DEV_TUNNEL_PATTERNS.some((pattern) => pattern.test(origin));
 }
+
+/**
+ * An address as a browser writes it in `Origin`: scheme, host, port — no
+ * path, no trailing slash. `https://site.dz/` in the environment would never
+ * equal the browser's `https://site.dz`, and every request would be refused.
+ * Null when the value is not an http(s) address at all.
+ */
+export function normalizeOrigin(value: string): string | null {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a page served from this address is a secure context — where the
+ * browser offers `crypto.subtle`, which the sign-in check (modules/auth/
+ * captcha) needs to run at all: HTTPS, or the machine itself.
+ */
+export function isSecureContextOrigin(origin: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    if (protocol === "https:") return true;
+    if (protocol !== "http:") return false;
+    return (
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname === "127.0.0.1" ||
+      hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}

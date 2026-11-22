@@ -2,13 +2,17 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 import { toast } from "sonner";
 import { t } from "i18next";
 import { adminApi } from "../api/admin.api";
+import type { SupervisionTemplate } from "../../supervision/lib/sheet-template";
 import { serverMessage } from "../../../lib/api/error";
 import {
   SITE_ABOUT_KEY,
   SITE_DIRECTOR_KEY,
   SITE_LOGIN_KEY,
   SITE_NEWS_KEY,
+  SITE_TEXTS_KEY,
 } from "../../home/hooks/site-hook";
+import { applySiteTexts } from "../../../i18n/i18n";
+import type { SiteTexts } from "../../../i18n/site-texts";
 import type {
   AboutPage,
   DirectorMessage,
@@ -21,6 +25,8 @@ const NEWS_KEY = ["admin", "news"] as const;
 const DIRECTOR_KEY = ["admin", "director-message"] as const;
 const ABOUT_KEY = ["admin", "about-page"] as const;
 const LOGIN_KEY = ["admin", "login-page"] as const;
+const TEXTS_KEY = ["admin", "site-texts"] as const;
+const SUPERVISION_SHEET_KEY = ["admin", "supervision-sheet"] as const;
 
 /** قائمة الإدارة وما يقرؤه الزائر منها يتغيّران معاً. */
 function refreshNews(qc: QueryClient) {
@@ -134,6 +140,67 @@ export function useSaveLoginContent() {
       qc.setQueryData(LOGIN_KEY, saved);
       qc.invalidateQueries({ queryKey: SITE_LOGIN_KEY });
       toast.success(t("admin.loginPage.toastSaved"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
+  });
+}
+
+// ─── ورقة «طلب الموافقة على الإشراف» ───
+
+export function useAdminSupervisionSheet() {
+  return useQuery({ queryKey: SUPERVISION_SHEET_KEY, queryFn: adminApi.getSupervisionSheet });
+}
+
+/**
+ * Saving or restoring the sheet: what is issued from now on reads it. The
+ * drafts the issue dialog already fetched are dropped, so they show it too —
+ * documents already issued keep their own text, in their snapshot.
+ */
+function onSheetSaved(qc: QueryClient, saved: Awaited<ReturnType<typeof adminApi.getSupervisionSheet>>) {
+  qc.setQueryData(SUPERVISION_SHEET_KEY, saved);
+  qc.invalidateQueries({ queryKey: ["supervision-documents", "preview"] });
+}
+
+export function useSaveSupervisionSheet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: SupervisionTemplate) => adminApi.saveSupervisionSheet(data),
+    onSuccess: (saved) => {
+      onSheetSaved(qc, saved);
+      toast.success(t("admin.supSheet.toastSaved"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
+  });
+}
+
+export function useResetSupervisionSheet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => adminApi.resetSupervisionSheet(),
+    onSuccess: (saved) => {
+      onSheetSaved(qc, saved);
+      toast.success(t("admin.supSheet.toastReset"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
+  });
+}
+
+// ─── نصوص الموقع ───
+
+export function useAdminSiteTexts() {
+  return useQuery({ queryKey: TEXTS_KEY, queryFn: adminApi.getSiteTexts });
+}
+
+export function useSaveSiteTexts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: SiteTexts) => adminApi.saveSiteTexts(data),
+    onSuccess: (saved) => {
+      qc.setQueryData(TEXTS_KEY, saved);
+      qc.setQueryData(SITE_TEXTS_KEY, saved);
+      // المسؤول يرى عباراته في الحال — في القائمة الجانبية نفسها إن غيّرها.
+      applySiteTexts(saved);
+      toast.success(t("admin.texts.toastSaved"));
     },
     onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
   });

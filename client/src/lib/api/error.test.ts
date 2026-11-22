@@ -50,3 +50,13 @@ describe("normalizeError — too many attempts", () => {
     expect(many).toMatch(/in 30 minutes\.$/);
   });
 });
+
+describe("normalizeError — the lock's minutes as a number", () => {
+  it("reads retryAfterMinutes, whatever language the message is in", async () => {
+    await i18n.changeLanguage("ar");
+    const res = normalizeError(
+      answer(429, { errorCode: "AUTH_TOO_MANY_ATTEMPTS", message: "Trop de tentatives.", retryAfterMinutes: 2 }),
+    ).message;
+    expect(res).toContain("دقيقتين");
+  });
+});

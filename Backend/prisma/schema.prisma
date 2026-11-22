@@ -89,6 +89,8 @@ enum NotificationType {
   defense_scheduled
   defense_graded
   general
+  /// دخولٌ إلى الحساب من جهازٍ لم يُرَ عليه من قبل.
+  security_alert
 }
 
 //
@@ -109,8 +111,14 @@ model User {
   firstNameLatin String?
   lastNameLatin  String?
 
-  email    String? @unique
-  username String? @unique
+  email         String? @unique
+  /// The address its owner proved theirs, by opening a link sent to it
+  /// (modules/auth/email-links). Mail that can take over an account — a
+  /// password reset — goes to `email` only while the two are the same: an
+  /// address changed, or mistyped by whoever entered it, is not trusted until
+  /// proven again. Nothing else has to remember to clear it.
+  verifiedEmail String? @db.VarChar(191)
+  username      String? @unique
 
   password String
 
@@ -128,37 +136,94 @@ model User {
   /// rejected, which is what makes logout and "revoke everywhere" real.
   tokenVersion Int @default(0)
 
+  /// كلمة مرورٍ سلّمتها الإدارة — تاريخ ميلاد، أو مولَّدة في الاستيراد، أو
+  /// أُعيد تعيينها. يعرفها غيرُ صاحبها، فلا يُفتح من الحساب شيءٌ حتى يختار
+  /// صاحبه غيرها (core/middleware/auth.middleware).
+  mustChangePassword Boolean @default(false)
+
+  /// التحقّق بخطوتين (TOTP — RFC 6238). السرّ مشفَّرٌ بمفتاحٍ مشتقٍّ من
+  /// SESSION_SECRET (core/auth/secret-box): نسخةٌ من القاعدة وحدها لا تكفي.
+  /// `totpPendingSecret` سرٌّ قيد الإعداد لم يُثبت برمزٍ بعد.
+  totpSecret        String?   @db.VarChar(255)
+  totpPendingSecret String?   @db.VarChar(255)
+  totpEnabledAt     DateTime?
+  /// آخر خطوةٍ زمنيةٍ (٣٠ ثانية) قُبل رمزها — فلا يُقبل الرمز نفسه مرّتين.
+  totpLastStep      Int?
+  /// بصمات (SHA-256) رموز الاسترداد التي لم تُستعمل بعد.
+  totpRecoveryCodes Json?
+
+  /// طلب التوثيق (صورتا البطاقة والوجه)، إن أُرسل ولم يُقبل بعد.
+  activationRequest ActivationRequest?
+
+  /// «نسيت كلمة المرور» لطالبٍ بلا بريدٍ مؤكَّد: طلبٌ إلى الإدارة (modules/password-request).
+  passwordRequest PasswordRequest?
+
+  devices UserDevice[]
+
   student   Student?
   professor Professor?
 
   submissions   Submission[]
   notifications Notification[]
 
-  sentMessages     Message[]          @relation("SentMessages")
-  receivedMessages MessageRecipient[] @relation("ReceivedMessages")
+  sentMessages     Message[]           @relation("SentMessages")
+  receivedMessages MessageRecipient[]  @relation("ReceivedMessages")
+  messageUploads   MessageAttachment[] @relation("MessageUploads")
+  emailTokens      EmailToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Message {
-  id         String             @id @default(uuid())
-  senderId   String
-  sender     User               @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
-  subject    String?
-  body       String             @db.Text
-  broadcast  String? // "all" | "students" | "professors" | "students:<specId>"
+  id          String              @id @default(uuid())
+  senderId    String
+  sender      User                @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  subject     String?
+  body        String              @db.Text
+  broadcast   String? // "all" | "students" | "professors" | "students:<specId>"
   /// The conversation this message belongs to: the id of its first message.
   /// NULL on a first message, so a conversation is `id = X OR threadId = X`.
-  threadId   String?
+  threadId    String?
   /// The message this one answers, when it is a reply.
-  replyToId  String?
-  createdAt  DateTime           @default(now())
-  recipients MessageRecipient[]
+  replyToId   String?
+  /// When its sender last changed its text — possible for a short while
+  /// after sending (modules/messages: EDIT_WINDOW_MS). Shown as "edited".
+  editedAt    DateTime?
+  createdAt   DateTime            @default(now())
+  recipients  MessageRecipient[]
+  attachments MessageAttachment[]
 
   @@index([senderId])
   @@index([createdAt])
   @@index([threadId])
+}
+
+/// A file sent with a message (modules/messages/attachments).
+///
+/// Kept in a private folder that is never served as static files: only the
+/// sender and the recipients of its message open it, through the API.
+///
+/// Uploaded before the message is sent, so `messageId` is empty until then.
+/// An upload never sent — or whose message is gone — is swept after a day,
+/// file and all. `SetNull` on both relations is what lets the sweep find it.
+model MessageAttachment {
+  id         String   @id @default(uuid())
+  messageId  String?
+  message    Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  uploaderId String?
+  uploader   User?    @relation("MessageUploads", fields: [uploaderId], references: [id], onDelete: SetNull)
+  /// The name it was sent with: shown, and offered on download. Never used on disk.
+  fileName   String   @db.VarChar(255)
+  /// Its name on disk: random, holding nothing the client sent.
+  storedName String   @unique @db.VarChar(64)
+  /// From the server's own table of accepted types — never the client's word.
+  mimeType   String   @db.VarChar(127)
+  size       Int
+  createdAt  DateTime @default(now())
+
+  @@index([messageId, createdAt])
+  @@index([uploaderId, messageId])
 }
 
 model MessageRecipient {
@@ -185,15 +250,18 @@ model MessageRecipient {
 //
 
 model Faculty {
-  id       String  @id @default(uuid())
-  name     String
-  code     String  @unique
+  id        String  @id @default(uuid())
+  name      String
+  /// الاسم بالحروف اللاتينية (الإنجليزية أو الفرنسية، كما تكتبه الكلّية) —
+  /// لترويسة قائمة المواضيع حين تُطبع بغير العربية.
+  nameLatin String? @db.VarChar(191)
+  code      String  @unique
   /// Optional cover image shown behind this entry's card.
-  coverUrl String?
+  coverUrl  String?
   /// Optional square mark shown in place of the default building glyph.
   /// Separate from `coverUrl`: the cover is a wide backdrop, this is the
   /// faculty's own emblem and is read at 40-60px.
-  iconUrl  String?
+  iconUrl   String?
 
   departments Department[]
 
@@ -232,21 +300,50 @@ model Domain {
 model Department {
   id String @id @default(uuid())
 
-  name     String
-  code     String  @unique
+  name      String
+  /// الاسم بالحروف اللاتينية، كاسم الكلّية.
+  nameLatin String? @db.VarChar(191)
+  code      String  @unique
   /// Optional cover image shown behind this entry's card.
-  coverUrl String?
+  coverUrl  String?
 
   facultyId String
   faculty   Faculty @relation(fields: [facultyId], references: [id])
 
   filieres   Filiere[]
   professors Professor[]
+  /// أنواع مواضيع القسم (محاورها): الذكاء الاصطناعي، الأمن السيبراني…
+  topicTypes TopicType[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   domains Domain[]
+}
+
+/// نوعُ موضوعٍ (محوره) في قسم: تضعه الإدارة، ويختار منه الأستاذ حين يقترح.
+/// وفي قائمة المواضيع الرسمية يسبق رمزُه رقمَ كلّ موضوعٍ منه (AI01، IoT03)،
+/// ويُلوَّن به سطره.
+model TopicType {
+  id String @id @default(uuid())
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  name  String @db.VarChar(80)
+  /// حروف الرمز: «AI» ⇒ AI01، AI02…
+  code  String @db.VarChar(8)
+  /// لونه في القائمة: «#dbeafe».
+  color String @db.VarChar(9)
+
+  sortOrder Int @default(0)
+
+  topics GraduationTopic[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([departmentId, code])
 }
 
 //
@@ -313,6 +410,30 @@ model AcademicYear {
   /// Closed and kept: the year's record was frozen on this day. An archived
   /// year takes no new students or topics until it is reopened.
   archivedAt DateTime?
+
+  /// فترة اقتراح المواضيع: لا يقترح الأستاذ موضوعاً جديداً لهذه السنة قبل
+  /// بدايتها ولا بعد نهايتها (وتعديل مقترحاته باقٍ له). والإدارة لا تتقيّد
+  /// بها. تُحدَّد معاً أو تُترك معاً — وتركها يعني الاقتراح بلا قيدٍ زمنيّ.
+  /// بداية اليوم الأوّل ونهاية اليوم الأخير بتوقيت الجامعة (core/academic/proposal-window).
+  proposalsOpenAt  DateTime?
+  proposalsCloseAt DateTime?
+
+  /// مهلة اختيار المواضيع: لا يرسل الطالب طلب فريقٍ على موضوعٍ من هذه السنة
+  /// قبل بدايتها ولا بعد نهايتها، ولا يسحب طلبه بعد نهايتها. والإدارة لا
+  /// تتقيّد بها. بالقاعدة نفسها: أيّامٌ كاملة بتوقيت الجامعة، معاً أو لا شيء
+  /// (core/academic/proposal-window).
+  selectionOpenAt  DateTime?
+  selectionCloseAt DateTime?
+
+  /// عدد الطلبة في كلّ موضوعٍ من مواضيع السنة، لكلّ مستوى، تقرّره الإدارة:
+  /// `{ licence?: { n, mode }, master?: …, doctorate?: … }` — `mode` «exact»
+  /// بالضبط أو «max» حتى. ومستوى غائبٌ حرّ (core/academic/team-size).
+  teamSizes Json?
+
+  /// حدّ المواضيع لكلّ أستاذ في السنة: لا يرسل أكثر منه، وأقلّ لا بأس. يُحسب
+  /// كلّ موضوعٍ له في السنة إلّا المرفوض؛ والإدارة لا تتقيّد به. ولا شيء: لا حدّ
+  /// (core/academic/topic-quota).
+  maxTopicsPerProfessor Int?
 
   students Student[]
   topics   GraduationTopic[]
@@ -396,8 +517,9 @@ model Professor {
   grade Json? // كان: grade String[] @default([])
   tags  Json? // كان: tags  String[] @default([])
 
-  topics           GraduationTopic[]
-  committeeMembers DefenseCommitteeMember[]
+  topics             GraduationTopic[]        @relation("TopicSupervisor")
+  coSupervisedTopics GraduationTopic[]        @relation("TopicCoSupervisor")
+  committeeMembers   DefenseCommitteeMember[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -413,7 +535,9 @@ model GraduationTopic {
   id String @id @default(uuid())
 
   title       String
-  description String
+  /// TEXT, not the default VARCHAR(191): the server runs without strict mode,
+  /// so a longer description was cut at 191 characters without a word.
+  description String @db.Text
 
   // Rich content for the topic detail view.
   requirements Json? // كان: requirements String[] @default([])
@@ -441,22 +565,42 @@ model GraduationTopic {
   // Stored as JSON: [{ "title": "...", "url": "https://..." }]
   references Json @default("[]")
 
-  // Reason recorded when a topic is rejected (optional).
-  rejectionReason String?
+  // Reason recorded when a topic is rejected (optional). TEXT, not the
+  // default VARCHAR(191): a reason explained in a sentence or two is longer.
+  rejectionReason String? @db.Text
 
   maxStudents Int
 
-  /// سقفُ المحاولات على هذا الموضوع — بما فيها المرفوضة.
+  /// كم فريقاً يطلب هذا الموضوع **معاً** قبل أن يُغلق على غيرهم.
   ///
-  /// و`NULL` تعني بلا سقف، وهو حال كلّ موضوعٍ أُنشئ قبل هذا العمود.
+  /// تتقدّم الفرق دون أن تنتظر قرار الإدارة في من سبقها، والموضوعُ متاحٌ ما
+  /// دامت طلباته المعلّقة دون السقف. والإدارة تختار منها فريقاً واحداً، فتُلغى
+  /// البقيّة ليختار أصحابها موضوعاً آخر. والطلبُ المرفوض يُفرِج عن خانته.
   ///
-  /// ولا يُقاس بعدد الطلبات الحيّة: الفهرسُ الفريد على `activeTopicId` لا
-  /// يسمح إلّا بطلبٍ حيٍّ واحد على الموضوع أصلاً. وإنّما يُقاس بمجموع ما
-  /// وصله، فيمنع فريقاً يُعيد الطلب كلّما رُفض بلا نهاية.
+  /// و`NULL` تعني بلا سقف.
   maxRequests Int?
 
+  /// عددُ الطلبات المعلّقة الآن — ما يُقاس به السقف.
+  ///
+  /// نسخةٌ من عدّ الصفوف لا مصدرُ حقيقة: يكتبها `computeTopicStatus` بعد
+  /// كلّ تغيّرٍ في الطلبات. وإنّما وُجدت لأنّ «متاحٌ للطلب» يُسأل عنه في
+  /// استعلامٍ واحد بترقيمٍ وعدّ — وذلك يحتاج مقارنتها بـ`maxRequests` في
+  /// قاعدة البيانات نفسها.
+  pendingRequestCount Int @default(0)
+
   professorId String
-  professor   Professor @relation(fields: [professorId], references: [id])
+  professor   Professor @relation("TopicSupervisor", fields: [professorId], references: [id])
+
+  /// المشرف المساعد: أستاذٌ من المنصّة غيرُ المشرف. وحذفُ حسابه يتركه فارغاً.
+  coSupervisorId String?
+  coSupervisor   Professor? @relation("TopicCoSupervisor", fields: [coSupervisorId], references: [id], onDelete: SetNull)
+
+  /// وصفٌ قصير — سطرٌ أو سطران — للقوائم والقائمة الرسمية؛ والوصف الكامل في `description`.
+  summary String? @db.VarChar(300)
+
+  /// نوعه (محوره) من أنواع قسم تخصّصه. ونوعٌ عليه مواضيع لا يُحذف.
+  typeId String?
+  type   TopicType? @relation(fields: [typeId], references: [id], onDelete: Restrict)
 
   specializationId String
   specialization   Specialization @relation(fields: [specializationId], references: [id])
@@ -494,7 +638,7 @@ model TopicApplication {
   priority Int
 
   // Reason recorded when an application is rejected (optional).
-  rejectionReason String?
+  rejectionReason String? @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -526,17 +670,9 @@ model GroupRequest {
   priority Int @default(1)
 
   status          GroupRequestStatus @default(pending)
-  rejectionReason String?
-
-  /// هل يشغل هذا الطلبُ خانةً من سقف الموضوع؟
-  ///
-  /// نعم ما دام حيّاً — معلّقاً أو مقبولاً — فهو يشغل الموضوع فعلاً.
-  /// ولا بعد أن ينتهي: يُرفض، أو يُفسَخ مشروعه. والموضوعُ حينها حُرٌّ كما
-  /// كان، فخانةٌ محجوزةٌ لمحاولةٍ انتهت تُضيّق على من يأتي بعدها بلا مقابل.
-  ///
-  /// والصفُّ يبقى في الحالتين: الأثرُ محفوظٌ لمن أراد قراءته — مَن طلب،
-  /// ومتى، ولماذا رُدّ — وإنّما يخرج من الحساب.
-  countsAgainstCap Boolean @default(true)
+  /// TEXT: the reasons written automatically name the topic and the members
+  /// (request.memberPlacedReason), and a topic title alone may take 191.
+  rejectionReason String?            @db.Text
 
   // All team members (the leader is included here too).
   members GroupRequestMember[]
@@ -544,22 +680,14 @@ model GroupRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// Holds `topicId` while this request is live (pending or accepted) and
-  /// NULL once it is rejected. The unique index below is what actually
-  /// reserves a topic for the first team: a second live request cannot be
-  /// written at all, however close together the two arrive. Several NULLs
-  /// are allowed, so rejecting a request frees the topic again.
-  activeTopicId String? @unique
-
   /// المرسِلُ يُعيد الطلب على الموضوع نفسه بعد الرفض.
   ///
   /// كان هنا `@@unique([leaderStudentId, topicId])`، وكان مقبولاً يوم كان
   /// الرفضُ يحذف الصفّ. فلمّا صار يُبقيه صار القيدُ يمنع إعادة الطلب إلى
   /// الأبد — والرفضُ قد يكون لنقصٍ يُستدرك، أو خطأً من الإدارة نفسها.
   ///
-  /// ولا يفتح رفعُه باب التكرار: `activeTopicId` وفهرسه الفريد يمنعان أن
-  /// يكون للموضوع أكثرُ من طلبٍ حيٍّ واحد — للمرسِل نفسه ولغيره — و
-  /// `GraduationTopic.maxRequests` يحدّ مجموع المحاولات.
+  /// ولا يفتح رفعُه باب التكرار: لا يكون للفريق إلّا طلبٌ حيٌّ واحد على
+  /// الموضوع، و`GraduationTopic.maxRequests` يحدّ عدد الفرق المتقدّمة معاً.
   ///
   /// والفهرسُ على `leaderStudentId` يبقى: المفتاحُ الأجنبيّ إلى `Student`
   /// كان يتّكئ على الفريد المركَّب، فلو رُفع بلا بديلٍ لسقط معه.
@@ -736,8 +864,13 @@ model Notification {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   type    NotificationType @default(general)
+  /// بالعربية — لما يقرأ الإشعار بلا لغة.
   title   String
   message String
+  /// النصّ باللغات الثلاث: { ar: { title, message }, en: …, fr: … }. يكتبه
+  /// الخادم من فهرس الرسائل، وتختار الواجهة منه لغة قارئه — فإشعارٌ كتبه
+  /// فعلُ غيرِه يُقرأ بلغة صاحبه. وما سبق هذا العمود بلا لغات (NULL).
+  i18n    Json?
 
   // Optional deep-link target (e.g. "/student/applications").
   link String?
@@ -817,17 +950,168 @@ model AuthSession {
 
   userId String
 
-  refreshJti String  @db.VarChar(64)
-  prevJti    String? @db.VarChar(64)
+  refreshJti String   @db.VarChar(64)
+  prevJti    String?  @db.VarChar(64)
   rotatedAt  DateTime @default(now())
 
   /// انتهاء آخر رمز تحديث صدر لها — وما بعده يُحذف.
   expiresAt DateTime
 
+  /// الجهاز الذي فُتحت منه — ليعرف صاحب الحساب هاتفه وحاسوبه في قائمة
+  /// الجلسات. يُحفظ النصّ الخام ويُقرأ عند العرض (core/auth/device).
+  userAgent String? @db.VarChar(512)
+  /// آخر عنوانٍ جدّد منه رمزه.
+  ip        String? @db.VarChar(64)
+
+  /// آخر طلبٍ مرّ بها — يُكتب لجلسات الإدارة وحدها (مرّةً في الدقيقة على
+  /// الأكثر)، فتنتهي الجلسة المتروكة من الخادم نفسه لا من المتصفّح وحده.
+  lastSeenAt DateTime @default(now())
+
   createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+/// الأجهزة التي دخل منها الحساب. كلّ متصفّحٍ يحمل معرّفاً عشوائياً في كعكةٍ
+/// طويلة العمر (core/auth/device-cookie)؛ فإن دخل الحساب من متصفّحٍ لم يُرَ
+/// قبلُ — وله أجهزةٌ سابقة — نُبِّه صاحبه.
+model UserDevice {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// بصمة (SHA-256) معرّف المتصفّح — لا المعرّف نفسه.
+  deviceKey String @db.VarChar(64)
+
+  userAgent String? @db.VarChar(512)
+  ip        String? @db.VarChar(64)
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@unique([userId, deviceKey])
+}
+
+/// سجلّ العمليات: كلّ ما غيّرته الإدارة، وكلّ حدثٍ يمسّ أمن الحسابات (دخول
+/// المسؤولين، كلمات المرور، التحقّق بخطوتين، الخروج من الأجهزة). يُكتب ولا
+/// يُعدَّل ولا يُحذف من الواجهة. ولا علاقة له بجدول المستخدمين: يبقى السطر
+/// وإن حُذف صاحبه، ومعه اسمه كما كان (`actorLabel`).
+model AuditLog {
+  id String @id @default(uuid())
+
+  actorId    String? @db.VarChar(64)
+  actorRole  String? @db.VarChar(20)
+  actorLabel String? @db.VarChar(191)
+
+  /// `auth.login`، `password.changed`، … أو للتعديلات: `POST /students/:id`.
+  action String @db.VarChar(120)
+
+  targetType  String? @db.VarChar(40)
+  targetId    String? @db.VarChar(64)
+  /// ما وقعت عليه العملية كما يُسمّى (اسم الطالب، عنوان الموضوع…) — يبقى بعد حذفه.
+  targetLabel String? @db.VarChar(191)
+
+  /// ما يوضّح العملية — بلا كلمات مرورٍ ولا رموزٍ ولا أسرار (core/audit).
+  details Json?
+
+  /// نجحت أم لا — لمحاولات الدخول المرفوضة.
+  success Boolean @default(true)
+
+  ip        String? @db.VarChar(64)
+  userAgent String? @db.VarChar(512)
+
+  /// أين العنوان — من قواعد DB-IP على الخادم نفسه (core/geo)، يوم كُتب الصفّ.
+  country String? @db.VarChar(2)
+  region  String? @db.VarChar(100)
+  city    String? @db.VarChar(100)
+  /// شبكة العنوان: اتصالات الجزائر، Djezzy، Mobilis…
+  isp     String? @db.VarChar(120)
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([actorRole, createdAt])
+  @@index([ip, createdAt])
+  @@index([country, createdAt])
+}
+
+enum ActivationRequestStatus {
+  pending
+  rejected
+}
+
+/// التوثيق (modules/activation): صوّر الطالب بطاقته ووجهه وهو يمسكها؛ فيقارن
+/// المسؤول الوجه بصورة البطاقة، فيقبل — فيُوثَّق الحساب (`User.isVerified`) —
+/// أو يرفض بسبب. طلبٌ واحد لكلّ حساب: إرسالٌ جديد يحلّ محلّ القائم.
+///
+/// الصورتان خاصّتان: في مجلّدٍ لا يُخدَم للعموم، يقرؤهما المسؤول وحده، وتُحذفان
+/// عند القرار — أو بعد مدّةٍ إن لم يُراجَع الطلب.
+model ActivationRequest {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status ActivationRequestStatus @default(pending)
+
+  /// اسما الملفّين في المجلّد الخاصّ — لا مساراهما.
+  cardFile   String? @db.VarChar(64)
+  selfieFile String? @db.VarChar(64)
+
+  /// الرقم الذي قرأه متصفّح الطالب من رمز QR في صورة البطاقة: قرينةٌ للمراجِع، لا دليل.
+  qrNumber String? @db.VarChar(32)
+
+  rejectionReason String?   @db.Text
+  decidedAt       DateTime?
+
+  /// متى أُرسل (يتجدّد مع كلّ إرسال).
+  sentAt    DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, sentAt])
+}
+
+enum PasswordRequestStatus {
+  pending
+  approved
+  rejected
+}
+
+/// «نسيت كلمة المرور» لطالبٍ ليس لحسابه بريدٌ مؤكَّد (modules/password-request):
+/// يكتب رقم تسجيله ويصوّر بطاقته؛ فتتحقّق الإدارة أنّها بطاقته، وتكتب له كلمة
+/// مرورٍ مؤقّتة — أو ترفض بسبب. ويتابع الطالب طلبه من المتصفّح الذي أرسله وحده:
+/// يحمل سرّاً لا يُحفظ هنا إلّا بصمته (`tokenHash`).
+///
+/// كلمة المرور التي كتبها المسؤول مختومةٌ (core/auth/secret-box) حتى ينسخها
+/// الطالب، ثمّ يُحذف الطلب. وهي مؤقّتة: يُطلب منه استبدالها أوّل ما يدخل.
+/// طلبٌ واحد لكلّ حساب: إرسالٌ جديد يحلّ محلّ القائم.
+model PasswordRequest {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 لسرّ المتصفّح الذي أرسل الطلب.
+  tokenHash String @unique @db.Char(64)
+
+  status PasswordRequestStatus @default(pending)
+
+  /// صورة البطاقة في المجلّد الخاصّ — اسم الملفّ لا مساره؛ تُحذف عند القرار.
+  cardFile String? @db.VarChar(64)
+  /// الرقم الذي قرأه متصفّح الطالب من رمز QR في صورة البطاقة.
+  qrNumber String? @db.VarChar(32)
+
+  /// كلمة المرور المؤقّتة، مختومة، إلى أن ينسخها الطالب.
+  sealedPassword String? @db.VarChar(512)
+
+  rejectionReason String?   @db.Text
+  decidedAt       DateTime?
+
+  sentAt    DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, sentAt])
 }
 
 /// محاولات الدخول الفاشلة لكلّ مُعرِّف (رقم تسجيل، بريد) — لا لكلّ عنوان IP.
@@ -836,9 +1120,9 @@ model LoginThrottle {
   /// `student:<رقم>` · `professor:<بريد>` · `admin:<بريد>`
   key String @id @db.VarChar(191)
 
-  failures  Int       @default(0)
+  failures    Int       @default(0)
   /// كم مرّةً قُفل — كلّ قفلٍ ضعفُ الذي قبله، حتى سقفٍ يوميّ.
-  lockCount Int       @default(0)
+  lockCount   Int       @default(0)
   lockedUntil DateTime?
 
   lastFailureAt DateTime @default(now())
@@ -895,7 +1179,8 @@ model SupervisionDocument {
   status SupervisionDocumentStatus @default(active)
 
   /// لقطةُ ما وقّع عليه الأستاذ: العنوان والمشرف والطلبة وأرقامهم والسنة
-  /// والشهادة، كما كانت يوم الإصدار.
+  /// والشهادة ونصّ الورقة، كما كانت يوم طُبعت أوّل مرّة. وقبل ذلك تتبع
+  /// موضوعها ونصّ الورقة الجاري، فتُحدَّث كلّما قُرئت (انظر `printedAt`).
   ///
   /// والتحقّق يقرأ منها لا من الصفوف الحيّة: لو خرج طالبٌ من المجموعة بعد
   /// التوقيع لَقال ماسحُ الـQR إنّ الورقة الموقَّعة تخصّ طلبةً آخرين —
@@ -905,6 +1190,21 @@ model SupervisionDocument {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   revokedAt DateTime?
+
+  /// أوّل طباعة — أو أوّل ما فُتحت نافذة طباعتها، فلا يُعرف أخرجت ورقةٌ أم لا.
+  ///
+  /// قبلها لا ورقة على مكتبٍ تُخالفها الشاشة: تتبع الوثيقة موضوعها ونصّ
+  /// الورقة الجاري، برقمها ورمزها نفسيهما. وعندها يُثبَّت ما فيها، فلا يتغيّر
+  /// بعدها شيءٌ ممّا قد يكون خرج على الورق. والصادرة قبل تسجيل الطباعة تُعدّ
+  /// مطبوعةً منذ صدورها (الهجرة): لا يُعرف أطُبعت، والأسلم أنّها طُبعت.
+  printedAt     DateTime?
+  /// من طبعها أوّل مرّة: حسابه وصفته واسمه يومها — الاسم كما كان، كسجلّ التدقيق.
+  printedById   String?
+  printedByRole Role?
+  printedByName String?
+  /// كم مرّةً طُبعت، ومتى آخرها.
+  printCount    Int       @default(0)
+  lastPrintedAt DateTime?
 
   @@index([topicId])
   @@index([status])
@@ -997,4 +1297,36 @@ model SiteContent {
   value Json
 
   updatedAt DateTime @updatedAt
+}
+
+//
+// ════════════════════════════════════════════════════════════
+//  EMAIL LINKS
+// ════════════════════════════════════════════════════════════
+//
+
+enum EmailTokenPurpose {
+  /// "Forgot my password": sets a new one.
+  reset
+  /// Proves an address belongs to the account.
+  verify
+}
+
+/// A link sent by email (modules/auth/email-links). Only the SHA-256 of its
+/// token is kept: a copy of the database opens no account. Good once, for a
+/// short while, and only for the address it was sent to.
+model EmailToken {
+  id        String            @id @default(uuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   EmailTokenPurpose
+  tokenHash String            @unique @db.Char(64)
+  /// The address it went to: a verification counts only while the account
+  /// still has that address.
+  email     String            @db.VarChar(191)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  @@index([userId, purpose, createdAt])
 }

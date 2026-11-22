@@ -7,6 +7,7 @@ import {
   createTopicSchema,
   createTopicWithGroupSchema,
   searchStudentsSchema,
+  topicQuotaQuerySchema,
   updateMilestoneSchema,
   updateTopicSchema,
 } from "./professor.validation";
@@ -14,6 +15,7 @@ import {
   createTopicService,
   createTopicWithGroupService,
   searchStudentsService,
+  topicQuotaService,
   getMyTopicsService,
   getTopicByIdService,
   updateTopicService,
@@ -26,6 +28,7 @@ import {
   updateMilestoneService,
   getDashboardService,
 } from "./professor.service";
+import { tr } from "../../core/i18n";
 
 export const createTopicController = async (
   req: Request,
@@ -36,7 +39,7 @@ export const createTopicController = async (
   if (!parsed.success) {
     return next(
       new BadRequestException(
-        "Validation error",
+        tr("request.validation"),
         ErrorCodeEnum.VALIDATION_ERROR,
       ),
     );
@@ -89,7 +92,7 @@ export const updateTopicController = async (
   if (!parsed.success) {
     return next(
       new BadRequestException(
-        "Validation error",
+        tr("request.validation"),
         ErrorCodeEnum.VALIDATION_ERROR,
       ),
     );
@@ -168,7 +171,7 @@ export const createMilestoneController = async (
   if (!parsed.success) {
     return next(
       new BadRequestException(
-        "Validation error",
+        tr("request.validation"),
         ErrorCodeEnum.VALIDATION_ERROR,
       ),
     );
@@ -212,7 +215,7 @@ export const updateMilestoneController = async (
   if (!parsed.success) {
     return next(
       new BadRequestException(
-        "Validation error",
+        tr("request.validation"),
         ErrorCodeEnum.VALIDATION_ERROR,
       ),
     );
@@ -285,6 +288,17 @@ export const createTopicWithGroupController = async (
   }
 };
 
+/** How many topics he may still send for a year: `{ year, max, used }`. */
+export const topicQuotaController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = topicQuotaQuerySchema.safeParse(req.query);
+    const quota = await topicQuotaService(req.user!.userId, parsed.success ? parsed.data.academicYearId : undefined);
+    return res.status(HTTPSTATUS.OK).json(quota);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const searchStudentsController = async (
   req: Request,
   res: Response,
@@ -292,13 +306,13 @@ export const searchStudentsController = async (
 ) => {
   const parsed = searchStudentsSchema.safeParse(req.query);
   if (!parsed.success) {
-    // A too-short term is not an error the picker should shout about; it
-    // simply has nothing to offer yet.
-    return res.status(HTTPSTATUS.OK).json({ students: [] });
+    // A term the picker cannot use is not an error to shout about while typing: it has nothing to offer.
+    return res.status(HTTPSTATUS.OK).json({ students: [], total: 0 });
   }
   try {
-    const students = await searchStudentsService(req.user!.userId, parsed.data);
-    return res.status(HTTPSTATUS.OK).json({ students });
+    // The page shown, and how many there are in all — «and N more». Awaited first: a failing search writes no status.
+    const found = await searchStudentsService(req.user!.userId, parsed.data);
+    return res.status(HTTPSTATUS.OK).json(found);
   } catch (error) {
     next(error);
   }

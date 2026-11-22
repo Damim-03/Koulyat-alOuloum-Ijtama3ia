@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   PieChart,
   Activity,
+  ShieldOff,
 } from "lucide-react";
 import type { Professor, ProfessorTopicLite } from "../../../../types/admin";
 import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
@@ -342,6 +343,7 @@ export function AdminProfessorDetailPage() {
         onClose={() => setEditOpen(false)}
       />
       <ConfirmDialog
+        icon={p.user?.isVerified ? ShieldOff : BadgeCheck}
         open={verifyOpen}
         onClose={() => setVerifyOpen(false)}
         title={

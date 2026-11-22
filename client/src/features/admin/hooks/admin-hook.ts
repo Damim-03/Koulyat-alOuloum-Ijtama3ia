@@ -1,8 +1,18 @@
+import type { TeamSizeRule, TeamSizes } from "../../../lib/team-size";
+import type { SpecLevel } from "../../../lib/spec-level";
 import { keepPreviousData, useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { adminApi, type ListParams } from "../api/admin.api";
+import { adminApi, type ListParams, type TopicTypeInput } from "../api/admin.api";
 import { serverMessage } from "../../../lib/api/error";
-import type { AcademicStructurePayload, TitlesListParams } from "../../../types/admin";
+import type {
+  AcademicStructurePayload,
+  AuditLogParams,
+  ProposalWindow,
+  SelectionWindow,
+  TeamSizeState,
+  TopicQuotaState,
+  TitlesListParams,
+} from "../../../types/admin";
 import { t } from "i18next";
 
 const KEYS = {
@@ -14,10 +24,16 @@ const KEYS = {
   departments: ["admin", "departments"] as const,
   specializations: ["admin", "specializations"] as const,
   academicYears: ["admin", "academic-years"] as const,
+  proposalWindow: (yearId?: string) => ["admin", "proposal-window", yearId ?? ""] as const,
+  selectionWindow: (yearId?: string) => ["admin", "selection-window", yearId ?? ""] as const,
+  teamSize: (yearId?: string) => ["admin", "team-size", yearId ?? ""] as const,
+  topicQuota: (yearId?: string) => ["admin", "topic-quota", yearId ?? ""] as const,
+  teamSizePreview: (yearId: string, rules: string) => ["admin", "team-size", yearId, "preview", rules] as const,
   dashboard: ["admin", "dashboard"] as const,
   topics: (p?: object) => ["admin", "topics", p ?? {}] as const,
   projects: (p?: object) => ["admin", "projects", p ?? {}] as const,
   defenses: (p?: object) => ["admin", "defenses", p ?? {}] as const,
+  topicTypes: (departmentId?: string) => ["admin", "topic-types", departmentId ?? ""] as const,
 };
 
 /**
@@ -256,6 +272,44 @@ export function useImportProfessors() {
   });
 }
 
+export function useTopicImportPreview() {
+  return useMutation({
+    mutationFn: (file: File) => adminApi.previewTopicImport(file),
+  });
+}
+export function useImportTopics() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => adminApi.importTopics(file),
+    onSuccess: () => {
+      // مواضيع وحدها: لا مجموعات ولا طلبة — فقوائمها والعدّادات التي تقرؤها.
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: KEYS.stats });
+      qc.invalidateQueries({ queryKey: KEYS.dashboard });
+    },
+  });
+}
+
+export function useAssignedTopicImportPreview() {
+  return useMutation({
+    mutationFn: (file: File) => adminApi.previewAssignedTopicImport(file),
+  });
+}
+export function useImportAssignedTopics() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => adminApi.importAssignedTopics(file),
+    onSuccess: () => {
+      // كـ«إنشاء موضوع وإسناده»: مواضيع ومجموعاتٌ وطلبةٌ صار لهم مشروع.
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "students"] });
+      qc.invalidateQueries({ queryKey: ["admin", "projects"] });
+      qc.invalidateQueries({ queryKey: KEYS.stats });
+      qc.invalidateQueries({ queryKey: KEYS.dashboard });
+    },
+  });
+}
+
 export function useUpdateStudent() {
   const qc = useQueryClient();
   return useMutation({
@@ -429,6 +483,55 @@ export function useDeleteDepartment() {
   });
 }
 
+// ─── TOPIC TYPES ───
+/** A department's types; the forms' lists (`topic-lookups`) refresh with them. */
+export function useTopicTypes(departmentId?: string) {
+  return useQuery({
+    queryKey: KEYS.topicTypes(departmentId),
+    queryFn: () => adminApi.listTopicTypes(departmentId),
+    enabled: !!departmentId,
+  });
+}
+function refreshTopicTypes(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: ["admin", "topic-types"] });
+  qc.invalidateQueries({ queryKey: ["topic-lookups"] });
+}
+export function useCreateTopicType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: TopicTypeInput) => adminApi.createTopicType(data),
+    onSuccess: () => {
+      refreshTopicTypes(qc);
+      toast.success(t("topicTypes.added"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("toast.addFailed"))),
+  });
+}
+export function useUpdateTopicType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Omit<TopicTypeInput, "departmentId">> }) => adminApi.updateTopicType(id, data),
+    onSuccess: () => {
+      refreshTopicTypes(qc);
+      // The topics carry the type's name, code and colour.
+      qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+      toast.success(t("topicTypes.saved"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("toast.updateFailed"))),
+  });
+}
+export function useDeleteTopicType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.deleteTopicType(id),
+    onSuccess: () => {
+      refreshTopicTypes(qc);
+      toast.success(t("toast.deleted"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("toast.deleteFailed"))),
+  });
+}
+
 // ─── SPECIALIZATIONS ───
 export function useSpecializations() {
   return useQuery({
@@ -534,6 +637,159 @@ export function useAcademicYears() {
   return useQuery({
     queryKey: KEYS.academicYears,
     queryFn: adminApi.listAcademicYears,
+  });
+}
+/** فترة اقتراح المواضيع لسنة، وحالها، ومن اقترح من الأساتذة. */
+export function useProposalWindow(yearId?: string) {
+  return useQuery({
+    queryKey: KEYS.proposalWindow(yearId),
+    queryFn: () => adminApi.proposalWindow(yearId!),
+    enabled: !!yearId,
+  });
+}
+/** بعد الحفظ أو الإلغاء: الفترة كما ردّها الخادم، والسنوات التي تحملها (والأستاذ يقرؤها منها). */
+function onWindowSaved(qc: QueryClient, data: ProposalWindow) {
+  qc.setQueryData(KEYS.proposalWindow(data.year.id), data);
+  qc.invalidateQueries({ queryKey: KEYS.academicYears });
+  qc.invalidateQueries({ queryKey: ["common", "academic-years"] });
+}
+export function useSetProposalWindow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ yearId, ...body }: { yearId: string; opensOn: string; closesOn: string; opensTime?: string; closesTime?: string }) =>
+      adminApi.setProposalWindow(yearId, body),
+    onSuccess: (data) => {
+      onWindowSaved(qc, data);
+      toast.success(t("admin.proposals.saved"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("admin.proposals.failed"))),
+  });
+}
+export function useClearProposalWindow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (yearId: string) => adminApi.clearProposalWindow(yearId),
+    onSuccess: (data) => {
+      onWindowSaved(qc, data);
+      toast.success(t("admin.proposals.cleared"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("admin.proposals.failed"))),
+  });
+}
+/** عدد الطلبة في كلّ موضوعٍ لسنة، وكم موضوعاً يطابقه. */
+export function useTeamSize(yearId?: string) {
+  return useQuery({
+    queryKey: KEYS.teamSize(yearId),
+    queryFn: () => adminApi.teamSize(yearId!),
+    enabled: !!yearId,
+  });
+}
+/** What the rules would do to the year's topics — the last answer kept while the next is asked. */
+export function useTeamSizePreview(yearId: string, rules: TeamSizes) {
+  return useQuery({
+    queryKey: KEYS.teamSizePreview(yearId, JSON.stringify(rules)),
+    queryFn: () => adminApi.teamSizePreview(yearId, rules),
+    placeholderData: (previous) => previous,
+  });
+}
+/** بعد الحفظ أو الإلغاء: العدد كما ردّه الخادم، والسنوات التي تحمله، والمواضيع التي تغيّرت أعدادها. */
+function onTeamSizeSaved(qc: QueryClient, data: TeamSizeState) {
+  qc.setQueryData(KEYS.teamSize(data.year.id), data);
+  qc.removeQueries({ queryKey: ["admin", "team-size", data.year.id, "preview"] });
+  qc.invalidateQueries({ queryKey: KEYS.academicYears });
+  qc.invalidateQueries({ queryKey: ["admin", "topics"] });
+}
+export function useSetTeamSize() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ yearId, ...body }: { yearId: string; rules: Record<SpecLevel, TeamSizeRule | null>; applyToExisting: boolean }) =>
+      adminApi.setTeamSize(yearId, body),
+    onSuccess: (data) => {
+      onTeamSizeSaved(qc, data);
+      toast.success(data.applied.changed ? t("admin.teamSize.savedApplied", { n: data.applied.changed }) : t("admin.teamSize.saved"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("admin.teamSize.failed"))),
+  });
+}
+export function useClearTeamSize() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (yearId: string) => adminApi.clearTeamSize(yearId),
+    onSuccess: (data) => {
+      onTeamSizeSaved(qc, data);
+      toast.success(t("admin.teamSize.cleared"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("admin.teamSize.failed"))),
+  });
+}
+/** حدّ المواضيع لكلّ أستاذ في سنة، والأساتذة منه: من اقترح، ومن بلغه، ومن تجاوزه. */
+export function useTopicQuota(yearId?: string) {
+  return useQuery({
+    queryKey: KEYS.topicQuota(yearId),
+    queryFn: () => adminApi.topicQuota(yearId!),
+    enabled: !!yearId,
+  });
+}
+function onTopicQuotaSaved(qc: QueryClient, data: TopicQuotaState) {
+  qc.setQueryData(KEYS.topicQuota(data.year.id), data);
+  qc.invalidateQueries({ queryKey: KEYS.academicYears });
+}
+export function useSetTopicQuota() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ yearId, max }: { yearId: string; max: number }) => adminApi.setTopicQuota(yearId, max),
+    onSuccess: (data) => {
+      onTopicQuotaSaved(qc, data);
+      toast.success(t("admin.topicQuota.saved", { n: data.year.maxTopicsPerProfessor }));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("admin.topicQuota.failed"))),
+  });
+}
+export function useClearTopicQuota() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (yearId: string) => adminApi.clearTopicQuota(yearId),
+    onSuccess: (data) => {
+      onTopicQuotaSaved(qc, data);
+      toast.success(t("admin.topicQuota.cleared"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("admin.topicQuota.failed"))),
+  });
+}
+/** مهلة اختيار المواضيع لسنة، وحالها، ومن طلب من الطلبة. */
+export function useSelectionWindow(yearId?: string) {
+  return useQuery({
+    queryKey: KEYS.selectionWindow(yearId),
+    queryFn: () => adminApi.selectionWindow(yearId!),
+    enabled: !!yearId,
+  });
+}
+/** بعد الحفظ أو الإلغاء: المهلة كما ردّها الخادم، والسنوات التي تحملها. */
+function onSelectionSaved(qc: QueryClient, data: SelectionWindow) {
+  qc.setQueryData(KEYS.selectionWindow(data.year.id), data);
+  qc.invalidateQueries({ queryKey: KEYS.academicYears });
+}
+export function useSetSelectionWindow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ yearId, ...body }: { yearId: string; opensOn: string; closesOn: string; opensTime?: string; closesTime?: string }) =>
+      adminApi.setSelectionWindow(yearId, body),
+    onSuccess: (data) => {
+      onSelectionSaved(qc, data);
+      toast.success(t("admin.selection.saved"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("admin.selection.failed"))),
+  });
+}
+export function useClearSelectionWindow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (yearId: string) => adminApi.clearSelectionWindow(yearId),
+    onSuccess: (data) => {
+      onSelectionSaved(qc, data);
+      toast.success(t("admin.selection.cleared"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("admin.selection.failed"))),
   });
 }
 export function useCreateAcademicYear() {
@@ -881,9 +1137,9 @@ export function useRemoveGroupRequestMember() {
       studentId: string;
     }) => adminApi.removeGroupRequestMember(requestId, studentId),
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ["admin", "groupRequests"] });
+      qc.invalidateQueries({ queryKey: ["admin", "group-requests"] });
       qc.invalidateQueries({
-        queryKey: ["admin", "groupRequest", v.requestId],
+        queryKey: ["admin", "group-request", v.requestId],
       });
       toast.success(t("toast.studentRemoved"));
     },
@@ -901,9 +1157,9 @@ export function useSetGroupRequestLeader() {
       studentId: string;
     }) => adminApi.setGroupRequestLeader(requestId, studentId),
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ["admin", "groupRequests"] });
+      qc.invalidateQueries({ queryKey: ["admin", "group-requests"] });
       qc.invalidateQueries({
-        queryKey: ["admin", "groupRequest", v.requestId],
+        queryKey: ["admin", "group-request", v.requestId],
       });
       toast.success(t("toast.leaderChanged"));
     },
@@ -911,10 +1167,43 @@ export function useSetGroupRequestLeader() {
   });
 }
 
-export function useGroupRequests(params?: ListParams) {
+export function useGroupRequests(params?: ListParams, enabled = true) {
   return useQuery({
     queryKey: ["admin", "group-requests", params ?? {}],
     queryFn: () => adminApi.listGroupRequests(params),
+    enabled,
+  });
+}
+/** Under the same key prefix, so accepting or rejecting refreshes it too. */
+/** The audit log. The previous page stays on screen while the next one loads. */
+export function useAuditLogs(params: AuditLogParams) {
+  return useQuery({
+    queryKey: ["admin", "audit-logs", params],
+    queryFn: () => adminApi.auditLogs(params),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Who appears in the audit log, the most active first — the «who» filter. */
+export function useAuditActors() {
+  return useQuery({ queryKey: ["admin", "audit-logs", "actors"], queryFn: adminApi.auditActors, staleTime: 60_000 });
+}
+
+/** The countries the audit log's addresses are in — the «where from» filter. */
+export function useAuditCountries() {
+  return useQuery({ queryKey: ["admin", "audit-logs", "countries"], queryFn: adminApi.auditCountries, staleTime: 60_000 });
+}
+
+/** The last 24 hours of the audit log, at a glance. */
+export function useAuditSummary() {
+  return useQuery({ queryKey: ["admin", "audit-logs", "summary"], queryFn: adminApi.auditSummary, staleTime: 60_000 });
+}
+
+export function useGroupRequestsByTopic(params?: ListParams, enabled = true) {
+  return useQuery({
+    queryKey: ["admin", "group-requests", "by-topic", params ?? {}],
+    queryFn: () => adminApi.listGroupRequestsByTopic(params),
+    enabled,
   });
 }
 export function useGroupRequest(id: string | null) {

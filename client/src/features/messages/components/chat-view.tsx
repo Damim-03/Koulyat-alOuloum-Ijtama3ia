@@ -11,15 +11,47 @@ import {
   Lock,
   Megaphone,
   MessagesSquare,
+  MoreHorizontal,
   PanelLeftOpen,
+  Pencil,
   RotateCcw,
   SendHorizontal,
+  Trash2,
+  Upload,
+  X,
 } from "lucide-react";
 
 import { UserAvatar } from "../../../components/ui/user-avatar";
-import { useChat, useDiscardFailed, useMarkChatRead, useSendChat, useTyping } from "../hooks/chat-hooks";
-import type { ChatMessage } from "../api/messages.api";
-import { broadcastLabel, clockTime, dayLabel, fullWhen, personName, relativeWhen, sameDayIso, setOpenChat } from "../messages-utils";
+import {
+  useChat,
+  useDeleteForEveryone,
+  useDiscardFailed,
+  useEditChatMessage,
+  useMarkChatRead,
+  useSendChat,
+  useTyping,
+} from "../hooks/chat-hooks";
+import { useAuthStore } from "../../../store/auth.store";
+import { useNow } from "../../../hooks/use-now";
+import { useEscapeToClose } from "../../../hooks/use-escape";
+import { ConfirmDialog } from "../../admin/components/form/confirm-dialog.form";
+import type { ChatMessage, MessageAttachment } from "../api/messages.api";
+import {
+  MAX_FILE_MB,
+  MAX_FILES,
+  broadcastLabel,
+  clockTime,
+  dayLabel,
+  fullWhen,
+  personName,
+  previewOf,
+  relativeWhen,
+  sameDayIso,
+  setOpenChat,
+  stillEditable,
+} from "../messages-utils";
+import { forgetDrafts, useAttachmentDrafts, type AttachmentDrafts } from "../hooks/use-attachments";
+import { AttachButton, AttachmentList, DraftTray } from "./attachments";
 import { EmptyPane, RoleChip } from "./messages-ui";
 
 const GROUP_GAP = 5 * 60_000;
@@ -47,6 +79,21 @@ export function ChatView({
   const discard = useDiscardFailed(userId);
   const { mutate: markChatRead } = useMarkChatRead();
   const typing = useTyping(userId);
+  // The files of the message being written. The page keys this view by the
+  // person, so they never follow the writer into another chat.
+  const drafts = useAttachmentDrafts();
+  const [dropping, setDropping] = useState(false);
+  // The text being written lives here, so editing a sent message — which
+  // takes the composer's place — does not lose it.
+  const [text, setText] = useState("");
+  const [editing, setEditing] = useState<ChatMessage | null>(null);
+  const [toDelete, setToDelete] = useState<ChatMessage | null>(null);
+  const edit = useEditChatMessage(userId);
+  const retract = useDeleteForEveryone(userId);
+  // Only the administration withdraws what it sent.
+  const isAdmin = useAuthStore((s) => s.user?.role) === "admin";
+  // A message stops being editable after a few minutes: looked at again every half minute.
+  const now = useNow(true, 30_000);
 
   const pages = useMemo(() => q.data?.pages ?? [], [q.data]);
   const user = pages[0]?.user;
@@ -119,8 +166,43 @@ export function ChatView({
     );
   if (q.isError || !user) return <EmptyPane icon={MessagesSquare} title={t("msg.gone")} hint={t("msg.chat.unknownPerson")} />;
 
+  const carriesFiles = (e: React.DragEvent) => canWrite && Array.from(e.dataTransfer.types).includes("Files");
+
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="chat-view">
+    <div
+      className="relative flex h-full min-h-0 flex-col"
+      data-testid="chat-view"
+      // Files dropped anywhere on the chat join the message being written.
+      onDragEnter={(e) => {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        setDropping(true);
+      }}
+      onDragOver={(e) => carriesFiles(e) && e.preventDefault()}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
+      }}
+      onDrop={(e) => {
+        if (!canWrite) return;
+        e.preventDefault();
+        setDropping(false);
+        if (e.dataTransfer.files.length) drafts.add(e.dataTransfer.files);
+      }}
+    >
+      {dropping && (
+        <div
+          className="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-3xl border-2 border-dashed border-gold bg-cream/85 backdrop-blur-sm"
+          data-testid="drop-overlay"
+        >
+          <div className="text-center">
+            <span className="mx-auto mb-3 grid size-14 place-items-center rounded-2xl bg-gold/15 text-gold">
+              <Upload size={26} />
+            </span>
+            <p className="text-[15px] font-bold text-forest">{t("msg.files.dropHere")}</p>
+            <p className="mt-1 text-[12px] text-clay">{t("msg.files.hint", { max: MAX_FILES, mb: MAX_FILE_MB })}</p>
+          </div>
+        </div>
+      )}
       {/* header */}
       <header className="flex items-center gap-3 border-b border-forest/10 bg-cream-card px-4 py-3">
         <button type="button" onClick={onBack} aria-label={t("msg.back")} className="grid size-9 shrink-0 place-items-center rounded-xl text-clay transition hover:bg-forest/10 lg:hidden">
@@ -207,11 +289,18 @@ export function ChatView({
                   m={m}
                   tight={joinsPrev}
                   tail={!joinsNext}
+                  editing={editing?.id === m.id}
+                  onEdit={stillEditable(m, now) ? () => setEditing(m) : undefined}
+                  onDelete={isAdmin && m.mine && !m.pending ? () => setToDelete(m) : undefined}
                   onRetry={() => {
                     discard(m.id);
-                    send.mutate({ body: m.body, tempId: `tmp-${Date.now()}` });
+                    send.mutate({ body: m.body, attachments: m.attachments, tempId: `tmp-${Date.now()}` });
                   }}
-                  onDiscard={() => discard(m.id)}
+                  onDiscard={() => {
+                    // Never sent: its files are drafts nobody will send now.
+                    forgetDrafts(m.attachments);
+                    discard(m.id);
+                  }}
                 />
               </div>
             );
@@ -242,12 +331,25 @@ export function ChatView({
         )}
       </div>
 
-      {/* composer */}
-      {canWrite ? (
+      {/* composer — or, while a sent message is being changed, its editor */}
+      {editing ? (
+        <EditComposer
+          key={editing.id}
+          m={editing}
+          onCancel={() => setEditing(null)}
+          onSave={(body) => {
+            edit.mutate({ id: editing.id, body, before: editing.body });
+            setEditing(null);
+          }}
+        />
+      ) : canWrite ? (
         <Composer
-          onSend={(body) => {
+          drafts={drafts}
+          body={text}
+          setBody={setText}
+          onSend={(body, attachments) => {
             atBottom.current = true;
-            send.mutate({ body, tempId: `tmp-${Date.now()}` });
+            send.mutate({ body, attachments, tempId: `tmp-${Date.now()}` });
           }}
           onTyping={typing.notify}
         />
@@ -257,6 +359,19 @@ export function ChatView({
           {user.active ? t("msg.chat.cannotWrite") : t("msg.chat.inactive")}
         </p>
       )}
+
+      <ConfirmDialog
+        icon={Trash2}
+        open={!!toDelete}
+        tone="danger"
+        title={t("msg.actions.confirmTitle")}
+        message={t("msg.actions.confirmBody")}
+        confirmLabel={t("msg.actions.confirm")}
+        cancelLabel={t("admin.cancel")}
+        loading={retract.isPending}
+        onConfirm={() => toDelete && retract.mutate(toDelete.id, { onSettled: () => setToDelete(null) })}
+        onClose={() => setToDelete(null)}
+      />
     </div>
   );
 }
@@ -265,12 +380,21 @@ function Bubble({
   m,
   tight,
   tail,
+  editing,
+  onEdit,
+  onDelete,
   onRetry,
   onDiscard,
 }: {
   m: ChatMessage;
   tight: boolean;
   tail: boolean;
+  /** Being changed in the editor below. */
+  editing: boolean;
+  /** Present while the message may still be edited. */
+  onEdit?: () => void;
+  /** Present for an administrator's own message. */
+  onDelete?: () => void;
   onRetry: () => void;
   onDiscard: () => void;
 }) {
@@ -279,11 +403,22 @@ function Bubble({
   const shape = mine
     ? `bg-gold text-forest-deep ${tail ? "rounded-2xl rounded-ee-md" : "rounded-2xl"}`
     : `border border-forest/10 bg-cream-card text-forest ${tail ? "rounded-2xl rounded-es-md" : "rounded-2xl"}`;
+  // The ink of the time and ticks: fixed on gold, which stays light in both themes.
+  const metaInk = mine ? "text-[rgba(22,36,31,0.62)]" : "text-clay";
 
   return (
-    <div className={`flex ${mine ? "justify-end" : "justify-start"} ${tight ? "mt-0.5" : "mt-2.5"}`} data-testid="chat-bubble" data-mine={mine || undefined}>
+    <div
+      className={`group flex items-center gap-1 ${mine ? "justify-end" : "justify-start"} ${tight ? "mt-0.5" : "mt-2.5"}`}
+      data-testid="chat-bubble"
+      data-mine={mine || undefined}
+    >
+      {(onEdit || onDelete) && <BubbleActions onEdit={onEdit} onDelete={onDelete} />}
       <div className={`max-w-[min(80%,36rem)] ${mine ? "items-end" : "items-start"} flex flex-col`}>
-        <div className={`px-3.5 pt-2 pb-1.5 shadow-[0_1px_2px_rgba(22,36,31,0.12)] ${shape} ${m.pending === "failed" ? "opacity-80 ring-2 ring-red-500/60" : ""}`}>
+        <div
+          className={`px-3.5 pt-2 pb-1.5 shadow-[0_1px_2px_rgba(22,36,31,0.12)] transition ${shape} ${m.pending === "failed" ? "opacity-80 ring-2 ring-red-500/60" : ""} ${
+            editing ? "ring-2 ring-forest/40 ring-offset-2 ring-offset-cream" : ""
+          }`}
+        >
           {m.broadcast && (
             <p className={`mb-1 flex items-center gap-1 text-[11px] font-bold ${mine ? "text-[rgba(22,36,31,0.72)]" : "text-gold"}`}>
               <Megaphone size={12} />
@@ -291,16 +426,23 @@ function Bubble({
             </p>
           )}
           {m.subject && <p className="mb-0.5 text-[13.5px] font-bold">{m.subject}</p>}
+          {m.attachments && m.attachments.length > 0 && (
+            <div className="mt-0.5 mb-1.5">
+              <AttachmentList items={m.attachments} mine={mine} />
+            </div>
+          )}
           <p className="text-[14.5px] leading-6 break-words whitespace-pre-wrap" dir="auto">
             {m.body}
             {/* the meta sits at the end of the last line, as in a messenger */}
             <span
-              className={`float-end ms-3 mt-1.5 inline-flex items-center gap-1 text-[10.5px] leading-none tabular-nums ${
-                // Gold stays light in both themes, so its ink is fixed too.
-                mine ? "text-[rgba(22,36,31,0.62)]" : "text-clay"
-              }`}
-              title={fullWhen(m.createdAt)}
+              className={`float-end ms-3 mt-1.5 inline-flex items-center gap-1 text-[10.5px] leading-none tabular-nums ${metaInk}`}
+              title={m.editedAt ? `${fullWhen(m.createdAt)} · ${t("msg.edited")} ${fullWhen(m.editedAt)}` : fullWhen(m.createdAt)}
             >
+              {m.editedAt && (
+                <span className="italic" data-testid="edited">
+                  {t("msg.edited")}
+                </span>
+              )}
               {clockTime(m.createdAt)}
               {mine &&
                 (m.pending === "sending" ? (
@@ -332,15 +474,165 @@ function Bubble({
   );
 }
 
-function Composer({ onSend, onTyping }: { onSend: (body: string) => void; onTyping: (active: boolean) => void }) {
+/** The ⋯ beside my message: change it while it may still be, or withdraw it (administration). */
+function BubbleActions({ onEdit, onDelete }: { onEdit?: () => void; onDelete?: () => void }) {
   const { t } = useTranslation();
-  const [body, setBody] = useState("");
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEscapeToClose(() => setOpen(false), open);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+  const item = "flex w-full items-center gap-2 px-3 py-2 text-start text-[13px] font-semibold transition";
+  return (
+    <div ref={box} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={t("msg.actions.more")}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-testid="message-actions"
+        className={`grid size-8 place-items-center rounded-full text-clay transition hover:bg-forest/10 hover:text-forest focus-visible:opacity-100 group-hover:opacity-100 max-sm:opacity-70 ${
+          open ? "bg-forest/10 opacity-100" : "opacity-0"
+        }`}
+      >
+        <MoreHorizontal size={17} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="animate-scale-in absolute bottom-full z-20 mb-1 w-48 overflow-hidden rounded-xl border border-forest/10 bg-cream-card py-1 shadow-xl ltr:left-0 rtl:right-0"
+        >
+          {onEdit && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onEdit();
+              }}
+              data-testid="message-edit"
+              className={`${item} text-forest hover:bg-forest/5`}
+            >
+              <Pencil size={14} />
+              {t("msg.actions.edit")}
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onDelete();
+              }}
+              data-testid="message-delete"
+              className={`${item} text-red-600 hover:bg-red-500/10 dark:text-red-400`}
+            >
+              <Trash2 size={14} />
+              {t("msg.actions.deleteForEveryone")}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Changing a sent message: the composer's place, with the old text in it.
+ * Enter saves, Escape or ✕ leaves it as it was. Only the text — its files
+ * stay as they were sent.
+ */
+function EditComposer({ m, onSave, onCancel }: { m: ChatMessage; onSave: (body: string) => void; onCancel: () => void }) {
+  const { t } = useTranslation();
+  const [body, setBody] = useState(m.body);
+  useEscapeToClose(onCancel);
+  const next = body.trim();
+  const canSave = next !== m.body.trim() && (next.length > 0 || (m.attachments?.length ?? 0) > 0);
+  const save = () => canSave && onSave(next);
+  return (
+    <div className="border-t border-forest/10 bg-cream-card px-3 py-3 sm:px-4" data-testid="edit-composer">
+      <div className="mb-2 flex items-center gap-2.5 rounded-xl border-s-4 border-gold bg-gold/10 py-2 ps-3 pe-2">
+        <Pencil size={15} className="shrink-0 text-gold" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12px] font-bold text-forest">{t("msg.actions.editing")}</span>
+          <span className="block truncate text-[12px] text-clay" dir="auto">
+            {m.body || previewOf("", m.attachments, t)}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label={t("admin.cancel")}
+          data-testid="edit-cancel"
+          className="grid size-8 shrink-0 place-items-center rounded-full text-clay transition hover:bg-forest/10 hover:text-forest"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <div className="flex items-end gap-2">
+        <div className="flex min-h-12 flex-1 items-center rounded-3xl border border-gold bg-cream px-4 py-1.5 ring-2 ring-gold/25">
+          <textarea
+            value={body}
+            autoFocus
+            onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                save();
+              }
+            }}
+            rows={Math.min(6, Math.max(1, body.split("\n").length))}
+            maxLength={5000}
+            data-testid="edit-input"
+            dir="auto"
+            className="max-h-40 w-full resize-none bg-transparent py-1.5 text-[14.5px] leading-6 text-forest outline-none"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!canSave}
+          aria-label={t("msg.actions.save")}
+          data-testid="edit-save"
+          className="grid size-12 shrink-0 place-items-center rounded-full bg-gold text-forest-deep shadow-md transition hover:bg-gold-soft active:scale-90 disabled:opacity-40"
+        >
+          <Check size={20} />
+        </button>
+      </div>
+      <p className="mt-1 px-2 text-[10.5px] text-clay/70">{t("msg.actions.editHint")}</p>
+    </div>
+  );
+}
+
+function Composer({
+  drafts,
+  body,
+  setBody,
+  onSend,
+  onTyping,
+}: {
+  drafts: AttachmentDrafts;
+  body: string;
+  setBody: (v: string) => void;
+  onSend: (body: string, attachments: MessageAttachment[]) => void;
+  onTyping: (active: boolean) => void;
+}) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLTextAreaElement>(null);
+  // A file still on its way, or one that failed, holds the message back:
+  // sent without it, the reader would never know it was meant to be there.
+  const canSend = (body.trim().length > 0 || drafts.ready > 0) && !drafts.uploading && !drafts.failed;
 
   function submit() {
-    const text = body.trim();
-    if (!text) return;
-    onSend(text);
+    if (!canSend) return;
+    onSend(body.trim(), drafts.take());
     onTyping(false);
     setBody("");
     ref.current?.focus();
@@ -348,8 +640,10 @@ function Composer({ onSend, onTyping }: { onSend: (body: string) => void; onTypi
 
   return (
     <div className="border-t border-forest/10 bg-cream-card px-3 py-3 sm:px-4" data-testid="chat-composer">
+      <DraftTray drafts={drafts.drafts} onRemove={drafts.remove} onRetry={drafts.retry} />
       <div className="flex items-end gap-2">
-        <div className="flex min-h-12 flex-1 items-center rounded-3xl border border-forest/15 bg-cream px-4 py-1.5 transition focus-within:border-gold focus-within:ring-2 focus-within:ring-gold/25">
+        <div className="flex min-h-12 flex-1 items-center gap-1 rounded-3xl border border-forest/15 bg-cream py-1.5 ps-1.5 pe-4 transition focus-within:border-gold focus-within:ring-2 focus-within:ring-gold/25">
+          <AttachButton drafts={drafts} disabled={drafts.drafts.length >= MAX_FILES} className="size-9" />
           <textarea
             ref={ref}
             value={body}
@@ -359,6 +653,12 @@ function Composer({ onSend, onTyping }: { onSend: (body: string) => void; onTypi
               onTyping(e.target.value.trim().length > 0);
             }}
             onBlur={() => onTyping(false)}
+            // A picture pasted from the clipboard is attached, as in any messenger.
+            onPaste={(e) => {
+              if (!e.clipboardData.files.length) return;
+              e.preventDefault();
+              drafts.add(e.clipboardData.files);
+            }}
             onKeyDown={(e) => {
               // Enter sends; Shift+Enter starts a new line — as in any messenger.
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -377,7 +677,7 @@ function Composer({ onSend, onTyping }: { onSend: (body: string) => void; onTypi
         <button
           type="button"
           onClick={submit}
-          disabled={!body.trim()}
+          disabled={!canSend}
           aria-label={t("messages.send")}
           data-testid="chat-send"
           className="grid size-12 shrink-0 place-items-center rounded-full bg-gold text-forest-deep shadow-md transition hover:bg-gold-soft active:scale-90 disabled:opacity-40"

@@ -4,6 +4,7 @@ import { BadRequestException, NotFoundException } from "../../core/utils/appErro
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import { notifyAdminsQuietly } from "../notification/notification.service";
 import { broadcastChange } from "../../core/realtime/realtime";
+import { tr } from "../../core/i18n";
 
 /**
  * The academic archive.
@@ -40,15 +41,15 @@ const round = (n: number) => Math.round(n * 100) / 100;
 const mentionOf = (g: number) =>
   g >= 16 ? "excellent" : g >= 14 ? "veryGood" : g >= 12 ? "good" : g >= 10 ? "fair" : "fail";
 
-const notFound = () => new NotFoundException("Academic year not found", ErrorCodeEnum.RESOURCE_NOT_FOUND);
+const notFound = () => new NotFoundException(tr("notFound.academicYear"), ErrorCodeEnum.RESOURCE_NOT_FOUND);
 const bad = (m: string) => new BadRequestException(m, ErrorCodeEnum.VALIDATION_ERROR);
 
 /* ════════════════════════════════════════════════════════════
    THE RECORD OF A YEAR
    ════════════════════════════════════════════════════════════ */
-export async function buildYearRecord(yearId: string) {
-  const year = await prisma.academicYear.findUnique({ where: { id: yearId } });
-  if (!year) throw notFound();
+/** `year` كما وجده المُستدعي — والسجلّ يُبنى بمعرّفه. */
+export async function buildYearRecord(year: { id: string; title: string }) {
+  const yearId = year.id;
 
   const [students, topics, requests] = await Promise.all([
     prisma.student.findMany({
@@ -214,7 +215,7 @@ export async function buildYearRecord(yearId: string) {
     createdAt: t.createdAt,
     specialization: t.specialization,
     supervisor: { id: t.professor.id, name: nameOf(t.professor.user), latinName: latinOf(t.professor.user) },
-    department: t.professor.department?.name ?? null,
+    department: t.professor.department.name, // قسم الأستاذ إلزاميّ
     requests: t._count.groupRequests,
     projectId: t.projectGroup?.id ?? null,
     members: t.projectGroup?.members.length ?? 0,
@@ -381,7 +382,7 @@ export const yearRecordService = async (yearId: string) => {
     archivedByName: null,
     note: null,
     isActive: year.isActive,
-    record: await buildYearRecord(yearId),
+    record: await buildYearRecord(year),
   };
 };
 
@@ -426,8 +427,8 @@ export const closeYearService = async (
 ) => {
   const year = await prisma.academicYear.findUnique({ where: { id: yearId } });
   if (!year) throw notFound();
-  if (year.archivedAt) throw bad("هذه السنة مؤرشفة بالفعل");
-  if (dto.confirmTitle.trim() !== year.title) throw bad(`اكتب «${year.title}» كما هو لتأكيد إغلاق السنة`);
+  if (year.archivedAt) throw bad(tr("archive.alreadyArchived"));
+  if (dto.confirmTitle.trim() !== year.title) throw bad(tr("archive.confirmTitle", { title: year.title }));
 
   // The next year, if one is named: an existing open year, or a new one
   // (created with the rest, so a failed close leaves no stray year behind).
@@ -435,14 +436,14 @@ export const closeYearService = async (
   const newTitle = dto.nextYearId ? null : dto.nextYearTitle?.trim() || null;
   if (dto.nextYearId) {
     const next = await prisma.academicYear.findUnique({ where: { id: dto.nextYearId } });
-    if (!next || next.id === yearId) throw bad("السنة التالية غير صالحة");
-    if (next.archivedAt) throw bad("لا يمكن جعل سنةٍ مؤرشفة سنةً جارية");
+    if (!next || next.id === yearId) throw bad(tr("archive.badNextYear"));
+    if (next.archivedAt) throw bad(tr("archive.nextArchived"));
     nextId = next.id;
   } else if (newTitle && (await prisma.academicYear.findUnique({ where: { title: newTitle } })))
-    throw bad(`السنة «${newTitle}» موجودة بالفعل — اخترها من القائمة`);
+    throw bad(tr("archive.nextExists", { title: newTitle }));
 
   const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { firstName: true, lastName: true } });
-  const record = await buildYearRecord(yearId);
+  const record = await buildYearRecord(year);
 
   await prisma.$transaction(async (tx) => {
     await tx.academicYearArchive.create({
@@ -467,8 +468,16 @@ export const closeYearService = async (
   broadcastChange("academic-years", "updated", yearId);
   await notifyAdminsQuietly({
     type: "general",
-    title: "أُغلقت سنة جامعية وحُفظت في الأرشيف",
-    message: `السنة ${year.title}: ${record.summary.students} طالباً، ${record.summary.projects} مذكرة، ${record.summary.defenses.completed} مناقشة منتهية.`,
+    title: { key: "notif.yearArchived.title" },
+    message: {
+      key: "notif.yearArchived.message",
+      params: {
+        year: year.title,
+        students: record.summary.students,
+        projects: record.summary.projects,
+        defenses: record.summary.defenses.completed,
+      },
+    },
     link: "/admin/academic-years",
   });
 
@@ -478,7 +487,7 @@ export const closeYearService = async (
 export const reopenYearService = async (yearId: string, dto: { activate?: boolean }) => {
   const year = await prisma.academicYear.findUnique({ where: { id: yearId }, include: { archive: true } });
   if (!year) throw notFound();
-  if (!year.archivedAt) throw bad("هذه السنة غير مؤرشفة");
+  if (!year.archivedAt) throw bad(tr("archive.notArchived"));
 
   await prisma.$transaction(async (tx) => {
     // The live rows are its record again; the frozen copy goes.

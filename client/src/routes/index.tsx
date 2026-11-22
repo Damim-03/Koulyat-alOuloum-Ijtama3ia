@@ -10,6 +10,7 @@ import { VerifyDocumentPage } from "../features/supervision/pages/verify.page";
 import { RoleRedirect } from "./role-redirect";
 
 import { LoginPage } from "../features/auth/pages/LoginPage";
+import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "../features/auth/pages/email-link-pages";
 import { UnauthorizedPage } from "../features/auth/pages/unauthorized-page";
 import { HomePage } from "../features/home/pages/HomePage";
 
@@ -30,10 +31,11 @@ import { StudentDashboardPage } from "../features/student/pages/dashboard.page";
 
 // Admin pages
 import { AdminStudentsPage } from "../features/admin/pages/students/student.page";
-import { AdminUsersPage } from "../features/admin/pages/users/Users.page";
+import { AdminUsersHubPage, UsersViewRedirect } from "../features/admin/pages/users/users-hub.page";
 import { AdminProfessorsPage } from "../features/admin/pages/professors/professors.page";
 import { AdminAcademicStructurePage } from "../features/admin/pages/academic/academic.page";
 import { AdminTopicsPage } from "../features/admin/pages/topics/topics.page";
+import { AdminTopicSettingsPage } from "../features/admin/pages/topics/topic-settings.page";
 import { AdminDefensesPage } from "../features/admin/pages/defenses/defenses.page";
 import { AdminFacultiesPage } from "../features/admin/pages/faculties/faculties.page";
 import { ProfessorMilestonesPage } from "../features/professor/pages/Professor-milestones.page";
@@ -52,6 +54,7 @@ import { DepartmentDetailPage } from "../features/admin/pages/departments/depart
 import { AdminUnassignedStudentsPage } from "../features/admin/pages/filters/unassigned-students.page";
 import { AdminArchivePage } from "../features/admin/pages/archive/archive.Page";
 import { AccountPage } from "../features/account/pages/account.page";
+import { ActivationRedirect } from "../features/admin/pages/activation/activation-desk.page";
 import { AdminDashboardPage } from "../features/admin/pages/dashboard/dashboard.page";
 import { SpecializationDetailPage } from "../features/admin/pages/filters/specialization-detail.Page";
 import { AdminGroupRequestDetailPage } from "../features/admin/pages/groups/group-requests-details.page";
@@ -108,6 +111,20 @@ export function AppRouter() {
             </PublicOnlyRoute>
           }
         />
+
+        {/* روابط البريد: «نسيت كلمة المرور» لمن لم يدخل؛ والرابطان اللذان
+            يحملهما البريد يُفتحان دخل صاحبهما أو لم يدخل — قد يفتحه على
+            هاتفه وهو داخلٌ من حاسوبه. */}
+        <Route
+          path="forgot-password"
+          element={
+            <PublicOnlyRoute>
+              <ForgotPasswordPage />
+            </PublicOnlyRoute>
+          }
+        />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
+        <Route path="verify-email" element={<VerifyEmailPage />} />
 
         {/* إعادة التوجيه حسب الدور */}
         <Route
@@ -181,7 +198,7 @@ export function AppRouter() {
           <Route index element={<AdminDashboardPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="students/:id" element={<AdminStudentDetailPage />} />
-          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="users" element={<AdminUsersHubPage />} />
           <Route path="users/:id" element={<AdminUserDetailPage />} />
           <Route path="professors" element={<AdminProfessorsPage />} />
           <Route path="professors/:id" element={<AdminProfessorDetailPage />} />
@@ -190,6 +207,7 @@ export function AppRouter() {
             element={<AdminAcademicStructurePage />}
           />
           <Route path="topics" element={<AdminTopicsPage />} />
+          <Route path="topics/settings" element={<AdminTopicSettingsPage />} />
           <Route path="topics/:id" element={<AdminTopicDetailPage />} />
           <Route path="group-requests" element={<AdminGroupRequestsPage />} />
           <Route
@@ -204,6 +222,10 @@ export function AppRouter() {
             element={<AdminProjectDetailPage />}
           />
           <Route path="academic-years" element={<AdminArchivePage />} />
+          {/* The audit log is a part of «المستخدمون» now; its old links lead there. */}
+          <Route path="audit-log" element={<UsersViewRedirect view="audit" />} />
+          {/* Activation lives in «المستخدمون» now; its old links lead there. */}
+          <Route path="activation" element={<ActivationRedirect />} />
           <Route path="account" element={<AccountPage />} />
           <Route
             path="specializations/:specializationId"

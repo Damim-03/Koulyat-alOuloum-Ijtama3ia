@@ -32,6 +32,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useStudentDashboard } from "../hooks/Student-hook";
+import { SelectionBanner } from "../components/selection-banner";
 import { useDates } from "../../../hooks/use-dates";
 import { useAuth } from "../../../hooks/use-auth";
 import { useLanguage } from "../../../hooks/use-language";
@@ -82,6 +83,9 @@ export function StudentDashboardPage() {
 
       {/* ══════════ the journey, and the one next step ══════════ */}
       <JourneyCard data={data} />
+
+      {/* ══════════ the deadline to choose — in every case ══════════ */}
+      <SelectionBanner className="mb-5" />
 
       {/* ══════════ needs your attention ══════════ */}
       {attentionCount > 0 && (

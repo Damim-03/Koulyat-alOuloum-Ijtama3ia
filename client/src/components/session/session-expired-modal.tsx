@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ShieldAlert, LogIn } from "lucide-react";
+import { Hourglass, LogIn, MonitorX, ShieldAlert } from "lucide-react";
+import { AlertAction, AlertShell } from "../dialog/alert-shell";
 
 interface Props {
   open: boolean;
-  reason: "idle" | "token";
+  reason: "idle" | "token" | "revoked";
   onLogin: () => void;
   autoRedirectSeconds?: number;
 }
+
+const TEXT = { idle: "Idle", token: "Token", revoked: "Revoked" } as const;
 
 export function SessionExpiredModal({
   open,
@@ -20,6 +23,8 @@ export function SessionExpiredModal({
 
   useEffect(() => {
     if (!open) return;
+    // العدّ يبدأ من أوّله كلّما فُتحت النافذة.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSeconds(autoRedirectSeconds);
     const id = setInterval(() => {
       setSeconds((s) => {
@@ -34,34 +39,32 @@ export function SessionExpiredModal({
     return () => clearInterval(id);
   }, [open, autoRedirectSeconds, onLogin]);
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-100 grid place-items-center bg-forest-deep/50 p-6 backdrop-blur-sm">
-      <div className="w-full max-w-100 overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-2xl">
-        <div className="h-1 bg-linear-to-r from-forest via-gold to-forest" />
-        <div className="p-6 text-center">
-          <div className="mx-auto mb-4 grid size-14 place-items-center rounded-full bg-amber-100">
-            <ShieldAlert size={28} className="text-amber-600" />
-          </div>
-          <h3 className="mb-1.5 font-serif text-lg font-bold text-forest">
-            {reason === "idle" ? t("session.titleIdle") : t("session.titleToken")}
-          </h3>
-          <p className="mb-5 text-[13.5px] leading-[1.8] text-clay">
-            {reason === "idle" ? t("session.descIdle") : t("session.descToken")}
-          </p>
-          <button
-            onClick={onLogin}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-br from-forest to-forest-deep py-3 text-sm font-bold text-cream transition hover:-translate-y-px"
-          >
-            <LogIn size={16} />
-            {t("session.loginAgain")}
-          </button>
-          <p className="mt-3 text-[11px] text-clay/70">
-            {t("session.redirectIn", { n: seconds })}
-          </p>
-        </div>
-      </div>
-    </div>
+    <AlertShell
+      open={open}
+      top
+      tone="warning"
+      icon={reason === "idle" ? Hourglass : reason === "revoked" ? MonitorX : ShieldAlert}
+      kicker={t("alert.kickerSession")}
+      title={t(`session.title${TEXT[reason]}`)}
+      message={t(`session.desc${TEXT[reason]}`)}
+      actions={
+        <AlertAction tone="info" icon={LogIn} onClick={onLogin}>
+          {t("session.loginAgain")}
+        </AlertAction>
+      }
+      footnote={
+        <>
+          {/* العدّ التنازليّ مرئيّاً: شريطٌ يتناقص مع الثواني. */}
+          <span className="mx-auto mb-2 block h-1 w-40 overflow-hidden rounded-full bg-forest/10">
+            <span
+              className="block h-full rounded-full bg-linear-to-l from-gold to-gold-soft transition-[width] duration-1000 ease-linear"
+              style={{ width: `${(seconds / autoRedirectSeconds) * 100}%` }}
+            />
+          </span>
+          {t("session.redirectIn", { n: seconds })}
+        </>
+      }
+    />
   );
 }

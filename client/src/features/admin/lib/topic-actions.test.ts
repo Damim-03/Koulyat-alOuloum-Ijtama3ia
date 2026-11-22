@@ -31,10 +31,13 @@ const t = ((key: string, opts?: Record<string, unknown>) => {
   const dict: Record<string, string> = {
     "topicBlocked.hasGroup": "له مجموعة",
     "topicBlocked.teamWaiting": "فريق من {{count}} ينتظر",
+    "topicBlocked.teamsWaiting": "{{teams}} فرق تنتظر",
   };
   const hit = dict[key];
   if (!hit) return (opts?.defaultValue as string) ?? key;
-  return hit.replace("{{count}}", String(opts?.count ?? ""));
+  return hit
+    .replace("{{count}}", String(opts?.count ?? ""))
+    .replace("{{teams}}", String(opts?.teams ?? ""));
 }) as never;
 
 describe("can", () => {
@@ -87,6 +90,14 @@ describe("blockReason", () => {
       blockedCodes: { archive: { code: "teamWaiting", params: { count: 3 } } },
     });
     expect(blockReason(tp, "archive", t)).toBe("فريق من 3 ينتظر");
+  });
+
+  it("وعدّة فرقٍ تنتظر معاً ⇒ الجملةُ بعددها", () => {
+    const tp = topic({
+      blockedReasons: { archive: "عربي" },
+      blockedCodes: { archive: { code: "teamWaiting", params: { count: 2, teams: 3 } } },
+    });
+    expect(blockReason(tp, "archive", t)).toBe("3 فرق تنتظر");
   });
 
   it("يعود إلى نصّ الخادم حين لا ترجمة للرمز", () => {

@@ -16,6 +16,7 @@
 import request from "supertest";
 import app from "../../src/app";
 import { prisma } from "../../src/core/prisma/client";
+import { tr } from "../../src/core/i18n";
 import {
   seed,
   teardown,
@@ -335,9 +336,9 @@ describe("إنشاء الموضوع", () => {
 
 describe("التعديل والحذف محكومان بالحالة", () => {
   it.each([
-    ["approved", "معتمَد"],
+    ["approved", "تمت الموافقة"],
     ["open", "منشور"],
-    ["full", "مكتمل"],
+    ["full", "مسند"],
   ])("موضوع %s لا يُعدَّل", async (status) => {
     const topic = await ownedTopic(`PROF edit-${status}`, status);
 
@@ -355,7 +356,7 @@ describe("التعديل والحذف محكومان بالحالة", () => {
   });
 
   it.each([
-    ["approved", "معتمَد"],
+    ["approved", "تمت الموافقة"],
     ["open", "منشور"],
   ])("وموضوع %s لا يُحذف", async (status) => {
     const topic = await ownedTopic(`PROF del-${status}`, status);
@@ -430,5 +431,73 @@ describe("التعديل والحذف محكومان بالحالة", () => {
         "/api/professor/topics/00000000-0000-0000-0000-000000000000",
       ),
     ).expect(404);
+  });
+});
+
+//
+// ═══ ما لا يوجد، وما يُصحَّح ═══
+//
+
+describe("موضوع الأستاذ ومجموعاته: ما لا يوجد، وما يُصحَّح", () => {
+  const NONE = "00000000-0000-0000-0000-000000000000";
+
+  it("صاحب الموضوع يقرؤه ⇒ 200 بطلباته ومجموعته", async () => {
+    const topic = await ownedTopic("PROF view-own");
+    const res = await asOwner(request(app).get(`/api/professor/topics/${topic.id}`)).expect(200);
+    expect(res.body.topic).toMatchObject({ id: topic.id, groupRequests: [], projectGroup: null });
+  });
+
+  /** معرّفٌ لا يقابل شيئاً ⇒ 404 «غير موجود» — لا 403 تُوهم أن له صاحباً آخر. */
+  it.each([
+    ["PUT", `/api/professor/topics/${NONE}`, { title: "x" }, "notFound.topic"],
+    ["DELETE", `/api/professor/topics/${NONE}`, undefined, "notFound.topic"],
+    ["GET", `/api/professor/groups/${NONE}`, undefined, "notFound.project"],
+    ["POST", `/api/professor/groups/${NONE}/milestones`, { title: "مرحلة", deadline: "2099-01-01", order: 1 }, "notFound.project"],
+  ] as const)("%s %s ⇒ 404", async (method, path, body, key) => {
+    const r = request(app)[method.toLowerCase() as "put" | "delete" | "get" | "post"](path);
+    const res = await asOwner(body ? r.send(body) : r).expect(404);
+    expect(res.body.message).toBe(tr(key));
+  });
+
+  /**
+   * التخصّص والسنة يُصحَّحان من نافذة التعديل، فيُتحقَّق من وجودهما قبل
+   * الكتابة: معرّفٌ مفقود يُقال اسمُه (لا «خطأ في القاعدة»)، والسنة المؤرشفة
+   * لا يُكتب فيها.
+   */
+  it("ويُنقل إلى تخصّصٍ آخر موجود، ويُردّ عن غير الموجود بسببه", async () => {
+    const topic = await ownedTopic("PROF move-spec");
+    const other = await prisma.specialization.create({
+      data: { name: `${TAG} spec-moved`, level: "master", filiereId: f.specialization.filiereId },
+    });
+
+    await asOwner(request(app).put(`/api/professor/topics/${topic.id}`).send({ specializationId: other.id })).expect(200);
+    expect((await prisma.graduationTopic.findUniqueOrThrow({ where: { id: topic.id } })).specializationId).toBe(other.id);
+
+    const missing = await asOwner(
+      request(app).put(`/api/professor/topics/${topic.id}`).send({ specializationId: NONE }),
+    ).expect(404);
+    expect(missing.body.message).toBe(tr("notFound.specialization"));
+  });
+
+  it("وإلى سنةٍ موجودةٍ مفتوحة، لا مفقودةٍ ولا مؤرشفة", async () => {
+    const topic = await ownedTopic("PROF move-year");
+    const open = await prisma.academicYear.create({ data: { title: `${TAG} 2101/2102` } });
+    const archived = await prisma.academicYear.create({
+      data: { title: `${TAG} 2097/2098`, archivedAt: new Date() },
+    });
+
+    await asOwner(request(app).put(`/api/professor/topics/${topic.id}`).send({ academicYearId: open.id })).expect(200);
+    expect((await prisma.graduationTopic.findUniqueOrThrow({ where: { id: topic.id } })).academicYearId).toBe(open.id);
+
+    const missing = await asOwner(
+      request(app).put(`/api/professor/topics/${topic.id}`).send({ academicYearId: NONE }),
+    ).expect(404);
+    expect(missing.body.message).toBe(tr("notFound.academicYear"));
+
+    const closed = await asOwner(
+      request(app).put(`/api/professor/topics/${topic.id}`).send({ academicYearId: archived.id }),
+    ).expect(400);
+    expect(closed.body.message).toBe(tr("year.archivedNoWrite", { title: archived.title }));
+    expect((await prisma.graduationTopic.findUniqueOrThrow({ where: { id: topic.id } })).academicYearId).toBe(open.id);
   });
 });

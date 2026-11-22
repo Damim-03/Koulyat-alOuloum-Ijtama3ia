@@ -24,7 +24,7 @@ import { UserAvatar } from "../../../components/ui/user-avatar";
 import { useConversations, useTypingPeople } from "../hooks/chat-hooks";
 import { useContacts, useSentMessages } from "../hooks/messages-hook";
 import type { Conversation } from "../api/messages.api";
-import { broadcastLabel, personName, shortWhen } from "../messages-utils";
+import { broadcastLabel, personName, previewOf, shortWhen } from "../messages-utils";
 import { RelationChip, RoleChip } from "./messages-ui";
 import { ErrorRetry } from "../../../components/ui/error-retry";
 
@@ -580,7 +580,7 @@ function Rail({
                 ) : (
                   <>
                     {hover.c.last?.mine && <span className="font-medium text-gold/90">{t("msg.chat.youPrefix")} </span>}
-                    {hover.c.last?.preview ?? ""}
+                    {previewOf(hover.c.last?.preview, hover.c.last?.file, t)}
                   </>
                 )}
               </p>
@@ -698,7 +698,7 @@ function ChatRow({
               <span className={`truncate text-[12.5px] ${unread ? "font-semibold text-forest" : "text-clay"}`} dir="auto">
                 {last?.mine && <span className="font-medium text-gold/90">{t("msg.chat.youPrefix")} </span>}
                 {last?.subject ? `${last.subject} — ` : ""}
-                {last?.preview ?? ""}
+                {previewOf(last?.preview, last?.file, t)}
               </span>
             </>
           )}

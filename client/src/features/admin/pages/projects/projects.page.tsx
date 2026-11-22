@@ -48,6 +48,7 @@ import {
   relative,
 } from "./project-utils";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
+import { stackOnPhone } from "../../../../lib/stack-table";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -218,7 +219,7 @@ export function AdminProjectsPage() {
         <div className="relative">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-4">
-              <span className="grid size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft shadow-inner">
+              <span className="hidden size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft shadow-inner sm:grid">
                 <FolderKanban size={26} />
               </span>
               <div>
@@ -320,6 +321,7 @@ export function AdminProjectsPage() {
           <div className="mt-3 grid grid-cols-1 gap-3 border-t border-forest/10 pt-3 sm:grid-cols-2 lg:grid-cols-5">
             <Select
               value={facultyId}
+              aria-label={t("admin.faculty")}
               onChange={(v) => update({ facultyId: v, departmentId: "", specializationId: "" })}
               options={[
                 { value: "", label: t("admin.proj.allFaculties") },
@@ -328,6 +330,7 @@ export function AdminProjectsPage() {
             />
             <Select
               value={departmentId}
+              aria-label={t("admin.department")}
               onChange={(v) => update({ departmentId: v, specializationId: "" })}
               options={[
                 { value: "", label: t("admin.proj.allDepartments") },
@@ -336,6 +339,7 @@ export function AdminProjectsPage() {
             />
             <Select
               value={get("specializationId")}
+              aria-label={t("admin.specialization")}
               onChange={(v) => update({ specializationId: v })}
               options={[
                 { value: "", label: t("admin.allSpecializations") },
@@ -344,6 +348,7 @@ export function AdminProjectsPage() {
             />
             <Select
               value={get("academicYearId")}
+              aria-label={t("admin.academicYear")}
               onChange={(v) => update({ academicYearId: v })}
               options={[
                 { value: "", label: t("admin.allYears") },
@@ -355,6 +360,7 @@ export function AdminProjectsPage() {
             />
             <Select
               value={get("defense")}
+              aria-label={t("admin.proj.col.defense")}
               onChange={(v) => update({ defense: v })}
               options={[
                 { value: "", label: t("admin.allDefenseStates") },
@@ -508,9 +514,10 @@ function HeroTile({
           : "border-white/10 bg-cream/5 hover:border-white/20 hover:bg-cream/10"
       }`}
     >
-      <span className="mb-2 flex items-center gap-1.5 text-[11px] text-cream/70">
-        <Icon size={14} className={lit ? TILE_TONE[tone] : "text-cream/50"} />
-        <span className="truncate">{label}</span>
+      <span className="mb-2 flex items-start gap-1.5 text-[11px] leading-tight text-cream/70">
+        <Icon size={14} className={`shrink-0 ${lit ? TILE_TONE[tone] : "text-cream/50"}`} />
+        {/* Two lines rather than "مناقشة مبر…" on a narrow phone. */}
+        <span className="line-clamp-2">{label}</span>
       </span>
       <span className={`block font-serif text-2xl font-bold tabular-nums ${lit ? TILE_TONE[tone] : "text-cream/60"}`}>
         {value ?? "—"}
@@ -753,7 +760,7 @@ function ProjectTable({
   return (
     <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]" data-testid="projects-table">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-start">
+        <table ref={stackOnPhone} className="stack-sm w-full min-w-[860px] text-start">
           <thead>
             <tr className="bg-forest text-cream">
               <th className={th}>{t("admin.proj.col.project")}</th>

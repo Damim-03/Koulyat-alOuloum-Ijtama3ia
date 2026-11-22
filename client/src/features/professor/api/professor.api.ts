@@ -10,6 +10,7 @@ import type {
   DepartmentLite,
   StudentSearchHit,
   ProfessorDashboard,
+  TopicQuota,
 } from "../../../types/professor.types";
 import type {
   CreateTopicInput,
@@ -22,6 +23,12 @@ import type {
 const BASE = "/professor";
 
 export const professorApi = {
+  // ── How many topics he may still send for a year (none: the current) ──
+  topicQuota: (academicYearId?: string) =>
+    client
+      .get<TopicQuota>(`${BASE}/topic-quota`, { params: academicYearId ? { academicYearId } : {} })
+      .then((r) => r.data),
+
   // ── Dashboard ──
   getDashboard: () =>
     client.get<ProfessorDashboard>(`${BASE}/dashboard`).then((r) => r.data),
@@ -80,13 +87,13 @@ export const professorApi = {
     client
       .get<{ faculties: FacultyLite[] }>(`/common/faculties`)
       .then((r) => r.data.faculties),
-  // Naming students for a proposed team. A search: the term is required.
+  // Naming students for a proposed team: a number or letters of the names — or nothing, for the specialization's list.
   searchStudents: (q: string, specializationId?: string) =>
     client
-      .get<{ students: StudentSearchHit[] }>(`${BASE}/students/search`, {
+      .get<{ students: StudentSearchHit[]; total: number }>(`${BASE}/students/search`, {
         params: { q, ...(specializationId ? { specializationId } : {}) },
       })
-      .then((r) => r.data.students),
+      .then((r) => ({ students: r.data.students, total: r.data.total ?? r.data.students.length })),
   listDepartments: () =>
     client
       .get<{ departments: DepartmentLite[] }>(`/common/departments`)

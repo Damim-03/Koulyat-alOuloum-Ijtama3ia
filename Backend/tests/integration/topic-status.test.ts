@@ -16,6 +16,7 @@ import { prisma } from "../../src/core/prisma/client";
 import * as admin from "../../src/modules/admin/admin.service";
 import * as student from "../../src/modules/student/student.service";
 import * as pub from "../../src/modules/public/public.service";
+import { computeTopicStatus, setTopicDecision } from "../../src/core/topic/topic-status";
 import {
   seed,
   makeTopic,
@@ -102,10 +103,8 @@ const dissolve = (groupId: string) =>
 //
 
 describe("سقف الطلبات", () => {
-  const attempts = (topicId: string) =>
-    prisma.groupRequest.count({
-      where: { topicId, countsAgainstCap: true },
-    });
+  const pendingOn = async (topicId: string) =>
+    (await prisma.graduationTopic.findUniqueOrThrow({ where: { id: topicId } })).pendingRequestCount;
 
   /**
    * الفسخُ فعلٌ إداريّ لا قرارٌ على الفريق.
@@ -114,13 +113,15 @@ describe("سقف الطلبات", () => {
    * لأغلق موضوعاً بسقفِ واحدٍ فسخته الإدارة لِيُتداول من جديد — يدٌ تفتح
    * وأخرى تُقفل، ولا شيء على الشاشة يقول لماذا.
    */
-  it("فسخُ المشروع يُعيد الخانة إلى السقف", async () => {
+  it("فسخُ المشروع يُعيد الموضوع إلى التداول، بسقفٍ فارغ", async () => {
     const { topic, group } = await acceptedProject("I-cap dissolve");
-    expect(await attempts(topic.id)).toBe(1);
 
     await dissolve(group.id);
 
-    expect(await attempts(topic.id)).toBe(0);
+    expect(await pendingOn(topic.id)).toBe(0);
+    expect(
+      (await prisma.graduationTopic.findUniqueOrThrow({ where: { id: topic.id } })).status,
+    ).not.toBe("full");
     // والصفُّ باقٍ: الأثرُ لا يذهب، إنّما يخرج من الحساب.
     expect(
       await prisma.groupRequest.count({ where: { topicId: topic.id } }),
@@ -136,7 +137,7 @@ describe("سقف الطلبات", () => {
    */
   it.each([
     ["منشور", true, "open"],
-    ["معتمَد", false, "approved"],
+    ["تمت الموافقة عليه", false, "approved"],
   ])("حذفُ المرفوض لا يُغيّر موضوعاً %s", async (_name, published, expected) => {
     const [leader] = f.nextStudents(1);
     const topic = await makeTopic(f, `I-del ${expected}`, "open", 3);
@@ -212,11 +213,11 @@ describe("سقف الطلبات", () => {
       priority: 1,
     } as never)) as { id: string };
 
-    expect(await attempts(topic.id)).toBe(1); // حيٌّ ⇒ يشغل خانة
+    expect(await pendingOn(topic.id)).toBe(1); // معلّقٌ ⇒ يشغل خانة
 
     await admin.rejectGroupRequestService(req.id, "سبب");
 
-    expect(await attempts(topic.id)).toBe(0);
+    expect(await pendingOn(topic.id)).toBe(0);
     expect(
       await prisma.groupRequest.count({ where: { topicId: topic.id } }),
     ).toBe(1);
@@ -256,14 +257,14 @@ describe("I2 — المجموعة وطلبها المصدر يحييان ويم�
     expect(req?.status).not.toBe("accepted");
   });
 
-  it("بعد الفسخ يتحرّر الحجز (activeTopicId)", async () => {
+  it("بعد الفسخ ينتهي الطلب المقبول فيتحرّر الموضوع", async () => {
     const { request, group } = await acceptedProject("I2 reservation");
     await dissolve(group.id);
 
     const req = await prisma.groupRequest.findUnique({
       where: { id: request.id },
     });
-    expect(req?.activeTopicId ?? null).toBeNull();
+    expect(req?.status).toBe("rejected");
   });
 
   it("رفض طلب accepted مرفوض — المشروع القائم لا يُفكَّك من شاشة الطلبات", async () => {
@@ -374,6 +375,28 @@ describe("I3b — القرار الإداري يذهب ويعود بلا فقد�
     });
     expect(reapproved?.status).toBe("approved");
     expect(reapproved?.rejectionReason).toBeNull();
+  });
+
+  /** رفضٌ ثانٍ بلا سبب: سببُ الرفض الأوّل لا يبقى ملصقاً بقرارٍ لم يقله. */
+  it("ورفضٌ بلا سبب يمحو سبب الرفض السابق", async () => {
+    const topic = await makeTopic(f, "I3b no-reason", "pending");
+
+    await setTopicDecision(prisma, topic.id, "rejected", { rejectionReason: "سببٌ أوّل" });
+    await setTopicDecision(prisma, topic.id, "rejected");
+
+    const row = await prisma.graduationTopic.findUnique({ where: { id: topic.id } });
+    expect(row?.status).toBe("rejected");
+    expect(row?.rejectionReason).toBeNull();
+  });
+
+  /**
+   * موضوعٌ حُذف في المعاملة نفسها قبل إعادة الحساب: لا شيء ليُكتب، ولا رميةَ
+   * تُسقط المعاملة كلّها بسبب صفٍّ قُصد حذفه.
+   */
+  it("وموضوعٌ لم يعد موجوداً لا يُكتب له شيء، ولا يرمي", async () => {
+    await expect(computeTopicStatus(prisma, `${TAG}-gone`)).resolves.toBe("pending");
+    await expect(setTopicDecision(prisma, `${TAG}-gone`, "approved")).resolves.toBe("pending");
+    expect(await prisma.graduationTopic.count({ where: { id: `${TAG}-gone` } })).toBe(0);
   });
 
   it("الموضوع المُسنَد يصل full بالإسقاط، ويبقى غير منشور", async () => {
@@ -845,10 +868,9 @@ describe("I7b — الفسخ لا يبتلع عملاً قائماً", () => {
 
     const req = await prisma.groupRequest.findFirst({
       where: { topicId: topic.id },
-      select: { status: true, activeTopicId: true, rejectionReason: true },
+      select: { status: true, rejectionReason: true },
     });
     expect(req?.status).toBe("rejected");
-    expect(req?.activeTopicId).toBeNull();
     expect(req?.rejectionReason).toBe("قُبل الفريق الخطأ");
   });
 });

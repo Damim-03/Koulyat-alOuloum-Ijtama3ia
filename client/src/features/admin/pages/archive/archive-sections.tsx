@@ -39,6 +39,7 @@ import { ProgressRing } from "../projects/project-ui";
 import { MENTIONS, TOPIC_STATUS_BAR, TOPIC_STATUS_ORDER, byMonth, matches, mentionChip, pct } from "./archive-utils";
 import { pickName, readsLatin } from "../../../../lib/person-name";
 import { setPanelCollapsed, setPanelsCollapsed, useAllCollapsed, usePanelCollapsed } from "./archive-panels";
+import { stackOnPhone } from "../../../../lib/stack-table";
 
 /**
  * What one year holds, tab by tab. The record is the same shape whether it
@@ -856,7 +857,7 @@ export function StudentsSection({ record, live, lang, q, spec }: SectionProps) {
       ) : (
         <div className={`overflow-hidden ${CARD}`}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] table-fixed text-[12.5px]" data-testid="archive-students">
+            <table ref={stackOnPhone} className="stack-sm w-full min-w-[900px] table-fixed text-[12.5px]" data-testid="archive-students">
               <colgroup>
                 <col className="w-12" />
                 <col className="w-[27%]" />

@@ -1,4 +1,5 @@
 import i18n from "../../i18n/i18n";
+import type { TFunction } from "i18next";
 import type { MessageUserLite } from "./api/messages.api";
 import { personName as nameByLang } from "../../lib/person-name";
 
@@ -93,6 +94,23 @@ export const setOpenChat = (userId: string | null) => {
 };
 export const isChatOpen = (userId: string | null | undefined) => !!userId && openChat === userId;
 
+/* The message bell in the dashboards' header (components/layout/Dashboard/
+   message-bell): where it is on screen, a new message comes out of it, so the
+   corner toast (use-message-alerts) stands aside — one message, told once. */
+let bells = 0;
+/** The bell is on screen; the function returned says it is gone. */
+export const holdBell = () => {
+  bells++;
+  return () => {
+    bells--;
+  };
+};
+export const bellShown = () => bells > 0;
+
+/** Whether a new message is to be announced at all: not when its conversation is open in front of the reader. */
+export const worthTelling = (payload: { threadId: string | null; id: string; sender: { id: string } }) =>
+  !isThreadOpen(payload.threadId ?? payload.id) && !isChatOpen(payload.sender.id);
+
 /** "10:24" — the time inside a bubble. */
 export function clockTime(iso: string) {
   return new Date(iso).toLocaleTimeString(i18n.language, { hour: "2-digit", minute: "2-digit" });
@@ -134,3 +152,57 @@ export function writeDraft(value: unknown) {
     /* the draft just won't survive a reload */
   }
 }
+
+/* ── files sent with messages ─────────────────────────────── */
+
+/** What the server accepts (Backend modules/messages/attachments) — checked here first, to say so at once. */
+export const FILE_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg", ".webp", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt", ".txt"];
+export const MAX_FILE_MB = 25;
+export const MAX_FILES = 5;
+
+export type FileKind = "image" | "pdf" | "word" | "excel" | "slides" | "text" | "file";
+
+/** The family a file belongs to — by its type when known, else by its name. */
+export function fileKind(mimeOrName: string): FileKind {
+  const v = mimeOrName.toLowerCase();
+  if (v.startsWith("image/") || /\.(png|jpe?g|webp)$/.test(v)) return "image";
+  if (v.includes("pdf")) return "pdf";
+  if (v.includes("word") || /\.docx?$/.test(v)) return "word";
+  if (v.includes("excel") || v.includes("spreadsheet") || /\.xlsx?$/.test(v)) return "excel";
+  if (v.includes("powerpoint") || v.includes("presentation") || /\.pptx?$/.test(v)) return "slides";
+  if (v.startsWith("text/") || v.endsWith(".txt")) return "text";
+  return "file";
+}
+
+/** «340 KB», «2.4 MB» — in the reader's language. */
+export function fileSize(bytes: number, t: TFunction) {
+  const nf = (n: number, digits: number) => n.toLocaleString(i18n.language, { maximumFractionDigits: digits });
+  if (bytes < 1024 * 1024) return t("msg.files.kb", { n: nf(Math.max(1, Math.round(bytes / 1024)), 0) });
+  return t("msg.files.mb", { n: nf(bytes / (1024 * 1024), 1) });
+}
+
+/**
+ * The line a list shows for a message: its text, or — for a file sent alone —
+ * the file's name, and how many came with it.
+ */
+export function previewOf(
+  text: string | null | undefined,
+  files: { fileName: string; count?: number }[] | { fileName: string; count?: number } | null | undefined,
+  t: TFunction,
+) {
+  if (text) return text;
+  const list = Array.isArray(files) ? files : files ? [files] : [];
+  const first = list[0];
+  if (!first) return "";
+  const count = Array.isArray(files) ? list.length : (first.count ?? 1);
+  return count > 1 ? t("msg.files.previewMany", { name: first.fileName, more: count - 1 }) : t("msg.files.preview", { name: first.fileName });
+}
+
+/* ── changing a message after sending it ──────────────────── */
+
+/** As the server allows (Backend messages.service: EDIT_WINDOW_MS). */
+export const EDIT_WINDOW_MS = 15 * 60_000;
+
+/** Whether I may still change this message's text, at `now`. */
+export const stillEditable = (m: { mine: boolean; createdAt: string; pending?: unknown }, now: number) =>
+  m.mine && !m.pending && now - new Date(m.createdAt).getTime() < EDIT_WINDOW_MS;

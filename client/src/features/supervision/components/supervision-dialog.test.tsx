@@ -11,7 +11,7 @@
  * داخليّ: هو الحقل الوحيد الذي يُميّز الطالب في وثيقةٍ ورقية.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import type {
@@ -51,6 +51,12 @@ const activeDocument: SupervisionDocument = {
   snapshot,
   createdAt: new Date("2026-09-21").toISOString(),
   revokedAt: null,
+  printedAt: null,
+  printedByRole: null,
+  printedByName: null,
+  printCount: 0,
+  lastPrintedAt: null,
+  version: "v1",
 };
 
 let preview: {
@@ -58,13 +64,32 @@ let preview: {
   isLoading: boolean;
   isError: boolean;
   error: unknown;
+  refetch: ReturnType<typeof vi.fn>;
 };
 const issue = { mutate: vi.fn(), isPending: false };
+const print = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false };
+const toast = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
 
 vi.mock("../hooks/supervision-hook", () => ({
   useSupervisionPreview: () => preview,
   useIssueSupervisionDocument: () => issue,
+  usePrintSupervisionDocument: () => print,
 }));
+vi.mock("sonner", () => ({ toast }));
+
+/** What the server answers a first print with: who, and when. */
+const printedDocument = (over: Partial<SupervisionDocument> = {}): SupervisionDocument => ({
+  ...activeDocument,
+  printedAt: new Date("2026-11-17T10:30:00Z").toISOString(),
+  printedByRole: "professor",
+  printedByName: "عبد الرحمن العوامر",
+  printCount: 1,
+  lastPrintedAt: new Date("2026-11-17T10:30:00Z").toISOString(),
+  ...over,
+});
+
+/** An answer of the server refused with its status, as axios rejects it. */
+const refused = (status: number) => Object.assign(new Error("refused"), { isAxiosError: true, response: { status, data: { message: `server ${status}` } } });
 
 const { SupervisionDialog } = await import("./supervision-dialog");
 
@@ -74,6 +99,7 @@ function setPreview(active: SupervisionDocument | null) {
     isLoading: false,
     isError: false,
     error: null,
+    refetch: vi.fn(),
   };
 }
 
@@ -93,13 +119,18 @@ describe("نافذة ورقة الموافقة على الإشراف", () => {
     expect(issue.mutate).toHaveBeenCalledWith("t-1", expect.anything());
   });
 
-  it("تُعرض الطباعة للوثيقة الصالحة، وتستدعي طابعة المتصفّح", async () => {
+  it("تُعرض الطباعة للوثيقة الصالحة: تُسجَّل بنسختها أوّلاً، ثمّ تُفتح طابعة المتصفّح", async () => {
     setPreview(activeDocument);
+    print.mutateAsync.mockResolvedValue(printedDocument());
     render(<SupervisionDialog topicId="t-1" onClose={() => {}} />);
 
     expect(screen.queryByText("supervision.issue")).toBeNull();
     await userEvent.click(screen.getByText("supervision.print"));
+    expect(print.mutateAsync).toHaveBeenCalledWith({ id: activeDocument.id, version: activeDocument.version });
     expect(window.print).toHaveBeenCalledTimes(1);
+    // Now printed: and said so.
+    expect(await screen.findByTestId("printed-badge")).toBeTruthy();
+    expect(screen.getByTestId("print-status").dataset.printed).toBe("true");
   });
 
   it("لا تُطبع الملغاة — يُعرض بدلها إصدار وثيقةٍ خلفاً لها", () => {
@@ -150,5 +181,79 @@ describe("نافذة ورقة الموافقة على الإشراف", () => {
 
     const sheet = screen.getByTestId("supervision-sheet");
     expect(sheet.querySelector("svg[role='img']")).toBeNull();
+  });
+});
+
+describe("الطباعة: قبلها تتبع الورقة موضوعها، وأوّلها يثبّتها", () => {
+  it("لم تُطبع بعد ⇒ يُقال إنّها تتبع موضوعها ونصّها حتى أوّل طباعة", () => {
+    setPreview(activeDocument);
+    render(<SupervisionDialog topicId="t-1" onClose={() => {}} />);
+    const status = screen.getByTestId("print-status");
+    expect(status.dataset.printed).toBe("false");
+    expect(status.textContent).toContain("supervision.notPrintedHint");
+    expect(screen.queryByTestId("printed-badge")).toBeNull();
+  });
+
+  it("طُبعت ⇒ من طبعها أوّل مرّة ومتى، وكم مرّة، وأنّها مثبّتة", () => {
+    setPreview(printedDocument({ printCount: 3 }));
+    render(<SupervisionDialog topicId="t-1" onClose={() => {}} />);
+    const status = screen.getByTestId("print-status");
+    expect(status.textContent).toContain("supervision.printedFirst");
+    expect(status.textContent).toContain("supervision.printedByRole.professor — عبد الرحمن العوامر");
+    expect(status.textContent).toContain('"n":3');
+    expect(status.textContent).toContain("supervision.printedLocked");
+  });
+
+  it("وإن طبعها موظّفٌ والقارئ ليس الإدارة ⇒ «الإدارة» بلا اسم", () => {
+    setPreview(printedDocument({ printedByRole: "admin", printedByName: null }));
+    render(<SupervisionDialog topicId="t-1" onClose={() => {}} />);
+    expect(screen.getByTestId("print-status").textContent).toContain('"who":"supervision.printedByRole.admin"');
+  });
+
+  it("وصادرةٌ قبل تسجيل الطباعة ⇒ تُعامَل كمطبوعة، بلا اسم", () => {
+    setPreview(printedDocument({ printedByRole: null, printedByName: null }));
+    render(<SupervisionDialog topicId="t-1" onClose={() => {}} />);
+    expect(screen.getByTestId("print-status").textContent).toContain("supervision.printedBefore");
+  });
+
+  it("تغيّرت منذ عُرضت (٤٠٩) ⇒ لا طباعة، وتُجلب كما صارت ويُقال ذلك", async () => {
+    setPreview(activeDocument);
+    print.mutateAsync.mockRejectedValue(refused(409));
+    render(<SupervisionDialog topicId="t-1" onClose={() => {}} />);
+    await userEvent.click(screen.getByText("supervision.print"));
+    await waitFor(() => expect(preview.refetch).toHaveBeenCalled());
+    expect(window.print).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("server 409");
+  });
+
+  it("وتعذّر تسجيلها ⇒ لا طباعة أيضاً: ورقةٌ قد تكون على الورق ورقةٌ مثبّتة", async () => {
+    setPreview(activeDocument);
+    print.mutateAsync.mockRejectedValue(refused(500));
+    render(<SupervisionDialog topicId="t-1" onClose={() => {}} />);
+    await userEvent.click(screen.getByText("supervision.print"));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("server 500"));
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it("Ctrl+P وهي معروضة يُسجَّل طباعةً؛ وطباعة الزرّ لا تُسجَّل مرّتين", async () => {
+    setPreview(activeDocument);
+    render(<SupervisionDialog topicId="t-1" onClose={() => {}} />);
+    act(() => void window.dispatchEvent(new Event("beforeprint")));
+    expect(print.mutate).toHaveBeenCalledWith({ id: activeDocument.id, version: activeDocument.version }, expect.anything());
+
+    print.mutate.mockClear();
+    print.mutateAsync.mockResolvedValue(printedDocument());
+    (window.print as ReturnType<typeof vi.fn>).mockImplementation(() => window.dispatchEvent(new Event("beforeprint")));
+    await userEvent.click(screen.getByText("supervision.print"));
+    expect(window.print).toHaveBeenCalledTimes(1);
+    expect(print.mutate).not.toHaveBeenCalled();
+  });
+
+  it("والملغاة لا تُسجَّل طباعتها بـCtrl+P", () => {
+    setPreview({ ...activeDocument, status: "revoked", revokedAt: new Date().toISOString() });
+    render(<SupervisionDialog topicId="t-1" onClose={() => {}} />);
+    act(() => void window.dispatchEvent(new Event("beforeprint")));
+    expect(print.mutate).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("print-status")).toBeNull();
   });
 });

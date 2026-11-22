@@ -9,10 +9,8 @@ import {
   FilePlus2,
   Users,
   UserPlus,
-  Star,
   SendHorizontal,
   ChevronLeft,
-  IdCard,
   Layers,
   Link2,
   Plus,
@@ -32,7 +30,9 @@ import {
   useAcademicYears,
   useFaculties,
   useDepartments,
+  useProfessorTopicQuota,
 } from "../hooks/Professor-hook";
+import { TopicQuotaLine } from "./topic-quota-line";
 import {
   createTopicSchema,
   type CreateTopicInput,
@@ -46,11 +46,17 @@ import {
   Field,
 } from "../../../components/ui/form-bits";
 import { Stepper } from "../../../components/ui/stepper";
+import { ruleOf, seatsFor } from "../../../lib/team-size";
+import { TeamSizeRuled } from "../../../components/topic/team-size-ruled";
 import { ListInput } from "../../../components/ui/list-input";
-import { StudentPicker, type PickedStudent } from "./student-picker";
+import { TeamSeats, type PickedStudent } from "./team-seats";
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import { Select } from "../../../components/ui/select";
 import { personName } from "../../../lib/person-name";
+import { TopicExtrasFields } from "../../../components/topic/topic-extras-fields";
+import { EMPTY_EXTRAS, extrasOf, extrasPayload } from "../../../lib/topic-extras";
+import { acceptsProposals, formatDay, windowState } from "../../../lib/proposal-window";
+import { levelName } from "../../../lib/spec-level";
 
 /**
  * Proposing a topic, in the same room the administration proposes one in.
@@ -78,7 +84,7 @@ export function TopicFormDialog({
   topic,
   withGroup = false,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { dir } = useLanguage();
   const { user } = useAuth();
   const editing = !!topic;
@@ -100,6 +106,8 @@ export function TopicFormDialog({
   const [step, setStep] = useState<1 | 2>(1);
   const [members, setMembers] = useState<PickedStudent[]>([]);
   const [leader, setLeader] = useState("");
+  // The type, the co-supervisor and the short description (lib/topic-extras).
+  const [extras, setExtras] = useState(EMPTY_EXTRAS);
 
   const {
     register,
@@ -132,7 +140,6 @@ export function TopicFormDialog({
   const objectives = watch("objectives") ?? [];
   const specializationId = watch("specializationId");
   const academicYearId = watch("academicYearId");
-  const maxStudents = Number(watch("maxStudents")) || 1;
 
   // ── the placement cascade ──
   // Only `specializationId` is persisted; faculty, department and filiere
@@ -180,12 +187,23 @@ export function TopicFormDialog({
       }),
     [specializations, filiereId, departmentId, facultyId, departments],
   );
+  /** The chosen specialization's level — the topic's — shown beside it. */
+  const chosenLevel = levelName(chosenSpec?.level, t);
+  // The number of students the administration set for the year and this level, if any (lib/team-size).
+  const teamRule = ruleOf(academicYears, academicYearId, chosenSpec?.level);
+  const maxStudents = seatsFor(teamRule, Number(watch("maxStudents")) || 1);
+  // The administration's limit of topics for the chosen year. A new topic counts, and so does a
+  // rejected one sent again or one moved to that year; one edited in place was counted already.
+  const quotaCounts = !topic || topic.status === "rejected" || academicYearId !== topic.academicYearId;
+  const { data: quota } = useProfessorTopicQuota(academicYearId || undefined, open && !!academicYearId && quotaCounts);
+  const quotaFull = quotaCounts && !!quota && quota.max !== null && quota.used >= quota.max;
 
   useEffect(() => {
     if (!open) return;
     setStep(1);
     setMembers([]);
     setLeader("");
+    setExtras(topic ? extrasOf(topic) : EMPTY_EXTRAS);
     reset(
       topic
         ? {
@@ -208,6 +226,9 @@ export function TopicFormDialog({
             objectives: [],
             references: [],
           },
+      // `keepFieldsRef` — see MilestoneFormDialog: a plain reset under the
+      // React Compiler can leave the fields unregistered, and typing is lost.
+      { keepFieldsRef: true },
     );
   }, [open, topic, reset]);
 
@@ -215,12 +236,15 @@ export function TopicFormDialog({
     // Strip empty rows and the helper-only placement fields.
     const clean = {
       ...values,
+      maxStudents,
       requirements: (values.requirements ?? []).filter((r) => r.trim() !== ""),
       objectives: (values.objectives ?? []).filter((o) => o.trim() !== ""),
       // Keep only references that have both a title and a url.
       references: (values.references ?? []).filter(
         (r) => r.title.trim() !== "" && r.url.trim() !== "",
       ),
+      // An edit clears with null; a new topic leaves the empty ones out.
+      ...extrasPayload(extras, !!(editing && topic)),
     };
     delete (clean as Record<string, unknown>).facultyId;
     delete (clean as Record<string, unknown>).departmentId;
@@ -356,6 +380,7 @@ export function TopicFormDialog({
                   label={t("pro.requirements")}
                   note={t("pro.optional")}
                   hint={t("pro.requirementsHint")}
+                  group
                 >
                   <ListInput
                     value={requirements}
@@ -369,6 +394,7 @@ export function TopicFormDialog({
                   label={t("pro.objectives")}
                   note={t("pro.optional")}
                   hint={t("pro.objectivesHint")}
+                  group
                 >
                   <ListInput
                     value={objectives}
@@ -409,34 +435,51 @@ export function TopicFormDialog({
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {refArray.fields.map((f, i) => (
-                      <div
-                        key={f.id}
-                        className="flex flex-col gap-2 rounded-xl bg-cream-card p-2 sm:flex-row sm:items-center"
-                      >
-                        <input
-                          {...register(`references.${i}.title` as const)}
-                          className={`${inputCls} sm:flex-1`}
-                          placeholder={t("pro.referenceTitlePlaceholder")}
-                        />
-                        <input
-                          {...register(`references.${i}.url` as const)}
-                          dir="ltr"
-                          className={`${inputCls} sm:flex-1`}
-                          placeholder="https://…"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => refArray.remove(i)}
-                          className="grid size-9 shrink-0 place-items-center rounded-lg text-clay transition hover:bg-brick/10 hover:text-brick"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    ))}
+                    {refArray.fields.map((f, i) => {
+                      // A row the schema refuses blocks sending — so it says
+                      // why, where it is. Without this the button did nothing.
+                      const rowErrors = errors.references?.[i];
+                      return (
+                        <div key={f.id} className="rounded-xl bg-cream-card p-2">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <input
+                              {...register(`references.${i}.title` as const)}
+                              aria-invalid={!!rowErrors?.title}
+                              className={`${inputCls} sm:flex-1`}
+                              placeholder={t("pro.referenceTitlePlaceholder")}
+                            />
+                            <input
+                              {...register(`references.${i}.url` as const)}
+                              aria-invalid={!!rowErrors?.url}
+                              dir="ltr"
+                              className={`${inputCls} sm:flex-1`}
+                              placeholder="https://…"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => refArray.remove(i)}
+                              aria-label={t("pro.delete")}
+                              title={t("pro.delete")}
+                              className="grid size-9 shrink-0 place-items-center rounded-lg text-clay transition hover:bg-brick/10 hover:text-brick"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                          {(rowErrors?.title || rowErrors?.url) && (
+                            <p className="mt-1.5 px-1 text-[11px] text-brick">
+                              {[rowErrors.title?.message, rowErrors.url?.message].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
+
+              {/* ── its type, its co-supervisor, its short description ── */}
+              <SectionHead title={t("topicExtras.section")} hint={t("topicExtras.sectionHint")} />
+              <TopicExtrasFields value={extras} onChange={setExtras} specializationId={specializationId || undefined} />
             </section>
 
             {/* ══ where the topic sits ══ */}
@@ -475,29 +518,36 @@ export function TopicFormDialog({
                         }}
                         options={[
                           { value: "", label: t("pro.selectYear") },
-                          ...(academicYears ?? []).map((y) => ({
-                            value: y.id,
-                            label: `${y.title}${y.isActive ? " ●" : ""}`,
-                          })),
+                          // A new topic goes only to a year taking proposals now;
+                          // an edit keeps every year (editing stays open).
+                          ...(academicYears ?? [])
+                            .filter((y) => editing || acceptsProposals(y))
+                            .map((y) => ({
+                              value: y.id,
+                              label: `${y.title}${y.isActive ? " ●" : ""}`,
+                              hint:
+                                !editing && windowState(y) === "open"
+                                  ? t("pro.proposals.openUntil", { date: formatDay(y.proposalsCloseAt!, i18n.language) })
+                                  : undefined,
+                            })),
                         ]}
                       />
                     )}
                   />
                 </Field>
 
-                <Field
-                  label={t("pro.maxStudents")}
-                  error={errors.maxStudents?.message}
-                >
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    {...register("maxStudents")}
-                    className={inputCls}
-                    dir="ltr"
+                {/* Set by the administration for the level — shown, never typed. */}
+                <Field label={t("pro.maxStudents")} group>
+                  <TeamSizeRuled
+                    rule={teamRule}
+                    seats={maxStudents}
+                    year={academicYears?.find((y) => y.id === academicYearId)?.title}
+                    level={chosenLevel}
+                    onChoose={(v) => setValue("maxStudents", v, { shouldDirty: true })}
                   />
                 </Field>
+
+                {quotaCounts && quota && <TopicQuotaLine quota={quota} className="col-span-2" />}
               </div>
 
               <div className="space-y-3 border-t border-forest/10 pt-4">
@@ -592,6 +642,19 @@ export function TopicFormDialog({
                     )}
                   />
                 </Field>
+                {/*
+                  The level is the specialization's: shown, never chosen. A text in a
+                  field's frame, not a field — and not in a <label>, which would hand a
+                  click to it — so nothing takes the focus: no ring, no caret.
+                */}
+                <Field label={t("admin.level")} note={t("admin.levelAuto")} group>
+                  <div
+                    data-testid="topic-level"
+                    className={`w-full cursor-default rounded-xl border border-forest/15 bg-forest/5 px-3.5 py-2.5 text-sm select-none ${chosenLevel ? "font-semibold text-forest" : "text-clay"}`}
+                  >
+                    {chosenLevel || t("admin.levelFromSpec")}
+                  </div>
+                </Field>
               </div>
 
               {/* the chain the selects resolve to, spelled out */}
@@ -629,83 +692,32 @@ export function TopicFormDialog({
                   </span>
                 </div>
 
-                <Field
-                  label={t("pro.registrationNumbers")}
-                  hint={t("pro.registrationNumbersHint")}
-                >
-                  <StudentPicker
-                    value={members}
-                    max={maxStudents}
-                    specializationId={specializationId || undefined}
-                    onChange={(v) => {
-                      setMembers(v);
-                      const numbers = v.map((m) => m.registrationNumber);
-                      // A leader who was removed cannot stay the leader.
-                      if (leader && !numbers.includes(leader))
-                        setLeader(numbers[0] ?? "");
-                      else if (!leader && numbers.length === 1)
-                        setLeader(numbers[0]);
-                    }}
-                  />
-                </Field>
+                {/* A numbered seat per student the topic allows — as the administration's. */}
+                <TeamSeats
+                  value={members}
+                  max={maxStudents}
+                  leader={leader}
+                  onLeader={setLeader}
+                  specializationId={specializationId || undefined}
+                  specializationName={chosenSpec?.name}
+                  onChange={(v) => {
+                    setMembers(v);
+                    const numbers = v.map((m) => m.registrationNumber);
+                    // The first one added sends; a sender removed hands it to the first left.
+                    if (leader && !numbers.includes(leader))
+                      setLeader(numbers[0] ?? "");
+                    else if (!leader && numbers.length > 0)
+                      setLeader(numbers[0]);
+                  }}
+                />
 
-                {members.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-[11px] font-medium text-clay">
-                      {t("pro.pickLeader")}
-                    </p>
-                    {members.map((m) => {
-                      const reg = m.registrationNumber;
-                      const isLeader = leader === reg;
-                      return (
-                        <button
-                          key={reg}
-                          type="button"
-                          onClick={() => setLeader(reg)}
-                          className={`flex w-full items-center gap-2.5 rounded-xl border px-3 py-2 text-start transition ${
-                            isLeader
-                              ? "border-gold bg-gold/5"
-                              : "border-forest/10 bg-cream-card hover:border-gold/40"
-                          }`}
-                        >
-                          <span
-                            className={`grid size-7 shrink-0 place-items-center rounded-lg ${
-                              isLeader
-                                ? "bg-gold/20 text-gold"
-                                : "text-clay"
-                            }`}
-                          >
-                            {isLeader ? (
-                              <SendHorizontal size={15} />
-                            ) : (
-                              <Star size={15} />
-                            )}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium text-forest">
-                              {m.name}
-                            </span>
-                            <span
-                              className="block truncate text-[11px] text-clay"
-                              dir="ltr"
-                            >
-                              {reg}
-                            </span>
-                          </span>
-                          {isLeader && (
-                            <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[9px] font-bold text-gold">
-                              {t("pro.leader")}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <p className="mt-2.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-clay">
-                  <IdCard size={12} className="mt-0.5 shrink-0 text-gold" />
-                  {t("pro.numbersCheckedOnSubmit")}
+                {/* As the administration's seats say it: who sends, and who is taken. */}
+                <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed text-clay">
+                  <SendHorizontal size={12} className="mt-0.5 shrink-0 text-gold" />
+                  {t("pro.leaderHint")}
+                </p>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-clay/80" data-testid="team-seats-hint">
+                  {t("pro.registrationNumbersHint")} {t("pro.numbersCheckedOnSubmit")}
                 </p>
               </div>
 
@@ -792,8 +804,8 @@ export function TopicFormDialog({
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                disabled={!step1Valid}
-                title={!step1Valid ? t("pro.completeStepFirst") : undefined}
+                disabled={!step1Valid || quotaFull}
+                title={quotaFull ? t("pro.quota.fullButton") : !step1Valid ? t("pro.completeStepFirst") : undefined}
                 className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t("pro.next")}
@@ -803,7 +815,8 @@ export function TopicFormDialog({
               <button
                 type="submit"
                 form="topic-form"
-                disabled={busy || (withGroup && !teamValid)}
+                disabled={busy || (withGroup && !teamValid) || quotaFull}
+                title={quotaFull ? t("pro.quota.fullButton") : undefined}
                 className="inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-2.5 text-sm font-semibold text-forest-deep transition hover:bg-gold-soft disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {busy ? (

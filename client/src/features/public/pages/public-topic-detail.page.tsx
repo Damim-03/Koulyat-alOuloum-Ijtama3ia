@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
+  FolderKanban,
   ChevronRight,
   Users,
   CalendarDays,
@@ -22,6 +23,7 @@ import {
   CalendarClock,
   Search,
   type LucideIcon,
+  Inbox,
 } from "lucide-react";
 import { toast } from "sonner";
 import { usePublicTopic } from "../hooks/public-hook";
@@ -29,11 +31,14 @@ import { noneText } from "../../../lib/none-text";
 import { useAuth } from "../../../hooks/use-auth";
 // ⚠️ طابِق المسار مع موقع GroupRequestDialog عندك (موجود ضمن ميزة الطالب).
 import { GroupRequestDialog } from "../../student/components/group-request-dialog";
+import { useMyProject, useStudentSelectionWindow } from "../../student/hooks/Student-hook";
+import { formatDay, periodState, selectionOf } from "../../../lib/proposal-window";
 import { LoadingArea } from "../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../components/ui/error-retry";
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import { ReservedTopicPanel } from "../components/reserved-topic";
 import { personName } from "../../../lib/person-name";
+import { TopicExtrasView } from "../../../components/topic/topic-type-badge";
 
 const CARD =
   "rounded-3xl border border-forest/10 bg-cream-card shadow-[0_4px_24px_rgba(38,66,61,0.06)]";
@@ -66,10 +71,21 @@ export function PublicTopicDetailPage() {
 
   // محجوزٌ لفريقٍ آخر ووُصل إليه بالرابط: الخادم لا يُسلّم تفاصيله، والصفحة
   // تقول لماذا بدل «تعذّر التحميل».
-  const reservedForOthers =
-    (error as { response?: { data?: { errorCode?: string } } } | null)
-      ?.response?.data?.errorCode === "TOPIC_RESERVED";
+  const errorCode = (error as { response?: { data?: { errorCode?: string } } } | null)?.response?.data?.errorCode;
+  const reservedForOthers = errorCode === "TOPIC_RESERVED";
+  // Not this reader's thesis, and they have one: the server keeps the details, the page says why.
+  const placedElsewhere = errorCode === "TOPIC_PLACED";
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // The student's deadline to choose: before it opens and after it closes, no request.
+  const student = isAuthenticated && role === "student";
+  const { data: selection } = useStudentSelectionWindow(student);
+  const choosing = student && selection ? periodState(selectionOf(selection)) : "unset";
+  // A student already in a project asks for no other topic: one student, one project.
+  const { data: myProject } = useMyProject(student);
+  // Reached all the same (the lock is the server's): never a request from here.
+  const placed = !!myProject && myProject.topic?.id !== id;
+  const outsideWindow = !placed && (choosing === "upcoming" || choosing === "closed");
 
   // القائمة تحمل فلاترها في الرابط وتُسلّمها هنا: «العودة» تعيد إليها كما
   // تُركت، لا إلى صفحتها الأولى بلا فلتر.
@@ -77,6 +93,7 @@ export function PublicTopicDetailPage() {
     (location.state as { listSearch?: string } | null)?.listSearch ?? "";
 
   function handleApply() {
+    if (outsideWindow || placed) return;
     // Logged-in student → open the group-request dialog right here.
     if (isAuthenticated && role === "student") {
       setDialogOpen(true);
@@ -117,6 +134,28 @@ export function PublicTopicDetailPage() {
 
   if (isLoading) {
     return <LoadingArea className="font-body py-20" />;
+  }
+
+  if (placedElsewhere) {
+    return (
+      <div className="mx-auto w-full max-w-lg space-y-5 px-4 py-10 font-body">
+        <button
+          type="button"
+          onClick={() => navigate(`/${lang}/topics${listSearch}`)}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-forest transition hover:text-gold"
+        >
+          <ChevronRight size={18} className="ltr:rotate-180" />
+          {t("public.backToTopics")}
+        </button>
+        <div className="animate-scale-in">
+          <ReservedTopicPanel
+            placedIn={myProject?.topic?.title ?? "—"}
+            onOpenProject={() => navigate(`/${lang}/student/project`)}
+            onBrowseAvailable={() => navigate(`/${lang}/topics`)}
+          />
+        </div>
+      </div>
+    );
   }
 
   if (reservedForOthers) {
@@ -182,9 +221,17 @@ export function PublicTopicDetailPage() {
     ? t("public.applyHint")
     : role !== "student"
       ? t("public.applyStudentsOnly")
-      : t("public.applyReady");
+      : placed
+        ? t("public.panel.placedHint")
+        : outsideWindow
+        ? t(choosing === "upcoming" ? "stu.selection.applyUpcoming" : "stu.selection.applyClosed", {
+            date: formatDay(choosing === "upcoming" ? selection!.selectionOpenAt! : selection!.selectionCloseAt!, i18n.language),
+          })
+        : t("public.applyReady");
 
   const notForRole = isAuthenticated && role !== "student";
+  // Either way the button is there and says why it waits.
+  const held = notForRole || outsideWindow;
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8 font-body">
@@ -234,8 +281,17 @@ export function PublicTopicDetailPage() {
                     topic.isAvailable ? "bg-emerald-300" : "bg-violet-300"
                   }`}
                 />
-                {topic.isAvailable ? t("public.available") : t("public.reserved")}
+                {topic.isAvailable
+                  ? t("public.available")
+                  : topic.myRequestPending
+                    ? t("public.browse.yourRequestPending")
+                    : t("public.reserved")}
               </span>
+              {topic.isAvailable && topic.requests && topic.requests.max !== null && (
+                <HeroChip icon={Inbox}>
+                  {t("public.requestsCount", { pending: topic.requests.pending, max: topic.requests.max })}
+                </HeroChip>
+              )}
               <HeroChip icon={Layers}>
                 {topic.specialization?.name ?? noneText()}
               </HeroChip>
@@ -343,28 +399,38 @@ export function PublicTopicDetailPage() {
             <div className="flex items-center gap-3">
               <span
                 className={`grid size-12 shrink-0 place-items-center rounded-2xl ring-1 ${
-                  topic.isAvailable
-                    ? "bg-emerald-400/15 text-emerald-300 ring-emerald-400/30"
-                    : "bg-violet-400/15 text-violet-300 ring-violet-400/30"
+                  placed
+                    ? "bg-gold/15 text-gold-soft ring-gold/30"
+                    : topic.isAvailable
+                      ? "bg-emerald-400/15 text-emerald-300 ring-emerald-400/30"
+                      : "bg-violet-400/15 text-violet-300 ring-violet-400/30"
                 }`}
               >
-                {topic.isAvailable ? <UserPlus size={22} /> : <Lock size={22} />}
+                {placed ? <FolderKanban size={22} /> : topic.isAvailable ? <UserPlus size={22} /> : <Lock size={22} />}
               </span>
               <div className="min-w-0">
                 <p className="flex items-center gap-1.5 text-[11px] font-semibold text-gold-soft">
                   <Sparkles size={12} />
                   {t("public.joinTitle")}
                 </p>
-                <p className="font-serif text-lg leading-snug font-bold text-cream">
-                  {topic.isAvailable
+                <p className="font-serif text-lg leading-snug font-bold text-cream" data-testid="apply-panel-title">
+                  {placed
+                    ? t("public.panel.placedTitle")
+                    : topic.isAvailable
                     ? t("public.panel.openNow")
-                    : t("public.panel.takenTitle")}
+                    : topic.myRequestPending
+                      ? t("public.panel.minePendingTitle")
+                      : t("public.panel.takenTitle")}
                 </p>
               </div>
             </div>
 
             {/* how a request goes, or why there is none to send */}
-            {topic.isAvailable ? (
+            {placed ? (
+              <p className="my-5 rounded-xl bg-gold/10 px-4 py-3 text-[13px] leading-relaxed text-cream/90 ring-1 ring-gold/25" data-testid="apply-placed">
+                {t("public.panel.placedBody", { title: myProject!.topic?.title ?? "—" })}
+              </p>
+            ) : topic.isAvailable ? (
               <ol className="relative my-5 space-y-3">
                 <span
                   aria-hidden="true"
@@ -387,24 +453,42 @@ export function PublicTopicDetailPage() {
               </ol>
             ) : (
               <p className="my-5 rounded-xl bg-violet-400/10 px-4 py-3 text-[13px] leading-relaxed text-violet-100 ring-1 ring-violet-300/20">
-                {t("public.panel.takenBody")}
+                {topic.myRequestPending ? t("public.panel.minePendingBody") : t("public.panel.takenBody")}
               </p>
             )}
 
             {/* the actions */}
             <div className="mt-auto space-y-2.5">
-              {topic.isAvailable ? (
+              {placed ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/${lang}/student/project`)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gold py-3.5 font-bold text-[var(--t-brand-deep)] transition hover:bg-gold-soft active:scale-95"
+                >
+                  <FolderKanban size={17} />
+                  {t("public.panel.placedAction")}
+                </button>
+              ) : topic.isAvailable ? (
                 <button
                   type="button"
                   onClick={handleApply}
-                  disabled={notForRole}
-                  title={notForRole ? t("public.applyStudentsOnly") : undefined}
+                  disabled={held}
+                  title={held ? applyHint : undefined}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-l from-gold to-gold-soft py-3.5 font-bold text-[var(--t-brand-deep)] shadow-[0_8px_24px_rgba(193,150,90,0.35)] transition hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none"
                 >
                   <UserPlus size={18} />
                   {isAuthenticated
                     ? t("public.applyRequest")
                     : t("public.loginToApply")}
+                </button>
+              ) : topic.myRequestPending ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/${lang}/student/requests`)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gold py-3.5 font-bold text-[var(--t-brand-deep)] transition hover:bg-gold-soft active:scale-95"
+                >
+                  <Inbox size={17} />
+                  {t("public.panel.minePendingAction")}
                 </button>
               ) : (
                 <button
@@ -431,7 +515,7 @@ export function PublicTopicDetailPage() {
             {/* what the button does for this reader */}
             <div
               className={`mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs leading-relaxed ${
-                notForRole
+                held
                   ? "bg-[#f0a48f]/10 text-[#f6c3b5] ring-1 ring-[#f0a48f]/25"
                   : "bg-black/10 text-soft-sage"
               }`}
@@ -448,6 +532,10 @@ export function PublicTopicDetailPage() {
 
       {/* ══════════ what it is about ══════════ */}
       <Section icon={Subtitles} title={t("public.descriptionLabel")}>
+        {/* Its type, its co-supervisor and its short description, above the full one. */}
+        <div className="mb-4 empty:hidden">
+          <TopicExtrasView topic={topic} />
+        </div>
         <p className="text-[15px] leading-loose whitespace-pre-line text-forest/85">
           {topic.description}
         </p>

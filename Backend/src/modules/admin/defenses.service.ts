@@ -2,8 +2,9 @@ import ExcelJS from "exceljs";
 import { prisma } from "../../core/prisma/client";
 import { NotFoundException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
-import type { Prisma } from "../../generated/prisma";
+import type { CommitteeRole, DefenseStatus, Prisma } from "../../generated/prisma";
 import type { DefenseConflictsDTO, ListDefensesDTO } from "./admin.validation";
+import { tr } from "../../core/i18n";
 
 /**
  * The defence schedule, as the administration runs it.
@@ -79,7 +80,7 @@ const nameOf = (
   [u?.firstName, u?.lastName].filter(Boolean).join(" ") ||
   [u?.firstNameLatin, u?.lastNameLatin].filter(Boolean).join(" ");
 
-function dayBounds(now = new Date()) {
+function dayBounds(now: Date) {
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   const end = new Date(start.getTime() + 24 * 60 * MIN);
@@ -193,7 +194,8 @@ export const defenseConflictsService = async (q: DefenseConflictsDTO) => {
     professorIds: q.professorIds,
   };
   const map = await clashesFor([slot]);
-  return map.get(q.excludeId ?? "slot-0") ?? emptyClash();
+  // clashesFor يكتب لكلّ خانةٍ مُرسَلة مُدخلاً بمفتاحها — ولا خانة إلا هذه.
+  return map.get(q.excludeId ?? "slot-0")!;
 };
 
 /** The clashes of stored defences, for the list and after a save. */
@@ -278,8 +280,9 @@ export const listDefensesService = async (q: ListDefensesDTO) => {
 };
 
 /* ── export ─────────────────────────────────────────────────── */
-const STATUS_AR: Record<string, string> = { scheduled: "مبرمجة", completed: "نوقشت", cancelled: "ملغاة" };
-const ROLE_AR: Record<string, string> = { president: "رئيس", supervisor: "مشرف", examiner: "مناقش" };
+// بمفتاح القائمة نفسها: حالةٌ أو صفةٌ جديدة في المخطّط لا تمرّ بلا اسمٍ عربيّ.
+const STATUS_AR: Record<DefenseStatus, string> = { scheduled: "مبرمجة", completed: "نوقشت", cancelled: "ملغاة" };
+const ROLE_AR: Record<CommitteeRole, string> = { president: "رئيس", supervisor: "مشرف", examiner: "مناقش" };
 
 /** The schedule as a spreadsheet — to print, post, or send to the jury. */
 export const exportDefensesService = async (q: ListDefensesDTO) => {
@@ -319,16 +322,16 @@ export const exportDefensesService = async (q: ListDefensesDTO) => {
       to: fmt(end, { hour: "2-digit", minute: "2-digit", hour12: false }),
       room: d.room,
       title: d.group.topic.title,
-      spec: d.group.topic.specialization?.name ?? "",
+      spec: d.group.topic.specialization.name, // لكلّ موضوعٍ تخصّص
       supervisor: nameOf(d.group.topic.professor?.user),
       students: d.group.members
         .map((m) => `${nameOf(m.student.user)} (${m.student.registrationNumber})`)
         .join("، "),
       committee: [...d.committee]
         .sort((a, b) => ["president", "supervisor", "examiner"].indexOf(a.role) - ["president", "supervisor", "examiner"].indexOf(b.role))
-        .map((c) => `${ROLE_AR[c.role] ?? c.role}: ${nameOf(c.professor.user)}`)
+        .map((c) => `${ROLE_AR[c.role]}: ${nameOf(c.professor.user)}`)
         .join(" — "),
-      status: STATUS_AR[d.status] ?? d.status,
+      status: STATUS_AR[d.status],
       grade: d.grade ?? "",
     });
   }
@@ -436,7 +439,7 @@ export const defenseDetailService = async (id: string) => {
       },
     },
   });
-  if (!d) throw new NotFoundException("Defense not found", ErrorCodeEnum.RESOURCE_NOT_FOUND);
+  if (!d) throw new NotFoundException(tr("notFound.defense"), ErrorCodeEnum.RESOURCE_NOT_FOUND);
 
   const now = new Date();
   const ms = d.group.milestones;

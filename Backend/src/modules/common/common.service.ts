@@ -29,29 +29,17 @@ export const listDepartmentsService = async (facultyId?: string) => {
   });
 };
 
-// Filieres (شُعب), optionally filtered by department.
-export const listFilieresService = async (departmentId?: string) => {
-  return prisma.filiere.findMany({
-    where: departmentId ? { departmentId } : undefined,
-    select: {
-      id: true,
-      name: true,
-      code: true,
-      departmentId: true,
-    },
-    orderBy: { name: "asc" },
-  });
-};
-
 // Specializations, optionally filtered by filiere and/or department.
 // `departmentId` is resolved through the filiere relation, and the output
 // is flattened so consumers still receive a top-level `departmentId`
 // (backward compatible) alongside the new `filiereId`.
-export const listSpecializationsService = async (filters?: {
+export const listSpecializationsService = async ({
+  filiereId,
+  departmentId,
+}: {
   filiereId?: string;
   departmentId?: string;
 }) => {
-  const { filiereId, departmentId } = filters ?? {};
 
   const specializations = await prisma.specialization.findMany({
     where: {
@@ -89,7 +77,9 @@ export const listAcademicYearsService = async () => {
   return prisma.academicYear.findMany({
     // Closed years hold a record, not new work.
     where: { archivedAt: null },
-    select: { id: true, title: true, isActive: true },
+    // والفترة: يعرف بها الأستاذ لأيّ سنةٍ يقترح الآن، ومتى.
+    // And the number of students per topic, by level, when the administration set it: the form follows it.
+    select: { id: true, title: true, isActive: true, proposalsOpenAt: true, proposalsCloseAt: true, teamSizes: true },
     orderBy: [{ isActive: "desc" }, { title: "desc" }],
   });
 };

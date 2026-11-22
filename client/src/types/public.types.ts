@@ -1,3 +1,4 @@
+import type { TopicExtrasRead } from "./topic-extras";
 // Shapes returned by the public (no-auth) topics endpoints.
 
 export interface Paginated<T> {
@@ -29,7 +30,7 @@ interface PublicProfessor {
   } | null;
 }
 
-export interface PublicTopic {
+export interface PublicTopic extends TopicExtrasRead {
   id: string;
   title: string;
   description: string;
@@ -41,6 +42,10 @@ export interface PublicTopic {
   isReserved?: boolean;
   /** محجوزٌ لفريق القارئ نفسه — يفتحه، ويُغلق على الطلبة من غيره. */
   isMine?: boolean;
+  /** لفريق القارئ طلبٌ معلّق عليه — بين المتقدّمين، لا الموضوع لهم بعد. */
+  myRequestPending?: boolean;
+  /** الطلبات المعلّقة عليه الآن، وسقفُها (`null`: بلا سقف). */
+  requests?: { pending: number; max: number | null };
   specialization?: {
     id: string;
     name: string;

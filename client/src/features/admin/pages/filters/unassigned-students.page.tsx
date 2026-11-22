@@ -14,6 +14,7 @@ import { Select } from "../../../../components/ui/select";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
 import { personName } from "../../../../lib/person-name";
+import { stackOnPhone } from "../../../../lib/stack-table";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -186,6 +187,7 @@ export function AdminUnassignedStudentsPage() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
           <Select
             value={facultyId}
+            aria-label={t("admin.faculty")}
             onChange={(v) => {
               setFacultyId(v);
               setDepartmentId("");
@@ -199,6 +201,7 @@ export function AdminUnassignedStudentsPage() {
           />
           <Select
             value={departmentId}
+            aria-label={t("admin.department")}
             onChange={(v) => {
               setDepartmentId(v);
               setFiliereId("");
@@ -211,6 +214,7 @@ export function AdminUnassignedStudentsPage() {
           />
           <Select
             value={filiereId}
+            aria-label={t("admin.filiere")}
             onChange={(v) => {
               setFiliereId(v);
               setSpecializationId("");
@@ -222,6 +226,7 @@ export function AdminUnassignedStudentsPage() {
           />
           <Select
             value={specializationId}
+            aria-label={t("admin.specialization")}
             onChange={(v) => setSpecializationId(v)}
             options={[
               { value: "", label: t("admin.allSpecializations") },
@@ -230,6 +235,7 @@ export function AdminUnassignedStudentsPage() {
           />
           <Select
             value={academicYearId}
+            aria-label={t("admin.academicYear")}
             onChange={(v) => setAcademicYearId(v)}
             options={[
               { value: "", label: t("admin.allYears") },
@@ -241,8 +247,8 @@ export function AdminUnassignedStudentsPage() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
-        <div className="max-h-[70vh] overflow-auto">
-          <table className="w-full text-start">
+        <div className="max-h-[70dvh] overflow-auto">
+          <table ref={stackOnPhone} className="stack-sm w-full text-start">
             <thead className="sticky top-0 z-10">
               <tr className="bg-forest text-cream">
                 <th className="px-5 py-3 text-xs font-medium">
@@ -344,8 +350,10 @@ export function AdminUnassignedStudentsPage() {
           </p>
           <div className="flex items-center gap-1">
             <button
+              type="button"
               disabled={page <= 1}
               onClick={() => setPage((p) => p - 1)}
+              aria-label={t("admin.proj.prev")}
               className="grid size-8 place-items-center rounded-lg border border-forest/15 text-forest transition hover:bg-forest/5 disabled:opacity-40"
             >
               {"\u2039"}
@@ -354,8 +362,10 @@ export function AdminUnassignedStudentsPage() {
               {page} / {totalPages}
             </span>
             <button
+              type="button"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
+              aria-label={t("admin.proj.next")}
               className="grid size-8 place-items-center rounded-lg border border-forest/15 text-forest transition hover:bg-forest/5 disabled:opacity-40"
             >
               {"\u203a"}

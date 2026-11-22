@@ -14,6 +14,17 @@ import type {
 
 export type RowFilter = "all" | "errors" | "warnings" | "ready";
 
+/** شريط الخطوة فوق العناوين، كما في النموذج — مفتاح نصّه. */
+export const GROUP_KEY: Record<ImportColumn["group"], string> = {
+  personal: "admin.import.groupPersonal",
+  academic: "admin.import.groupAcademic",
+  professional: "admin.import.groupProfessional",
+  supervisor: "admin.import.groupSupervisor",
+  topic: "admin.import.groupTopic",
+  decision: "admin.import.groupDecision",
+  students: "admin.import.groupStudents",
+};
+
 /** ما يخصّ كلّ استيرادٍ في المعاينة. */
 export interface PreviewProfile {
   /** الأعمدة التي يبحث فيها مربّع البحث (مع رقم الصفّ). */
@@ -32,6 +43,8 @@ export interface PreviewProfile {
   };
   /** أرقامٌ تُضاف إلى أرقام الحقول الشخصية المشتركة. */
   extraFacts?: { labelKey: string; count: (r: StudentImportRow) => boolean }[];
+  /** أرقام الحقول الشخصية (الجنس، كلمات المرور…) — لاستيراد الحسابات وحده. */
+  personFacts?: boolean;
 }
 
 /** التصفية الأولى: ما يستحقّ النظر أوّلاً. */
@@ -133,9 +146,15 @@ export interface Fact {
 }
 
 /** ما ستحمله الدفعة، مجمَّلاً — من الصفوف الجاهزة وحدها، فهي ما سيُستورد. */
-export function facts(rows: StudentImportRow[], extra: PreviewProfile["extraFacts"] = []): Fact[] {
+export function facts(
+  rows: StudentImportRow[],
+  extra: PreviewProfile["extraFacts"] = [],
+  person = true,
+): Fact[] {
   const ready = rows.filter((r) => r.errors === 0);
   const count = (pred: (r: StudentImportRow) => boolean) => ready.filter(pred).length;
+  const extras = extra.map((x) => ({ labelKey: x.labelKey, value: count(x.count) }));
+  if (!person) return extras;
   const g = (r: StudentImportRow) => effective(r.cells.gender);
   return [
     { labelKey: "factMale", value: count((r) => g(r) === "ذكر") },
@@ -147,6 +166,6 @@ export function facts(rows: StudentImportRow[], extra: PreviewProfile["extraFact
     { labelKey: "factEmail", value: count((r) => !!r.cells.email?.value) },
     { labelKey: "factPhone", value: count((r) => !!r.cells.phone?.value) },
     { labelKey: "factLatin", value: count((r) => !!(r.cells.firstNameLatin?.value || r.cells.lastNameLatin?.value)) },
-    ...extra.map((x) => ({ labelKey: x.labelKey, value: count(x.count) })),
+    ...extras,
   ];
 }

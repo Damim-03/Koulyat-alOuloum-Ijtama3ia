@@ -17,6 +17,7 @@ import { useGroup, useDeleteMilestone } from "../hooks/Professor-hook";
 import { StatusBadge } from "../components/status-badge";
 import type { Milestone } from "../../../types/professor.types";
 import { MilestoneFormDialog } from "../components/milestone-form-dialog";
+import { ConfirmDialog } from "../../admin/components/form/confirm-dialog.form";
 import { UserAvatar } from "../../../components/ui/user-avatar";
 import { LoadingArea } from "../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../components/ui/error-retry";
@@ -41,6 +42,7 @@ export function ProfessorProjectDetailPage() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Milestone | null>(null);
+  const [toDelete, setToDelete] = useState<Milestone | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   function fmtDate(iso?: string) {
@@ -86,7 +88,7 @@ export function ProfessorProjectDetailPage() {
     setDialogOpen(true);
   }
   function handleDelete(m: Milestone) {
-    if (confirm(t("pro.confirmDeleteMilestone"))) deleteMilestone.mutate(m.id);
+    setToDelete(m);
   }
 
   return (
@@ -258,13 +260,19 @@ export function ProfessorProjectDetailPage() {
                           </h3>
                           <div className="flex items-center gap-1">
                             <button
+                              type="button"
                               onClick={() => openEdit(m)}
+                              aria-label={t("pro.edit")}
+                              title={t("pro.edit")}
                               className="grid size-7 place-items-center rounded-lg text-clay transition hover:bg-forest/5 hover:text-forest"
                             >
                               <Pencil size={13} />
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleDelete(m)}
+                              aria-label={t("pro.delete")}
+                              title={t("pro.delete")}
                               className="grid size-7 place-items-center rounded-lg text-red-500 transition hover:bg-red-50"
                             >
                               <Trash2 size={13} />
@@ -345,6 +353,19 @@ export function ProfessorProjectDetailPage() {
         onClose={() => setDialogOpen(false)}
         groupId={groupId ?? ""}
         milestone={editing}
+      />
+      <ConfirmDialog
+        open={!!toDelete}
+        tone="danger"
+        icon={Trash2}
+        title={t("pro.deleteMilestoneTitle")}
+        message={t("pro.deleteMilestoneBody", { title: toDelete?.title ?? "" })}
+        confirmLabel={t("admin.delete")}
+        loading={deleteMilestone.isPending}
+        onClose={() => setToDelete(null)}
+        onConfirm={() =>
+          toDelete && deleteMilestone.mutate(toDelete.id, { onSettled: () => setToDelete(null) })
+        }
       />
     </div>
   );

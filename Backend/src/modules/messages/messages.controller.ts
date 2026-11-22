@@ -11,29 +11,28 @@ import {
   contactsSchema,
   chatSchema,
   presenceSchema,
+  editMessageSchema,
 } from "./messages.validation";
 import * as svc from "./messages.service";
+import { deleteDraftService, openAttachmentService, saveUploadService } from "./attachments";
+import { issuesMessage } from "../../core/i18n";
+import { isZodDefaultMessage } from "../../core/i18n/zod";
 
-/* Current user id — same tolerant extraction used elsewhere in the app. */
-function currentUserId(req: Request): string {
-  const id =
-    (req as any).user?.id ?? (req as any).user?.userId ?? (req as any).userId;
-  if (!id)
-    throw new BadRequestException("Unauthenticated", ErrorCodeEnum.VALIDATION_ERROR);
-  return id as string;
-}
+/* Current user id — authMiddleware sets `req.user` on every messages route. */
+const currentUserId = (req: Request): string => req.user!.userId;
 
-/** Validation failures read as a sentence, not as a zod dump. */
+/**
+ * Validation failures read as a sentence, not as a zod dump: a message the
+ * schema wrote is said as it is; zod's own general one ("expected array…", in
+ * whatever language) names the fields instead.
+ */
 function parse<T>(schema: { safeParse: (v: unknown) => any }, value: unknown): T {
   const r = schema.safeParse(value);
   if (!r.success) {
+    // A failed parse has at least one issue, and zod gives each a message.
     const first = r.error.issues[0];
     throw new BadRequestException(
-      first?.message && !/^(Invalid|Expected|Required)/.test(first.message)
-        ? first.message
-        : `Validation error → ${r.error.issues
-            .map((i: any) => `${i.path.join(".") || "(root)"}: ${i.message}`)
-            .join(" | ")}`,
+      isZodDefaultMessage(first) ? issuesMessage(r.error.issues) : first.message,
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
@@ -135,5 +134,53 @@ export const markChatReadController = handle((req) =>
 );
 
 export const presenceController = handle(async (req) =>
-  svc.presenceService(parse<{ ids: string[] }>(presenceSchema, req.query).ids),
+  svc.presenceService(currentUserId(req), req.user!.role, parse<{ ids: string[] }>(presenceSchema, req.query).ids),
 );
+
+/* ── edit (everyone, briefly) / withdraw for everyone (administration) ── */
+
+/** `PATCH /messages/:id` — `{ body }`, within EDIT_WINDOW_MS of sending. */
+export const editMessageController = handle(async (req) => ({
+  message: await svc.editMessageService(currentUserId(req), idOf(req), parse(editMessageSchema, req.body)),
+}));
+
+/** `DELETE /messages/:id/for-everyone` — an administrator's own message. */
+export const deleteForEveryoneController = handle((req) => svc.deleteForEveryoneService(currentUserId(req), idOf(req)));
+
+/* ── files attached to messages (./attachments) ────────────── */
+
+/** `POST /messages/attachments` — one file; it stays a draft until a message carries it. */
+export const uploadAttachmentController = handle(
+  async (req) => ({ attachment: await saveUploadService(currentUserId(req), req.file) }),
+  HTTPSTATUS.CREATED,
+);
+
+/** `DELETE /messages/attachments/:id` — a draft taken back before sending. */
+export const deleteAttachmentController = handle((req) => deleteDraftService(currentUserId(req), idOf(req)));
+
+/**
+ * `GET /messages/attachments/:id` — the file, to whoever may read its message.
+ *
+ * Downloaded, never rendered on this origin: `attachment`, `nosniff` and a
+ * sandbox. `?inline=1` shows an image in place (the chat's thumbnails), and
+ * images only — a PDF or a document is always a download.
+ */
+export const openAttachmentController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const a = await openAttachmentService(currentUserId(req), idOf(req));
+    const inline = req.query.inline === "1" && a.mimeType.startsWith("image/");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+    res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+    if (inline) res.setHeader("Content-Disposition", "inline");
+    else res.attachment(a.fileName);
+    // After `attachment()`, which would otherwise guess it from the name.
+    res.setHeader("Content-Type", a.mimeType);
+    res.sendFile(a.file, { dotfiles: "deny", cacheControl: false, lastModified: false, etag: false }, (err) => {
+      if (err && !res.headersSent) next(err);
+    });
+  } catch (e) {
+    next(e);
+  }
+};

@@ -20,6 +20,7 @@
  */
 import request from "supertest";
 import app from "../../src/app";
+import { tr } from "../../src/core/i18n";
 import { prisma } from "../../src/core/prisma/client";
 import {
   seed,
@@ -254,6 +255,10 @@ describe("PATCH /api/admin/users/:id/status", () => {
     const created = (await prisma.user.findUnique({
       where: { email: data.email },
     }))!;
+    // كلمة مرورٍ سلّمتها الإدارة تُستبدل قبل أيّ شيء — بوّابةٌ تُختبر في
+    // auth-hardening. وهنا يُتجاوزها الحساب ليُختبر التعطيل وحده.
+    expect(created.mustChangePassword).toBe(true);
+    await prisma.user.update({ where: { id: created.id }, data: { mustChangePassword: false } });
 
     const bearer = (
       await request(app)
@@ -290,6 +295,23 @@ describe("PATCH /api/admin/users/:id/status", () => {
       .get("/api/admin/users")
       .set("Authorization", `Bearer ${bearer}`)
       .expect(200);
+  });
+
+  /**
+   * المديرون متساوون، فلا يُحرَس أحدهم من الآخر — لكن الإدارة لا تُغلق الباب
+   * على نفسها: من يعطّل نفسه بنقرةٍ خاطئة يفقد معها ما يتراجع به.
+   */
+  it("ولا يعطّل المدير نفسه ⇒ 400، ويبقى حسابه يعمل", async () => {
+    const res = await as(
+      request(app)
+        .patch(`/api/admin/users/${f.admin.id}/status`)
+        .send({ status: "suspended" }),
+      "admin",
+    ).expect(400);
+    expect(res.body.message).toBe(tr("user.notYourself"));
+    const me = await prisma.user.findUniqueOrThrow({ where: { id: f.admin.id } });
+    expect(me.status).toBe("active");
+    await as(request(app).get("/api/admin/users"), "admin").expect(200);
   });
 
   it("وحالة غير معروفة ⇒ 400", async () => {
@@ -375,12 +397,15 @@ describe("POST /api/admin/users/:id/reset-password", () => {
     }))!;
 
     const fresh = "Another-Str0ng-Pass!";
+    await prisma.user.update({ where: { id: created.id }, data: { mustChangePassword: false } });
     await as(
       request(app)
         .post(`/api/admin/users/${created.id}/reset-password`)
         .send({ password: fresh }),
       "admin",
     ).expect(200);
+    // كلمةٌ عيّنتها الإدارة: يُلزَم صاحبها باستبدالها من جديد.
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: created.id } })).mustChangePassword).toBe(true);
 
     await request(app)
       .post("/api/auth/admin/login")
@@ -417,6 +442,12 @@ describe("DELETE — للمدير دون غيره", () => {
       200,
     );
     expect(await prisma.user.findUnique({ where: { id: u.id } })).toBeNull();
+  });
+
+  it("ولا يحذف المدير حسابه هو ⇒ 400", async () => {
+    const res = await as(request(app).delete(`/api/admin/users/${f.admin.id}`), "admin").expect(400);
+    expect(res.body.message).toBe(tr("user.notYourself"));
+    expect(await prisma.user.findUnique({ where: { id: f.admin.id } })).not.toBeNull();
   });
 
   /**
@@ -790,7 +821,9 @@ describe("الأساتذة", () => {
       "admin",
     ).expect(400);
 
-    expect(res.body.message).toMatch(/\d/); // العدد مذكور
+    // العدد مذكور، بصيغة الفهرس («موضوعٌ واحد»، «٣ مواضيع»).
+    const count = await prisma.graduationTopic.count({ where: { professorId: f.professor2.id } });
+    expect(res.body.message).toContain(tr("count.topics", { count }));
     expect(
       await prisma.professor.findUnique({ where: { id: f.professor2.id } }),
     ).not.toBeNull();
@@ -824,5 +857,62 @@ describe("الأساتذة", () => {
       await prisma.professor.findUnique({ where: { id: spare.id } }),
     ).toBeNull();
     expect(await prisma.user.findUnique({ where: { id: created.id } })).toBeNull();
+  });
+});
+
+//
+// ═══ حسابٌ وطالبٌ وأستاذ بمعرّفهم ═══
+//
+
+describe("القراءة بالمعرّف، والتعديل، وإنشاء أستاذ", () => {
+  it("PATCH /users/:id يعدّل الحساب", async () => {
+    const [s] = f.nextStudents(1);
+    const res = await as(
+      request(app).patch(`/api/admin/users/${s!.userId}`).send({ lastName: `${TAG} معدَّل`, gender: "female" }),
+      "admin",
+    ).expect(200);
+    expect(res.body.user).toMatchObject({ lastName: `${TAG} معدَّل`, gender: "female" });
+  });
+
+  it("GET /students/:id و/professors/:id بمعرّف الملف", async () => {
+    const [s] = f.nextStudents(1);
+    const student = await as(request(app).get(`/api/admin/students/${s!.id}`), "admin").expect(200);
+    expect(student.body.student).toMatchObject({ id: s!.id, registrationNumber: s!.reg });
+
+    const professor = await as(request(app).get(`/api/admin/professors/${f.professor.id}`), "admin").expect(200);
+    expect(professor.body.professor).toMatchObject({ id: f.professor.id, universityEmail: f.professor.universityEmail });
+  });
+
+  it("GET /professors يجد الأستاذ ببريده الجامعي", async () => {
+    const res = await as(
+      request(app).get("/api/admin/professors").query({ quickSearch: f.professor.universityEmail }),
+      "admin",
+    ).expect(200);
+    expect(rows(res.body).map((p) => p.id)).toContain(f.professor.id);
+  });
+
+  /**
+   * بريده الجامعيّ من نطاقٍ مسجَّلٍ في المنصّة. (ونطاق الاختبار المعتاد لا
+   * يصلح هنا: لاحقته ليست نطاقاً أعلى يقبله مدقّق البريد — فنطاقٌ يُحذف بعده.)
+   */
+  it("POST /professors ⇒ يُنشأ ويُعاد", async () => {
+    const domain = (await prisma.universityDomain.create({ data: { domain: "jest-newprof.dz" } })).domain;
+    try {
+      const universityEmail = `nadia.saidi@${domain}`;
+      const res = await as(
+        request(app).post("/api/admin/professors").send({
+          firstNameLatin: "Nadia",
+          lastNameLatin: "SAIDI",
+          email: `${TAG}.newprof@test.local`,
+          password: "A-strong-Passw0rd!",
+          universityEmail,
+          departmentId: f.department.id,
+        }),
+        "admin",
+      ).expect(201);
+      expect(res.body.professor).toMatchObject({ universityEmail });
+    } finally {
+      await prisma.universityDomain.delete({ where: { domain } });
+    }
   });
 });

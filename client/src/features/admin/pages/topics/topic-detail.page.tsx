@@ -57,6 +57,9 @@ import { None } from "../../../../lib/none";
 import { LoadingArea } from "../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
 import { personName } from "../../../../lib/person-name";
+import { CharCount } from "../../../../components/ui/char-count";
+import { REASON_MAX } from "../../../../lib/limits";
+import { TopicExtrasView } from "../../../../components/topic/topic-type-badge";
 
 /**
  * One topic, from the administration's side.
@@ -114,7 +117,8 @@ export function AdminTopicDetailPage() {
   const [reason, setReason] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
+  // Which edit is open: the topic alone, or the topic with its students.
+  const [editOpen, setEditOpen] = useState<"topic" | "assigned" | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   function fmtDate(iso?: string) {
@@ -298,13 +302,25 @@ export function AdminTopicDetailPage() {
                 {t("supervision.sheet")}
               </button>
             )}
+            {/* The topic alone — its students untouched. */}
             <button
               type="button"
-              onClick={() => setEditOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-xs font-bold text-[var(--t-brand-deep)] transition hover:bg-gold-soft"
+              onClick={() => setEditOpen("topic")}
+              data-testid="edit-topic-only"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gold/50 px-3.5 py-2 text-xs font-semibold text-gold-soft transition hover:bg-gold/15"
             >
               <Pencil size={15} />
               {t("admin.editTopic")}
+            </button>
+            {/* The topic with its students: its data, its team, then the review. */}
+            <button
+              type="button"
+              onClick={() => setEditOpen("assigned")}
+              data-testid="edit-assigned-topic"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-xs font-bold text-[var(--t-brand-deep)] transition hover:bg-gold-soft"
+            >
+              <Users size={15} />
+              {t("admin.editAssignedTopicBtn")}
             </button>
             {/* Deleting is just deleting; members are managed from their own
                 card. The server's verdict decides whether it is offered, and
@@ -407,14 +423,18 @@ export function AdminTopicDetailPage() {
             <label className="text-xs font-semibold text-forest">
               {t("admin.rejectionReason")}
             </label>
-            <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              rows={3}
-              autoFocus
-              className="w-full resize-y rounded-2xl border border-forest/15 bg-cream-2 p-4 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-              placeholder={t("admin.rejectionReasonPlaceholder")}
-            />
+            <div>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+                maxLength={REASON_MAX}
+                autoFocus
+                className="w-full resize-y rounded-2xl border border-forest/15 bg-cream-2 p-4 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
+                placeholder={t("admin.rejectionReasonPlaceholder")}
+              />
+              <CharCount value={reason} max={REASON_MAX} className="mt-1" />
+            </div>
             <p className="text-[11px] text-clay">
               {t("admin.rejectReasonToProf", {
                 defaultValue: t("admin.rejectionReachesProfessor"),
@@ -457,9 +477,11 @@ export function AdminTopicDetailPage() {
                 )}
                 {claimed && (
                   <Note tone="gold" icon={Hourglass}>
-                    {t("admin.blockedByRequest")}{" "}
+                    {pendingRequests.length > 1
+                      ? t("admin.blockedByRequests", { count: pendingRequests.length })
+                      : t("admin.blockedByRequest")}{" "}
                     <Link
-                      to={`/${lang}/admin/group-requests`}
+                      to={`/${lang}/admin/group-requests?topic=${topic.id}`}
                       className="inline-flex items-center gap-1 font-bold text-gold transition hover:opacity-80"
                     >
                       <Gavel size={12} />
@@ -548,10 +570,12 @@ export function AdminTopicDetailPage() {
               <span className="grid size-9 place-items-center rounded-xl bg-gold/20 text-gold">
                 <Users size={18} />
               </span>
-              {t("admin.teamWaiting")}
+              {pendingRequests.length > 1
+                ? t("admin.teamsWaiting", { count: pendingRequests.length })
+                : t("admin.teamWaiting")}
             </h2>
             <Link
-              to={`/${lang}/admin/group-requests`}
+              to={`/${lang}/admin/group-requests?topic=${topic.id}`}
               className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-xs font-bold text-forest-deep transition hover:bg-gold-soft"
             >
               <Gavel size={14} />
@@ -589,6 +613,10 @@ export function AdminTopicDetailPage() {
           Two cards on one row share one height. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Section icon={Subtitles} title={t("admin.topicDescriptionLabel")}>
+          {/* Its type, its co-supervisor and its short description, above the full one. */}
+          <div className="mb-3 empty:hidden">
+            <TopicExtrasView topic={topic} />
+          </div>
           <p className="leading-relaxed whitespace-pre-line text-forest/85">
             {topic.description || <None />}
           </p>
@@ -783,8 +811,10 @@ export function AdminTopicDetailPage() {
       />
 
       <EditAssignedTopicDialog
+        key={editOpen ?? "closed"}
         topicId={editOpen ? topic.id : null}
-        onClose={() => setEditOpen(false)}
+        mode={editOpen ?? "assigned"}
+        onClose={() => setEditOpen(null)}
         onUpdated={() => refetch()}
       />
 

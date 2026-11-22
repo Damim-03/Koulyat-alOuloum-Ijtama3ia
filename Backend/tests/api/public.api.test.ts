@@ -16,6 +16,7 @@
 import request from "supertest";
 import app from "../../src/app";
 import { prisma } from "../../src/core/prisma/client";
+import { signAccessToken } from "../../src/core/auth/tokens";
 import {
   seed,
   teardown,
@@ -34,13 +35,14 @@ const as = (r: request.Test, who: string) =>
 async function topic(
   title: string,
   status: string,
-  over: { maxStudents?: number; professorId?: string; createdAt?: Date } = {},
+  over: { maxStudents?: number; maxRequests?: number; professorId?: string; createdAt?: Date } = {},
 ) {
   return prisma.graduationTopic.create({
     data: {
       title: `${TAG} ${title}`,
       description: `${TAG} description`,
       maxStudents: over.maxStudents ?? 3,
+      maxRequests: over.maxRequests ?? null,
       status: status as never,
       publishedAt: status === "open" || status === "full" ? new Date() : null,
       professorId: over.professorId ?? f.professor.id,
@@ -64,7 +66,7 @@ const list = (who: string, query: Record<string, unknown> = {}) =>
 
 beforeAll(async () => {
   await teardown();
-  f = await seed(14);
+  f = await seed(18);
   // الطالب الأوّل هو قارئ الملفّ («student»)، فلا يُسلَّم لفريق: لو صار
   // مرسِلَ طلبٍ لانفتح له المحجوزُ الذي يُختبر إغلاقه عليه.
   f.nextStudents(1);
@@ -161,8 +163,12 @@ describe("تبويبا «متاح» و«محجوز»", () => {
     expect(ids(available.body)).not.toContain(taken.id);
   });
 
-  it("وموضوعٌ يحجزه طلب معلّق: محجوز لا متاح", async () => {
-    const claimed = await topic("PUB claimed", "open");
+  /**
+   * تتقدّم الفرق إلى المنشور معاً حتى سقفه؛ فالطلبُ المعلّق لا يحجزه إلّا حين
+   * يملأ السقف — وحينها «محجوز» حتى تبتّ الإدارة.
+   */
+  it("وموضوعٌ ملأ طلبٌ معلّقٌ سقفَه: محجوز لا متاح", async () => {
+    const claimed = await topic("PUB claimed", "open", { maxRequests: 1 });
     const [leader, member] = f.nextStudents(2);
     const bearer = (
       await request(app)
@@ -192,6 +198,29 @@ describe("تبويبا «متاح» و«محجوز»", () => {
       search: `${TAG} PUB claimed`,
     }).expect(200);
     expect(ids(reserved.body)).toContain(claimed.id);
+  });
+
+  it("وما يزال دون سقفه: متاحٌ وإن كان عليه طلب، ويقول كم طلباً عليه", async () => {
+    const open = await topic("PUB under-cap", "open", { maxRequests: 3 });
+    const [leader] = f.nextStudents(1);
+    const bearer = (
+      await request(app)
+        .post("/api/auth/student/login")
+        .send({ registrationNumber: leader.reg, password: TEST_PASSWORD })
+        .expect(200)
+    ).body.accessToken;
+    await request(app)
+      .post("/api/student/group-requests")
+      .set("Authorization", `Bearer ${bearer}`)
+      .send({ topicId: open.id, memberRegistrationNumbers: [], priority: 1 })
+      .expect(201);
+
+    const available = await list("student", {
+      availability: "available",
+      search: `${TAG} PUB under-cap`,
+    }).expect(200);
+    const row = (available.body.items as { id: string; requests: unknown }[]).find((t) => t.id === open.id);
+    expect(row?.requests).toEqual({ pending: 1, max: 3 });
   });
 
   it("وبلا تبويب ⇒ الاثنان معاً", async () => {
@@ -256,6 +285,18 @@ describe("الترقيم", () => {
 });
 
 describe("الترشيح", () => {
+  /** بلا كلمة بحث: القسم والسنة وحدهما يحصران القائمة. */
+  it("بالقسم والسنة الدراسية، ولو بلا بحث", async () => {
+    const t = await topic("PUB by-dept-year", "open");
+    const NONE = "00000000-0000-0000-0000-000000000000";
+
+    const mine = await list("student", { departmentId: f.department.id, academicYearId: f.academicYear.id, limit: 50 }).expect(200);
+    expect(ids(mine.body)).toContain(t.id);
+
+    expect(ids((await list("student", { departmentId: NONE, limit: 50 }).expect(200)).body)).not.toContain(t.id);
+    expect(ids((await list("student", { academicYearId: NONE, limit: 50 }).expect(200)).body)).not.toContain(t.id);
+  });
+
   it("بالتخصّص", async () => {
     const t = await topic("PUB by-spec", "open");
 
@@ -548,9 +589,15 @@ describe("GET /api/public/topics/:id", () => {
    * فصار الخادم هو الحَكَم: 403 برمزٍ تعرفه الواجهة، وبلا شيءٍ من التفاصيل.
    */
   describe("الموضوع المحجوز", () => {
-    /** فريقٌ حيّ على موضوعٍ جديد: الأوّل مرسِلُه، والثاني عضوٌ فيه. */
+    /**
+     * فريقٌ حيّ على موضوعٍ جديد: الأوّل مرسِلُه، والثاني عضوٌ فيه.
+     *
+     * والسقف طلبٌ واحد. الطلبات المتزامنة صارت مسموحة: طلبٌ معلّقٌ وحده لا يحجز
+     * الموضوع ما دام في السقف متّسع — يحجزه السقفُ المكتمل، أو فريقٌ قُبل، أو
+     * مجموعة. فطلبُ هذا الفريق يملأ السقف، والموضوع محجوزٌ له.
+     */
     async function claimed(title: string) {
-      const t = await topic(title, "open");
+      const t = await topic(title, "open", { maxRequests: 1 });
       const [leader, member] = f.nextStudents(2);
       const login = async (reg: string) =>
         (
@@ -582,6 +629,27 @@ describe("GET /api/public/topics/:id", () => {
       expect(body).not.toContain(`${TAG} description`);
     });
 
+    /** والقاعدة نفسها من الجهة الأخرى: سقفٌ لم يكتمل لا يحجب الموضوع عن أحد. */
+    it("وطلبٌ معلّقٌ على موضوعٍ بلا سقف لا يحجزه — يبقى مفتوحاً لغير فريقه", async () => {
+      const t = await topic("PUB pending-open", "open");
+      const [leader, member] = f.nextStudents(2);
+      const leaderToken = (
+        await request(app)
+          .post("/api/auth/student/login")
+          .send({ registrationNumber: leader.reg, password: TEST_PASSWORD })
+          .expect(200)
+      ).body.accessToken as string;
+      await request(app)
+        .post("/api/student/group-requests")
+        .set("Authorization", `Bearer ${leaderToken}`)
+        .send({ topicId: t.id, memberRegistrationNumbers: [member.reg], priority: 1 })
+        .expect(201);
+
+      const res = await as(request(app).get(`/api/public/topics/${t.id}`), "student").expect(200);
+      expect(res.body.topic.isReserved).toBe(false);
+      expect(res.body.topic.isAvailable).toBe(true);
+    });
+
     it("وفريقُه يفتحه — المرسِل والعضو معاً — ويُعرف أنّه له", async () => {
       const { t, leaderToken, memberToken } = await claimed("PUB locked-mine");
 
@@ -593,6 +661,40 @@ describe("GET /api/public/topics/:id", () => {
         expect(res.body.topic.isReserved).toBe(true);
         expect(res.body.topic.isMine).toBe(true);
       }
+    });
+
+    /**
+     * المحجوز بطلبٍ مقبول — لا بمجموعةٍ بعد — محجوزٌ لكلّ قارئ، ولا يُعدّ
+     * لأستاذٍ لا عضوية له فيه.
+     */
+    it("وطلبٌ مقبولٌ لفريقٍ آخر يحجزه للأستاذ أيضاً، وليس له", async () => {
+      const t = await topic("PUB accepted-prof", "full");
+      const [leader] = f.nextStudents(1);
+      await prisma.groupRequest.create({
+        data: { topicId: t.id, leaderStudentId: leader.id, status: "accepted", members: { create: [{ studentId: leader.id }] } },
+      });
+
+      const res = await as(request(app).get(`/api/public/topics/${t.id}`), "professor").expect(200);
+      expect(res.body.topic.isReserved).toBe(true);
+      expect(res.body.topic.isMine).toBe(false);
+
+      // والقائمة تقول الشيء نفسه.
+      const row = rows((await list("professor", { search: `${TAG} PUB accepted-prof` }).expect(200)).body)
+        .find((r) => r.id === t.id);
+      expect(row).toMatchObject({ isReserved: true, isMine: false });
+    });
+
+    /** حسابٌ بدور الطالب لم يُربط بملفّ طالبٍ بعد: يقرأ كأيّ طالب، ولا شيء له. */
+    it("وحسابٌ بدور طالبٍ بلا ملفّ طالبٍ يقرأ المتاح — ولا يُعدّ له شيء", async () => {
+      const u = await prisma.user.create({
+        data: { email: `${TAG}.no-profile@test.local`, password: "x", role: "student" },
+      });
+      const bearer = `Bearer ${signAccessToken({ userId: u.id, role: "student" as never, refId: u.id, tokenVersion: 0 })}`;
+      const t = await topic("PUB no-profile", "open");
+
+      const res = await request(app).get(`/api/public/topics/${t.id}`).set("Authorization", bearer).expect(200);
+      expect(res.body.topic.isAvailable).toBe(true);
+      expect(res.body.topic.isMine).toBe(false);
     });
 
     it("والأستاذ يقرؤه كما هو", async () => {

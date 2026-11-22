@@ -696,9 +696,12 @@ describe("الاستيراد", () => {
     const acc = new ExcelJS.Workbook();
     await acc.xlsx.load(Buffer.from(res.body.accountsFile, "base64"));
     const sheet = acc.getWorksheet("الحسابات")!;
+    // العمود يُعرف بعنوانه لا برقمه: أُضيف قبله الاسم باللاتينية، وقد يُضاف غيره.
+    const pw = (sheet.getRow(1).values as unknown[]).indexOf("كلمة المرور الأوّلية");
+    expect(pw).toBeGreaterThan(0);
     expect(sheet.getRow(2).getCell(1).value).toBe(a!.registrationNumber);
-    expect(sheet.getRow(2).getCell(4).value).toBe("كما في الملف المرفوع");
-    expect(sheet.getRow(3).getCell(4).value).toBe(b!.password);
+    expect(sheet.getRow(2).getCell(pw).value).toBe("كما في الملف المرفوع");
+    expect(sheet.getRow(3).getCell(pw).value).toBe(b!.password);
 
     // كلا الحسابين يدخل: بما كُتب، وبما وُلِّد.
     await request(app)
@@ -720,5 +723,51 @@ describe("الاستيراد", () => {
     expect(
       await prisma.student.count({ where: { registrationNumber: good["رقم التسجيل"] as string } }),
     ).toBe(0);
+  });
+});
+
+describe("استيراد الطلبة — على الحافّة", () => {
+  /** صفٌّ بلا رقم تسجيلٍ ولا لقبٍ لاتينيّ: لا يُسأل عن شيءٍ لا وجود له، والصفّ يقول ما ينقصه. */
+  it("ملفٌّ بلا أرقامٍ ولا ألقابٍ لاتينية ⇒ كلّ صفٍّ يطلب ما ينقصه", async () => {
+    const res = await upload(
+      "/preview",
+      await xlsx([valid({ "رقم التسجيل": null, "اللقب باللاتينية": null })]),
+    ).expect(200);
+    const r = rowOf(res, 2);
+    expect(errorKeys(r)).toEqual(["lastNameLatin", "registrationNumber"]);
+  });
+
+  /** العربيّ اختياريّ: يُحفظ «لا شيء» لا نصّاً فارغاً، وملفّ الحسابات يتركه فارغاً. */
+  it("طالبٌ باسمه اللاتينيّ وحده ⇒ يُنشأ، والعربيّ null لا «»", async () => {
+    const row = valid({ "الاسم": null, "اللقب": null });
+    const res = await upload("", await xlsx([row])).expect(201);
+    expect(res.body.accounts[0]).toMatchObject({ firstName: null, lastName: null });
+
+    const s = await prisma.student.findUniqueOrThrow({
+      where: { registrationNumber: row["رقم التسجيل"] as string },
+      select: { user: { select: { firstName: true, lastName: true, firstNameLatin: true } } },
+    });
+    expect(s.user).toEqual({ firstName: null, lastName: null, firstNameLatin: "Youcef" });
+  });
+
+  /**
+   * حسابٌ بدور الطالب باللقب نفسه، لكن بلا اسمٍ لاتينيّ أو بلا ملفّ طالب: لا
+   * «طالبٌ بالاسم نفسه» يُشار إليه برقمه — فلا تنبيه.
+   */
+  it("وحسابٌ باللقب نفسه بلا ملفّ طالب ⇒ لا تنبيه «بالاسم نفسه»", async () => {
+    const row = valid();
+    await prisma.user.create({
+      data: {
+        email: `${TAG}.namesake@test.local`,
+        password: "x",
+        role: "student",
+        firstNameLatin: row["الاسم باللاتينية"] as string,
+        lastNameLatin: row["اللقب باللاتينية"] as string,
+      },
+    });
+    const res = await upload("/preview", await xlsx([row])).expect(200);
+    const r = rowOf(res, 2);
+    expect(r.errors).toBe(0);
+    expect(said(r.cells.firstNameLatin!, "warning")).toBe("");
   });
 });

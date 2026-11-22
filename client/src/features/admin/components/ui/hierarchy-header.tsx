@@ -81,7 +81,7 @@ export function HierarchyHeader({
       {/* Identity + action */}
       <div className="relative flex flex-wrap items-center justify-between gap-4 px-5 py-6 lg:px-6">
         <div className="flex min-w-0 items-center gap-4">
-          <div className="grid size-16 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft backdrop-blur-sm">
+          <div className="hidden size-16 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft backdrop-blur-sm sm:grid">
             <Icon size={28} />
           </div>
           <div className="min-w-0">
@@ -170,7 +170,7 @@ export function HeaderTrail({
               {c.to && !last ? (
                 <button
                   onClick={() => navigate(c.to as string)}
-                  className="text-cream/60 transition hover:text-gold"
+                  className="py-1 text-cream/60 transition hover:text-gold"
                 >
                   {c.label ?? "…"}
                 </button>

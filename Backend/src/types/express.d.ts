@@ -8,6 +8,8 @@ declare global {
         role: RoleType;
         /** Profile id: Student.id | Professor.id | User.id for admins. */
         refId: string;
+        /** The session (`sid`) this request's token belongs to. */
+        sid?: string;
       };
     }
   }

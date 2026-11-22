@@ -3,11 +3,15 @@ import crypto from "node:crypto";
 import { prisma } from "../../core/prisma/client";
 import {
   BadRequestException,
+  HttpException,
   NotFoundException,
   UnauthorizedException,
 } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
+import { HTTPSTATUS } from "../../core/config/http/http.config";
 import { RoleType } from "../../core/enums/role.enum";
+import { tr } from "../../core/i18n";
+import { currentSupervisionSheet, type SupervisionSheet } from "../site/supervision-sheet";
 
 //
 // ═══════════════════════════════════════════════════════════════
@@ -28,6 +32,13 @@ export interface SupervisionSnapshot {
   specialization: string;
   students: { fullName: string; registrationNumber: string }[];
   issuedAt: string;
+  /**
+   * The sheet's words and logos (modules/site/supervision-sheet): the current
+   * ones until the document is first printed, then those it was printed with
+   * — so it is verified as the professor signed it, whatever is edited after.
+   * Absent from the documents issued before: they were printed with the original.
+   */
+  template?: SupervisionSheet;
 }
 
 /** بالعربية، وباللاتينية لمن لا اسم عربيّ له. */
@@ -142,7 +153,7 @@ function assertMayAccess(
   if (actor.role === "professor") {
     if (topic.professor?.userId === actor.userId) return;
     throw new UnauthorizedException(
-      "هذا الموضوع ليس من إشرافك",
+      tr("supervision.notYourTopic"),
       ErrorCodeEnum.ACCESS_UNAUTHORIZED,
     );
   }
@@ -153,7 +164,7 @@ function assertMayAccess(
   if (isMember) return;
 
   throw new UnauthorizedException(
-    "لست من أعضاء مذكرة هذا الموضوع",
+    tr("supervision.notMember"),
     ErrorCodeEnum.ACCESS_UNAUTHORIZED,
   );
 }
@@ -170,23 +181,21 @@ function buildSnapshot(topic: TopicForDocument): SupervisionSnapshot {
 
   if (members.length === 0)
     throw new BadRequestException(
-      "لا مجموعة مذكرةٍ لهذا الموضوع بعد، فلا وثيقة",
+      tr("supervision.noGroup"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
-  const missing = members.filter(
-    (m) => !(m.student?.registrationNumber ?? "").trim(),
-  );
+  const missing = members.filter((m) => !m.student.registrationNumber.trim());
   if (missing.length > 0)
     throw new BadRequestException(
-      `لا يمكن إصدار الوثيقة: ${missing.length} من الطلبة بلا رقم تسجيل. أكمل بياناتهم أوّلاً.`,
+      tr("supervision.missingRegistrations", { count: missing.length }),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
   const supervisorName = fullName(topic.professor?.user);
   if (!supervisorName)
     throw new BadRequestException(
-      "اسم الأستاذ المشرف ناقص في النظام",
+      tr("supervision.supervisorNameMissing"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -216,7 +225,8 @@ type StoredDocument = { id: string; barcode: string | null };
 async function withBarcode<T extends StoredDocument>(document: T): Promise<T> {
   if (document.barcode) return document;
 
-  for (let attempt = 0; attempt < 5; attempt++) {
+  // Five tries; the loop either returns or throws, so nothing follows it.
+  for (let attempt = 1; ; attempt++) {
     try {
       const updated = await prisma.supervisionDocument.update({
         where: { id: document.id },
@@ -224,11 +234,102 @@ async function withBarcode<T extends StoredDocument>(document: T): Promise<T> {
       });
       return { ...document, barcode: updated.barcode };
     } catch (e) {
-      if ((e as { code?: string }).code !== "P2002" || attempt === 4) throw e;
+      if ((e as { code?: string }).code !== "P2002" || attempt === 5) throw e;
     }
   }
+}
 
-  return document;
+//
+// ─── قبل الطباعة وبعدها ───────────────────────────────────────
+//
+
+type Actor = { userId: string; role: RoleType };
+type DocumentRow = NonNullable<Awaited<ReturnType<typeof prisma.supervisionDocument.findUnique>>>;
+
+/**
+ * JSON with its keys in one order at every depth: the same snapshot gives the
+ * same text whatever order the database kept its keys in.
+ */
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  if (value && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    const keys = Object.keys(o).filter((k) => o[k] !== undefined).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stable(o[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** What a screen showed of a document, in a word: its first print checks it. */
+export const versionOf = (snapshot: unknown) =>
+  crypto.createHash("sha256").update(stable(snapshot)).digest("base64url").slice(0, 16);
+
+const isLive = (d: { status?: string; printedAt?: Date | null }) => d.status === "active" && !d.printedAt;
+
+/**
+ * قبل أوّل طباعة، تتبع الورقة موضوعها ونصّ الورقة الجاري.
+ *
+ * عنوانٌ صُحّح، أو طالبٌ أُضيف، أو عبارةٌ من الورقة أُعيدت صياغتها: تظهر في
+ * الورقة برقمها ورمزها نفسيهما — فلم يخرج منها شيءٌ على الورق بعد، ولا يلزم
+ * رقمٌ جديد ولا إلغاء. واللقطة تُحدَّث حين تُقرأ، ولا تُكتب إلّا إن تغيّر شيء.
+ * والمطبوعة والملغاة تُترك كما هي.
+ *
+ * وموضوعٌ لم يعد يصنع ورقة — زالت مجموعته، أو نقص رقم تسجيل — يترك الورقة
+ * على آخر ما كانت: القارئ يجدها، ولا يُرمى بخطأ.
+ */
+async function current<T extends DocumentRow>(document: T, topic?: TopicForDocument | null): Promise<T> {
+  if (!isLive(document)) return document;
+  const t = topic === undefined ? await topicForDocument(document.topicId) : topic;
+  if (!t) return document;
+
+  const stored = (document.snapshot ?? {}) as unknown as Partial<SupervisionSnapshot>;
+  let built: SupervisionSnapshot;
+  try {
+    built = buildSnapshot(t);
+  } catch {
+    return document;
+  }
+  const fresh: SupervisionSnapshot = {
+    ...built,
+    issuedAt: stored.issuedAt ?? built.issuedAt,
+    template: await currentSupervisionSheet(),
+  };
+  if (stable(fresh) === stable(stored)) return document;
+
+  // Unless it was printed meanwhile: what was printed stays.
+  const { count } = await prisma.supervisionDocument.updateMany({
+    where: { id: document.id, status: "active", printedAt: null },
+    data: { snapshot: fresh as unknown as object },
+  });
+  if (!count) return (await prisma.supervisionDocument.findUnique({ where: { id: document.id } })) as T;
+  return { ...document, snapshot: fresh as unknown as T["snapshot"] };
+}
+
+/**
+ * The document as a screen reads it: with its `version` (what its first print
+ * checks), and without the account of who printed it. And an employee of the
+ * administration who printed it is named to the administration alone: the
+ * students and the professor read «the administration».
+ */
+export function presentDocument(d: DocumentRow, actor: { role: RoleType }) {
+  const { printedById, ...rest } = d;
+  void printedById;
+  return {
+    ...rest,
+    printedByName: d.printedByRole === "admin" && actor.role !== "admin" ? null : d.printedByName,
+    version: versionOf(d.snapshot),
+  };
+}
+
+const ADMIN = { role: "admin" as RoleType };
+
+/** The name a print is kept under: as written that day. */
+async function nameOf(userId: string) {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { firstName: true, lastName: true, firstNameLatin: true, lastNameLatin: true, email: true },
+  });
+  return fullName(u ?? undefined) || u?.email || null;
 }
 
 //
@@ -243,7 +344,7 @@ export const previewSupervisionDocumentService = async (
   const topic = await topicForDocument(topicId);
   if (!topic)
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -255,8 +356,10 @@ export const previewSupervisionDocumentService = async (
   });
 
   return {
-    snapshot: buildSnapshot(topic),
-    active: active ? await withBarcode(active) : null,
+    // The draft with the sheet's words as they are now — as it would be issued.
+    snapshot: { ...buildSnapshot(topic), template: await currentSupervisionSheet() },
+    // The active one as it is now: up to date until it is printed.
+    active: active ? presentDocument(await current(await withBarcode(active), topic), actor) : null,
   };
 };
 
@@ -277,7 +380,7 @@ export const issueSupervisionDocumentService = async (
   const topic = await topicForDocument(topicId);
   if (!topic)
     throw new NotFoundException(
-      "Topic not found",
+      tr("notFound.topic"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -287,13 +390,15 @@ export const issueSupervisionDocumentService = async (
     where: { topicId, status: "active" },
     orderBy: { createdAt: "desc" },
   });
-  if (existing) return { document: existing, created: false };
+  if (existing) return { document: presentDocument(await current(existing, topic), actor), created: false };
 
-  const snapshot = buildSnapshot(topic);
+  // The topic's data and the sheet's words as they are now; they follow both until the first print.
+  const snapshot = { ...buildSnapshot(topic), template: await currentSupervisionSheet() };
 
   // التسلسل يُقرأ ثمّ يُكتب، فقد يسبق إليه طلبٌ آخر. وقيد `@unique` يمنع
-  // التكرار، والمحاولة التالية تقرأ الرقم الجديد.
-  for (let attempt = 0; attempt < 5; attempt++) {
+  // التكرار، والمحاولة التالية تقرأ الرقم الجديد. وبعد خمس محاولاتٍ تُقال
+  // رسالتها هي — لا «قيمةٌ مكرّرة في documentNumber»، وهو حقلٌ لم يكتبه أحد.
+  for (let attempt = 1; ; attempt++) {
     try {
       const document = await prisma.supervisionDocument.create({
         data: {
@@ -304,17 +409,16 @@ export const issueSupervisionDocumentService = async (
           snapshot: snapshot as unknown as object,
         },
       });
-      return { document, created: true };
+      return { document: presentDocument(document, actor), created: true };
     } catch (e) {
-      const code = (e as { code?: string }).code;
-      if (code !== "P2002" || attempt === 4) throw e;
+      if ((e as { code?: string }).code !== "P2002") throw e;
+      if (attempt === 5)
+        throw new BadRequestException(
+          tr("supervision.numberFailed"),
+          ErrorCodeEnum.VALIDATION_ERROR,
+        );
     }
   }
-
-  throw new BadRequestException(
-    "تعذّر إصدار رقم وثيقة",
-    ErrorCodeEnum.VALIDATION_ERROR,
-  );
 };
 
 //
@@ -330,7 +434,7 @@ export const getSupervisionDocumentService = async (
   });
   if (!document)
     throw new NotFoundException(
-      "Document not found",
+      tr("notFound.document"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
@@ -341,11 +445,11 @@ export const getSupervisionDocumentService = async (
   if (topic) assertMayAccess(topic, actor);
   else if (actor.role !== "admin")
     throw new NotFoundException(
-      "Document not found",
+      tr("notFound.document"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
-  return withBarcode(document);
+  return presentDocument(await current(await withBarcode(document), topic), actor);
 };
 
 /** قائمة الإدارة. */
@@ -376,7 +480,7 @@ export const listSupervisionDocumentsService = async (q: {
     prisma.supervisionDocument.count({ where }),
   ]);
 
-  return { items, total, page: q.page, limit: q.limit };
+  return { items: items.map((d) => presentDocument(d, ADMIN)), total, page: q.page, limit: q.limit };
 };
 
 //
@@ -390,16 +494,81 @@ export const revokeSupervisionDocumentService = async (id: string) => {
   });
   if (!document)
     throw new NotFoundException(
-      "Document not found",
+      tr("notFound.document"),
       ErrorCodeEnum.RESOURCE_NOT_FOUND,
     );
 
-  if (document.status === "revoked") return document;
+  if (document.status === "revoked") return presentDocument(document, ADMIN);
 
-  return prisma.supervisionDocument.update({
-    where: { id },
-    data: { status: "revoked", revokedAt: new Date() },
-  });
+  return presentDocument(
+    await prisma.supervisionDocument.update({
+      where: { id },
+      data: { status: "revoked", revokedAt: new Date() },
+    }),
+    ADMIN,
+  );
+};
+
+//
+// ─── الطباعة ──────────────────────────────────────────────────
+//
+
+/**
+ * فُتحت نافذة طباعة الورقة — من زرّها، أو بـCtrl+P وهي معروضة.
+ *
+ * ولا يعرف أحدٌ أخرجت ورقةٌ من الطابعة أم لا: فتحُ النافذة يُعدّ طباعة، وهو
+ * الجانب الأسلم — ورقةٌ قد تكون على الورق ورقةٌ لا تتغيّر بعدها.
+ *
+ * والطباعة الأولى تُثبّت الورقة كما عرضتها الشاشة (`version`): فإن تغيّرت
+ * منذ قرأتها — أعادت الإدارة صياغة عبارة، أو انضمّ طالب — لا يُثبَّت شيء،
+ * ويُردّ ٤٠٩ لتُعرض الورقة كما صارت قبل أن تُطبع. ويُحفظ معها من طبعها
+ * ومتى. وما بعدها من طبعاتٍ يُعدّ، ولا يُغيّر شيئاً.
+ */
+export const printSupervisionDocumentService = async (id: string, actor: Actor, version?: string) => {
+  const document = await prisma.supervisionDocument.findUnique({ where: { id } });
+  if (!document)
+    throw new NotFoundException(tr("notFound.document"), ErrorCodeEnum.RESOURCE_NOT_FOUND);
+
+  const topic = await topicForDocument(document.topicId);
+  if (topic) assertMayAccess(topic, actor);
+  else if (actor.role !== "admin")
+    throw new NotFoundException(tr("notFound.document"), ErrorCodeEnum.RESOURCE_NOT_FOUND);
+
+  if (document.status !== "active")
+    throw new BadRequestException(tr("supervision.printRevoked"), ErrorCodeEnum.VALIDATION_ERROR);
+
+  const now = new Date();
+  if (!document.printedAt) {
+    const live = await current(await withBarcode(document), topic);
+    if (!live.printedAt) {
+      if (version && versionOf(live.snapshot) !== version)
+        throw new HttpException(tr("supervision.changedBeforePrint"), HTTPSTATUS.CONFLICT, ErrorCodeEnum.DOCUMENT_CHANGED);
+      const { count } = await prisma.supervisionDocument.updateMany({
+        where: { id, status: "active", printedAt: null },
+        data: {
+          printedAt: now,
+          printedById: actor.userId,
+          printedByRole: actor.role,
+          printedByName: await nameOf(actor.userId),
+          printCount: { increment: 1 },
+          lastPrintedAt: now,
+        },
+      });
+      if (count) {
+        const printed = await prisma.supervisionDocument.findUnique({ where: { id } });
+        return presentDocument(printed!, actor);
+      }
+    }
+  }
+
+  // Printed already — a moment ago by someone else, perhaps: one print more, nothing else.
+  return presentDocument(
+    await prisma.supervisionDocument.update({
+      where: { id },
+      data: { printCount: { increment: 1 }, lastPrintedAt: now },
+    }),
+    actor,
+  );
 };
 
 //
@@ -417,19 +586,13 @@ export const verifySupervisionDocumentService = async (code: string) => {
   // رمزٌ واحدٌ يصل من بابين: الطويل من رابطٍ مكتوب، والقصير من قارئٍ
   // شريطيّ أو من يدٍ تكتب ثلاثة عشر رقماً. وكلاهما فريدٌ في عموده، فلا
   // يلتبس أحدهما بالآخر.
-  const document = await prisma.supervisionDocument.findFirst({
+  const found = await prisma.supervisionDocument.findFirst({
     where: { OR: [{ verificationToken: code }, { barcode: code }] },
-    select: {
-      documentNumber: true,
-      barcode: true,
-      status: true,
-      createdAt: true,
-      revokedAt: true,
-      snapshot: true,
-    },
   });
 
-  if (!document) return { found: false as const };
+  if (!found) return { found: false as const };
+  // Not printed yet: as it is now, as any other screen shows it.
+  const document = await current(found);
 
   const snap = document.snapshot as unknown as SupervisionSnapshot;
 

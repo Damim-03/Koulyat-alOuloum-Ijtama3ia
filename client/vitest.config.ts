@@ -33,6 +33,9 @@ export default defineConfig((configEnv) =>
         provider: "v8",
         reportsDirectory: "coverage",
         reporter: ["text", "html", "lcov"],
+        // كلّ ملفّ، لا ما حمّله اختبارٌ وحده: بدونه يغيب الملفّ الذي لا يمسّه
+        // أحد عن التقرير، فتبدو النسبة أعلى ممّا هي.
+        include: ["src/**/*.{ts,tsx}"],
         exclude: [
           "src/main.tsx",
           "src/**/*.d.ts",

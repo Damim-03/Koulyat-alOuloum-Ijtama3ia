@@ -15,14 +15,13 @@ import {
   unreadableReport,
 } from "../import-kit/pipeline";
 import { buildImportTemplate } from "./template";
+import { loadAcademicReference } from "../import-kit/academic";
 import {
   buildContext,
   checkRow,
   fullNameKey,
   regDigits,
   type ReadyStudent,
-  type Reference,
-  type RefSpec,
   type Taken,
 } from "./checks";
 
@@ -35,35 +34,7 @@ export type { ImportReport } from "../import-kit/report";
  * طالبٌ بلا حساب.
  */
 
-async function loadReference(): Promise<Reference> {
-  const [specs, years, faculties, departments, filieres] = await Promise.all([
-    prisma.specialization.findMany({
-      select: {
-        id: true,
-        name: true,
-        level: true,
-        filiere: {
-          select: {
-            id: true,
-            name: true,
-            department: {
-              select: { id: true, name: true, faculty: { select: { id: true, name: true } } },
-            },
-          },
-        },
-      },
-      orderBy: { name: "asc" },
-    }),
-    prisma.academicYear.findMany({
-      select: { id: true, title: true, isActive: true, archivedAt: true },
-      orderBy: { title: "desc" },
-    }),
-    prisma.faculty.findMany({ select: { id: true, name: true } }),
-    prisma.department.findMany({ select: { id: true, name: true, facultyId: true } }),
-    prisma.filiere.findMany({ select: { id: true, name: true, departmentId: true } }),
-  ]);
-  return { specs: specs as RefSpec[], years, faculties, departments, filieres };
-}
+const loadReference = loadAcademicReference;
 
 export async function buildStudentImportTemplate(): Promise<Buffer> {
   const { specs, years } = await loadReference();
@@ -148,8 +119,9 @@ export interface ImportedAccount {
   registrationNumber: string;
   firstName: string | null;
   lastName: string | null;
-  firstNameLatin: string | null;
-  lastNameLatin: string | null;
+  /** إلزاميّان: الصفّ الذي يُنشأ بلا خطأ فيه، فله الاثنان. */
+  firstNameLatin: string;
+  lastNameLatin: string;
   /** المولَّدة وحدها — ما كُتب في الملف عند المسؤول أصلاً. */
   password: string | null;
 }
@@ -188,6 +160,8 @@ export async function importStudents(buffer: Buffer): Promise<ImportOutcome> {
               gender: s.gender,
               isVerified: s.isVerified,
               password: hashes[i]!,
+              // Handed out with the import: replaced by its owner before use.
+              mustChangePassword: true,
               role: "student",
             },
           },
@@ -201,8 +175,8 @@ export async function importStudents(buffer: Buffer): Promise<ImportOutcome> {
     registrationNumber: s.registrationNumber,
     firstName: s.firstName || null,
     lastName: s.lastName || null,
-    firstNameLatin: s.firstNameLatin ?? null,
-    lastNameLatin: s.lastNameLatin ?? null,
+    firstNameLatin: s.firstNameLatin!,
+    lastNameLatin: s.lastNameLatin!,
     password: s.password ? null : passwords[i]!,
   }));
   const file = await buildAccountsFile(

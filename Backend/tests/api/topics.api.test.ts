@@ -21,6 +21,7 @@ import {
   teardown,
   residue,
   TEST_PASSWORD,
+  TAG,
   type Fixture,
 } from "../helpers/fixture";
 
@@ -157,5 +158,29 @@ describe("PATCH /api/admin/topics/:id/publish", () => {
     ).expect(400);
     expect(res.body.message).toBeTruthy();
     expect(res.body.message).not.toMatch(/error|Error|undefined/);
+  });
+});
+
+describe("POST /api/admin/topics، والرفض بلا جسم", () => {
+  it("تُنشئ الإدارة موضوعاً لأستاذ، معتمَداً ما لم يُنشر", async () => {
+    const title = `${TAG} موضوعٌ من الإدارة`;
+    const res = await asAdmin(
+      request(app).post("/api/admin/topics").send({
+        title,
+        description: "وصف",
+        maxStudents: 2,
+        professorId: f.professor.id,
+        specializationId: f.specialization.id,
+        academicYearId: f.academicYear.id,
+      }),
+    ).expect(201);
+    expect(res.body.topic).toMatchObject({ title, status: "approved" });
+  });
+
+  /** الرفض بلا سبب مقبول — والطلب بلا جسمٍ أصلاً (Express 5 لا يضع `{}`) كذلك. */
+  it("ورفضٌ بلا جسمٍ أصلاً ⇒ يُرفض بلا سبب", async () => {
+    const topic = await makeTopic(f, `${TAG} يُرفض بلا سبب`, "pending");
+    const res = await asAdmin(request(app).patch(`/api/admin/topics/${topic.id}/reject`)).expect(200);
+    expect(res.body.topic.status).toBe("rejected");
   });
 });

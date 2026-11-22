@@ -31,6 +31,7 @@ import { prisma } from "../../src/core/prisma/client";
 import { config } from "../../src/core/config/app.config";
 import { signAccessToken, signRefreshToken } from "../../src/core/auth/tokens";
 import { room } from "../../src/core/realtime/realtime";
+import { sweepAdminConnections } from "../../src/core/realtime/socket-auth";
 import {
   broadcastChange,
   emitToUsers,
@@ -59,6 +60,26 @@ const claimsFor = (
   sid: `${TAG}-sid-${Math.random().toString(36).slice(2)}`,
   ...over,
 });
+
+/**
+ * رمزُ مديرٍ بجلسةٍ حقيقية في القاعدة.
+ *
+ * الخادم يرفض سوكيت مديرٍ لا صفّ لجلسته، أو انقضت ساعاتها، أو طال سكونها —
+ * كما يرفض طلبه في الـHTTP. فرمزٌ موقَّعٌ وحده لم يعد يكفي المدير.
+ */
+async function adminToken(lastSeenAt = new Date()) {
+  const claims = claimsFor(f.admin.id, "admin", f.admin.id);
+  await prisma.authSession.create({
+    data: {
+      id: claims.sid,
+      userId: f.admin.id,
+      refreshJti: `${TAG}-jti-${Math.random().toString(36).slice(2)}`,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      lastSeenAt,
+    },
+  });
+  return signAccessToken(claims as never);
+}
 
 /** يفتح اتّصالاً وينتظر نتيجته: يُرجع العميل عند القبول، ويرمي عند الرفض. */
 function connect(
@@ -117,7 +138,7 @@ function catchEvent(socket: ClientSocket, event: string, ms = 400) {
 
 beforeAll(async () => {
   await teardown();
-  f = await seed(16);
+  f = await seed(20);
 
   /*
    * `PORT=0` يأتي من `.env.test` — «أعطني أي منفذٍ حرّ». ولا يصلح ضبطه هنا:
@@ -181,9 +202,7 @@ describe("مصافحة السوكيت — من يُقبل", () => {
   });
 
   it("ورمزٌ صحيح ⇒ يُقبل", async () => {
-    const token = signAccessToken(
-      claimsFor(f.admin.id, "admin", f.admin.id) as never,
-    );
+    const token = await adminToken();
     const socket = await connect({ token });
     expect(socket.connected).toBe(true);
   });
@@ -194,9 +213,7 @@ describe("مصافحة السوكيت — من يُقبل", () => {
    * جهة.
    */
   it("والرمز عبر ترويسة Authorization ⇒ يُقبل كذلك", async () => {
-    const token = signAccessToken(
-      claimsFor(f.admin.id, "admin", f.admin.id) as never,
-    );
+    const token = await adminToken();
     const socket = await connect({ header: `Bearer ${token}` });
     expect(socket.connected).toBe(true);
   });
@@ -328,9 +345,7 @@ describe("مصافحة السوكيت — من يُقبل", () => {
 
 describe("توزيع الغرف", () => {
   it("الاتّصال يدخل غرفة مستخدمه وغرفة دوره", async () => {
-    const token = signAccessToken(
-      claimsFor(f.admin.id, "admin", f.admin.id) as never,
-    );
+    const token = await adminToken();
     const socket = await connect({ token });
     const rooms = await serverRooms(socket);
 
@@ -450,7 +465,7 @@ describe("عزل ما يُبثّ", () => {
       token: signAccessToken(claimsFor(a!.userId, "student", a!.id) as never),
     });
     const admin = await connect({
-      token: signAccessToken(claimsFor(f.admin.id, "admin", f.admin.id) as never),
+      token: await adminToken(),
     });
     await Promise.all([serverRooms(student), serverRooms(admin)]);
 
@@ -476,7 +491,7 @@ describe("عزل ما يُبثّ", () => {
       token: signAccessToken(claimsFor(a!.userId, "student", a!.id) as never),
     });
     const admin = await connect({
-      token: signAccessToken(claimsFor(f.admin.id, "admin", f.admin.id) as never),
+      token: await adminToken(),
     });
     await Promise.all([serverRooms(student), serverRooms(admin)]);
 
@@ -502,6 +517,91 @@ describe("عزل ما يُبثّ", () => {
 
     socket.close();
     await waitUntil(() => !io.sockets.adapter.rooms.has(room.user(a!.userId)));
+  });
+});
+
+//
+// ═══ جلسة المدير على السوكيت — ساعتها ساعة الخادم ═══
+//
+
+describe("اتّصال المدير وجلسته", () => {
+  const idleFor = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000);
+
+  it("رمزٌ صحيح بلا صفّ جلسة ⇒ يُردّ، كما يُردّ طلبه", async () => {
+    const token = signAccessToken(claimsFor(f.admin.id, "admin", f.admin.id) as never);
+    expect(await refused({ token })).toBe("UNAUTHORIZED");
+  });
+
+  it("وجلسةٌ سكنت أكثر من مهلتها ⇒ يُردّ", async () => {
+    const token = await adminToken(idleFor(config.ADMIN_IDLE_MINUTES + 1));
+    expect(await refused({ token })).toBe("UNAUTHORIZED");
+  });
+
+  /**
+   * المصافحة تفحص مرّةً واحدة، والاتّصال يعيش بعدها بلا طلب. فالكنس الدوريّ
+   * يقيس كلّ اتّصال مديرٍ على جلسته: ما سكنت جلسته طويلاً تُنهى، ويُقال
+   * للصفحة فوراً، ولا يُمسّ اتّصالٌ جلسته حيّة.
+   */
+  it("والكنس يقطع اتّصالاً سكنت جلسته، ويُبقي الحيّ", async () => {
+    const stale = await connect({ token: await adminToken() });
+    const fresh = await connect({ token: await adminToken() });
+    await Promise.all([serverRooms(stale), serverRooms(fresh)]);
+
+    const staleSid = (io.sockets.sockets.get(stale.id!)!.data as { sid: string }).sid;
+    await prisma.authSession.update({
+      where: { id: staleSid },
+      data: { lastSeenAt: idleFor(config.ADMIN_IDLE_MINUTES + 1) },
+    });
+
+    const told = catchEvent(stale, "session:revoked", 2000);
+    await sweepAdminConnections(io);
+
+    expect(await told).not.toBeNull();
+    await waitUntil(() => !stale.connected);
+    expect(fresh.connected).toBe(true);
+    // والجلسة نفسها انتهت: رموزها تُردّ من الطلب التالي.
+    expect(await prisma.authSession.findUnique({ where: { id: staleSid } })).toBeNull();
+    expect(await prisma.revokedSession.findUnique({ where: { id: staleSid } })).not.toBeNull();
+  });
+});
+
+//
+// ═══ ميزانية الأحداث لكلّ اتّصال ═══
+//
+
+describe("أحداث العميل", () => {
+  /**
+   * الواجهة تقول «يكتب…» مرّةً كلّ ثانيتين ونصف على الأكثر. فسيلٌ من الأحداث
+   * ليس واجهةً تعمل — يُسقط ما فوق الميزانية، ومن يُصرّ يُقطع.
+   */
+  it("سيلُ أحداثٍ يُقطع اتّصاله، والخادم سليم", async () => {
+    const [a] = f.nextStudents(1);
+    const socket = await connect({
+      token: signAccessToken(claimsFor(a!.userId, "student", a!.id) as never),
+    });
+    await serverRooms(socket);
+
+    for (let i = 0; i < 300; i++) socket.emit("join", { i });
+    await waitUntil(() => !socket.connected, 3000);
+
+    // والخادم ما زال يقبل غيره.
+    const [b] = f.nextStudents(1);
+    const other = await connect({
+      token: signAccessToken(claimsFor(b!.userId, "student", b!.id) as never),
+    });
+    expect(other.connected).toBe(true);
+  });
+
+  it("وما دون الميزانية يمرّ بلا قطع", async () => {
+    const [a] = f.nextStudents(1);
+    const socket = await connect({
+      token: signAccessToken(claimsFor(a!.userId, "student", a!.id) as never),
+    });
+    await serverRooms(socket);
+
+    for (let i = 0; i < 15; i++) socket.emit("join", { i });
+    await sleep(300);
+    expect(socket.connected).toBe(true);
   });
 });
 

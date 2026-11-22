@@ -14,6 +14,7 @@ import {
   type BroadcastInput,
   type ContactRole,
   type InboxItem,
+  type MessageAttachment,
   type MessagesListParams,
   type MessagesPage,
   type MessagesSummary,
@@ -171,9 +172,24 @@ export function useBroadcastMessage() {
 export function useReplyMessage(threadKeyId: string | null, me?: ThreadMessage["sender"]) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ parentId, body, all }: { parentId: string; body: string; all?: boolean; tempId: string }) =>
-      messagesApi.reply(parentId, { body, all }),
-    onMutate: async ({ body, tempId, parentId }) => {
+    mutationFn: ({
+      parentId,
+      body,
+      all,
+      attachments,
+    }: {
+      parentId: string;
+      body: string;
+      all?: boolean;
+      attachments?: MessageAttachment[];
+      tempId: string;
+    }) =>
+      messagesApi.reply(parentId, {
+        body,
+        all,
+        attachmentIds: attachments?.length ? attachments.map((a) => a.id) : undefined,
+      }),
+    onMutate: async ({ body, tempId, parentId, attachments }) => {
       const key = MSG_KEYS.thread(threadKeyId);
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<ThreadResponse>(key);
@@ -193,6 +209,7 @@ export function useReplyMessage(threadKeyId: string | null, me?: ThreadMessage["
           recipientsCount: 0,
           readCount: 0,
           recipients: [],
+          attachments,
           pending: "sending",
         };
         qc.setQueryData<ThreadResponse>(key, { ...prev, thread: [...prev.thread, optimistic] });
@@ -322,5 +339,28 @@ export function useDeleteInboxMessage() {
       toast.error(serverMessage(e, t("toast.deleteFailed")));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["messages"] }),
+  });
+}
+
+/** Changing a sent message's text, from a conversation's view: the conversation is fetched again. */
+export function useEditMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string }) => messagesApi.editMessage(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["messages"] }),
+    onError: (e) => toast.error(serverMessage(e, t("msg.actions.editFailed"))),
+  });
+}
+
+/** The administration withdraws a message (or a broadcast) it sent, for everyone. */
+export function useDeleteForEveryoneMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => messagesApi.deleteForEveryone(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["messages"] });
+      toast.success(t("msg.actions.deleted"));
+    },
+    onError: (e) => toast.error(serverMessage(e, t("msg.actions.deleteFailed"))),
   });
 }

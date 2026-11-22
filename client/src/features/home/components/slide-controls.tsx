@@ -46,7 +46,8 @@ export function SlideControls({
             onClick={() => onGo(i)}
             aria-label={t("hero.slides.goTo", { n: i + 1, total: count })}
             aria-current={i === current ? "true" : undefined}
-            className="grid h-6 place-items-center px-0.5"
+            // The dot stays 6px; the button around it is what a finger has to hit.
+            className="grid h-9 min-w-8 place-items-center px-0.5 lg:h-6 lg:min-w-0"
           >
             <span
               className={`block h-1.5 rounded-full transition-all duration-300 ${

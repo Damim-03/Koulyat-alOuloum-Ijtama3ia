@@ -48,7 +48,7 @@ export interface AppTokenPayload {
 /** Claims that must never be placed in a JWT — it is signed, not encrypted. */
 type ClaimsInput = Omit<AppTokenPayload, "typ" | "exp">;
 
-function baseSignOptions(expiresIn: string): SignOptions {
+function baseSignOptions(expiresIn: string | number): SignOptions {
   return {
     algorithm: ALGORITHM,
     expiresIn,
@@ -78,7 +78,11 @@ export function signRefreshToken(claims: ClaimsInput): string {
   return jwt.sign(
     { ...claims, typ: "refresh" satisfies TokenType },
     config.JWT_REFRESH_SECRET,
-    baseSignOptions(config.JWT_REFRESH_EXPIRES_IN),
+    // An administrator's session ends after ADMIN_SESSION_HOURS
+    // (core/auth/refresh-sessions): its cookie need not outlive it.
+    baseSignOptions(
+      claims.role === "admin" ? Math.round(config.ADMIN_SESSION_HOURS * 3600) : config.JWT_REFRESH_EXPIRES_IN,
+    ),
   );
 }
 

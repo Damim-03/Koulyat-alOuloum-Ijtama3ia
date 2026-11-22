@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { blockReason, filterByAction } from "../../lib/topic-actions";
+import { filterByAction } from "../../lib/topic-actions";
 import { useTranslation } from "react-i18next";
 import { useLangNavigate } from "../../../../hooks/useLangNavigate";
 import {
@@ -15,16 +15,18 @@ import {
   Pencil,
   Trash2,
   Undo2,
-  Ban,
   FileCheck2,
-  Inbox,
-  FileText,
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
   FilterX,
   ScanLine,
   ListOrdered,
+  FileSpreadsheet,
+  FileUp,
+  FileDown,
+  Tags,
+  Settings2,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -37,19 +39,30 @@ import {
   useFaculties,
   useAcademicYears,
 } from "../../hooks/admin-hook";
-import { ConfirmDialog } from "../../components/form/confirm-dialog.form";
 import { TopicDialog } from "../../components/dialog/projects/topic-dialog.form";
 import { AssignedTopicDialog } from "../../components/dialog/projects/assigned-topic-dialog.form";
 import { EditAssignedTopicDialog } from "../../components/dialog/projects/edit-assigned-topic-dialog.form";
 import { UserAvatar } from "../../../../components/ui/user-avatar";
 import { None } from "../../../../lib/none";
 import { Select } from "../../../../components/ui/select";
-import { DangerConfirm } from "../../../../components/dialog/danger-confirm";
+import {
+  BulkTopicsDialog,
+  type BulkTopicMode,
+} from "../../components/dialog/topic/bulk-topics-dialog";
 import { SupervisionDialog } from "../../../supervision/components/supervision-dialog";
 import { ScanDialog } from "../../../supervision/components/scan-dialog";
+import { ActionMenu } from "../../../../components/ui/action-menu";
 import { TopicTitlesDialog } from "../../components/dialog/topic/topic-titles-dialog";
+import { TopicTypesDialog } from "../../components/dialog/topic/topic-types-dialog";
+import { TopicExportDialog } from "../../components/dialog/topic/topic-export-dialog";
+import { TopicSettingsStrip } from "../../components/dialog/topic/topic-settings-strip";
+import { TopicImportDialog } from "../../components/dialog/topic/topic-import-dialog";
+import { AssignedTopicImportDialog } from "../../components/dialog/topic/assigned-topic-import-dialog";
 import { personName } from "../../../../lib/person-name";
 import { ErrorRetry } from "../../../../components/ui/error-retry";
+import { stackOnPhone } from "../../../../lib/stack-table";
+import { isPhoneNow } from "../../../../hooks/use-media-query";
+import { SPEC_LEVELS, SPEC_LEVEL_KEY, type SpecLevel } from "../../components/dialog/user/user-form-steps";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -84,22 +97,28 @@ export function AdminTopicsPage() {
   const [facultyId, setFacultyId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [filiereId, setFiliereId] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  // Open from a tablet up; on a phone the filters alone would fill the screen.
+  const [filtersOpen, setFiltersOpen] = useState(() => !isPhoneNow());
   const [specializationId, setSpecializationId] = useState("");
+  // Licence, master and doctorate never mix: the level narrows everything the page shows and gives.
+  const [level, setLevel] = useState<SpecLevel | "">("");
   const [page, setPage] = useState(1);
 
   const [addOpen, setAddOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  /** نافذة الإجراء على المحدَّد — حذفٌ أو رفض — أو لا نافذة. */
+  const [bulkDialog, setBulkDialog] = useState<BulkTopicMode | null>(null);
   /** الموضوع الذي تُعرض ورقةُ الموافقة على إشرافه. */
   const [scanOpen, setScanOpen] = useState(false);
   const [titlesOpen, setTitlesOpen] = useState(false);
+  const [typesOpen, setTypesOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [assignedImportOpen, setAssignedImportOpen] = useState(false);
   const [supervisionTopicId, setSupervisionTopicId] = useState<string | null>(
     null,
   );
-  const [confirmRejectOpen, setConfirmRejectOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
 
   function clearFilters() {
     setSearch("");
@@ -110,6 +129,7 @@ export function AdminTopicsPage() {
     setDepartmentId("");
     setFiliereId("");
     setSpecializationId("");
+    setLevel("");
   }
 
   const activeFilters =
@@ -120,6 +140,7 @@ export function AdminTopicsPage() {
     (departmentId ? 1 : 0) +
     (filiereId ? 1 : 0) +
     (specializationId ? 1 : 0) +
+    (level ? 1 : 0) +
     (academicYearId ? 1 : 0);
 
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -141,6 +162,7 @@ export function AdminTopicsPage() {
     departmentId,
     filiereId,
     specializationId,
+    level,
   ]);
 
   const params = useMemo(
@@ -155,6 +177,7 @@ export function AdminTopicsPage() {
       departmentId: departmentId || undefined,
       filiereId: filiereId || undefined,
       specializationId: specializationId || undefined,
+      level: level || undefined,
     }),
     [
       page,
@@ -166,6 +189,7 @@ export function AdminTopicsPage() {
       departmentId,
       filiereId,
       specializationId,
+      level,
     ],
   );
 
@@ -178,6 +202,8 @@ export function AdminTopicsPage() {
   const { data: specs } = useSpecializations();
   const { data: faculties } = useFaculties();
   const { data: years } = useAcademicYears();
+  /** The year the settings are read for: the filter's, else the current one. */
+  const yearInView = academicYearId || years?.find((y) => y.isActive && !y.archivedAt)?.id;
 
   const topics = (data?.items ?? []) as any[];
   const total = data?.total ?? 0;
@@ -228,12 +254,13 @@ export function AdminTopicsPage() {
 
   const specOptions = useMemo(() => {
     return specList.filter((s) => {
+      if (level && s.level !== level) return false;
       if (filiereId) return s.filiereId === filiereId;
       if (departmentId) return s.filiere?.departmentId === departmentId;
       if (facultyId) return s.filiere?.department?.facultyId === facultyId;
       return true;
     });
-  }, [specList, facultyId, departmentId, filiereId]);
+  }, [specList, facultyId, departmentId, filiereId, level]);
 
   // ── Multi-select ──
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -281,15 +308,6 @@ export function AdminTopicsPage() {
   const archivable = filterByAction(selectedTopics, "archive");
   const unarchivable = filterByAction(selectedTopics, "unarchive");
   const deletable = filterByAction(selectedTopics, "delete");
-  /** ما رفضه الخادم من التحديد — ومعه سببه، وهو ما يُعرض. */
-  const excludedTopics = selectedTopics.filter(
-    (tp: any) => !deletable.some((d: any) => d.id === tp.id),
-  );
-  /** طلبات الفرق التي ستسقط مع المواضيع — من عدّاد كل موضوع. */
-  const deletableRequests = deletable.reduce(
-    (n: number, tp: any) => n + (tp._count?.groupRequests ?? 0),
-    0,
-  );
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
 
@@ -334,14 +352,12 @@ export function AdminTopicsPage() {
 
   async function bulkDelete() {
     await runBulk(deletable, adminApi.deleteTopic);
-    setConfirmDeleteOpen(false);
+    setBulkDialog(null);
   }
 
-  async function bulkReject() {
-    const reason = rejectReason.trim();
-    await runBulk(rejectable, (id) => adminApi.rejectTopic(id, reason || undefined));
-    setConfirmRejectOpen(false);
-    setRejectReason("");
+  async function bulkReject(reason?: string) {
+    await runBulk(rejectable, (id) => adminApi.rejectTopic(id, reason));
+    setBulkDialog(null);
   }
 
   const bulkApprove = () => runBulk(approvable, adminApi.approveTopic);
@@ -361,41 +377,123 @@ export function AdminTopicsPage() {
 
   return (
     <div className="font-body">
-      {/* Header */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
+      {/*
+        Header: the title on the right, the tools on the left, as on every
+        page. Where they go is decided by the screen's width alone, never by
+        the room left beside the sidebar: wrapping by that room moved every
+        button under the title when the sidebar opened, and back when it
+        folded. From 1780px — room for them even beside the open sidebar,
+        the description taking two lines — they share the title's row;
+        below it, they sit under it, still on the left.
+      */}
+      <div className="mb-6 flex flex-col items-end gap-4 min-[1780px]:flex-row min-[1780px]:items-center min-[1780px]:justify-between">
+        <div className="min-w-0 self-stretch min-[1780px]:flex-1 min-[1780px]:self-auto">
           <h1 className="font-serif text-2xl font-bold text-forest">
             {t("admin.topicsTitle")}
           </h1>
           <p className="mt-1 text-sm text-clay">{t("admin.topicsSubtitle")}</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/*
-            مسحُ ورقةٍ في اليد للوصول إلى مشروعها — الطريقُ المعاكس للقائمة:
-            من الورق إلى الشاشة لا من الشاشة إلى الورق.
-          */}
-          {/* The list the department prints: before assignment or after. */}
-          <button
-            onClick={() => setTitlesOpen(true)}
-            title={t("admin.titlesList.subtitle")}
-            data-testid="open-titles-list"
-            className="inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2.5 text-sm font-semibold text-forest transition hover:border-gold hover:bg-gold/10"
+        {/*
+          Three groups, by what they are for: tools that read or print what is
+          already there, bringing topics in from Excel, and creating one — the
+          last, and most used, in gold.
+        */}
+        <div className="flex flex-wrap items-center justify-end gap-2 min-[1780px]:shrink-0 min-[1780px]:flex-nowrap">
+          <div
+            role="group"
+            aria-label={t("admin.topicTools")}
+            className="inline-flex items-stretch overflow-hidden rounded-xl border border-forest/15 bg-cream-card/60"
           >
-            <ListOrdered size={18} />
-            {t("admin.titlesList.button")}
-          </button>
+            {/* The year's periods and team sizes: their own page, the year of the filter carried there. */}
+            <button
+              type="button"
+              onClick={() => navigate(`/admin/topics/settings${yearInView ? `?year=${encodeURIComponent(yearInView)}` : ""}`)}
+              title={t("admin.topicSettings.subtitle")}
+              data-testid="open-topic-settings"
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-medium text-forest/80 transition hover:bg-gold/10 hover:text-forest"
+            >
+              <Settings2 size={17} />
+              {t("admin.topicSettings.button")}
+            </button>
+            {/* The list the department prints: before assignment or after. */}
+            <button
+              type="button"
+              onClick={() => setTitlesOpen(true)}
+              title={t("admin.titlesList.subtitle")}
+              data-testid="open-titles-list"
+              className="inline-flex items-center gap-2 border-s border-forest/10 px-3.5 py-2.5 text-[13px] font-medium text-forest/80 transition hover:bg-gold/10 hover:text-forest"
+            >
+              <ListOrdered size={17} />
+              {t("admin.titlesList.button")}
+            </button>
+            {/* The department's topic types: their codes number the list above, their colours mark it. */}
+            <button
+              type="button"
+              onClick={() => setTypesOpen(true)}
+              title={t("topicTypes.subtitle")}
+              data-testid="open-topic-types"
+              className="inline-flex items-center gap-2 border-s border-forest/10 px-3.5 py-2.5 text-[13px] font-medium text-forest/80 transition hover:bg-gold/10 hover:text-forest"
+            >
+              <Tags size={17} />
+              {t("topicTypes.button")}
+            </button>
+            {/*
+              مسحُ ورقةٍ في اليد للوصول إلى مشروعها — الطريقُ المعاكس للقائمة:
+              من الورق إلى الشاشة لا من الشاشة إلى الورق.
+            */}
+            <button
+              type="button"
+              onClick={() => setScanOpen(true)}
+              title={t("supervision.scanSubtitle")}
+              className="inline-flex items-center gap-2 border-s border-forest/10 px-3.5 py-2.5 text-[13px] font-medium text-forest/80 transition hover:bg-sage/10 hover:text-forest"
+            >
+              <ScanLine size={17} />
+              {t("supervision.scan")}
+            </button>
+            {/* The table as a file: the same filters, with its students or without. */}
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              title={t("admin.topicExport.subtitle")}
+              data-testid="open-topic-export"
+              className="inline-flex items-center gap-2 border-s border-forest/10 px-3.5 py-2.5 text-[13px] font-medium text-forest/80 transition hover:bg-gold/10 hover:text-forest"
+            >
+              <FileDown size={17} />
+              {t("admin.topicExport.button")}
+            </button>
+          </div>
+
+          <span aria-hidden className="mx-1 hidden h-7 w-px bg-forest/12 sm:block" />
+
+          <ActionMenu
+            label={t("admin.importMenu.button")}
+            icon={FileSpreadsheet}
+            testId="open-import-menu"
+            items={[
+              {
+                // مقترحات الأساتذة دفعةً واحدة، من ملفّ Excel.
+                key: "proposals",
+                label: t("admin.importMenu.proposals"),
+                hint: t("admin.importTopic.subtitle"),
+                icon: FileSpreadsheet,
+                onSelect: () => setImportOpen(true),
+                testId: "open-topic-import",
+              },
+              {
+                // المواضيع المُسنَدة بطلبتها من Excel — نموذجٌ مستقلّ عن الأوّل.
+                key: "assigned",
+                label: t("admin.importMenu.assigned"),
+                hint: t("admin.importAssigned.subtitle"),
+                icon: FileUp,
+                onSelect: () => setAssignedImportOpen(true),
+                testId: "open-assigned-topic-import",
+              },
+            ]}
+          />
 
           <button
-            onClick={() => setScanOpen(true)}
-            title={t("supervision.scanSubtitle")}
-            className="inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2.5 text-sm font-semibold text-forest transition hover:border-sage hover:bg-sage/10"
-          >
-            <ScanLine size={18} />
-            {t("supervision.scan")}
-          </button>
-
-          <button
+            type="button"
             onClick={() => setCreateOpen(true)}
             title={t("admin.createTopicSubtitle")}
             className="inline-flex items-center gap-2 rounded-xl border border-forest/20 px-4 py-2.5 text-sm font-semibold text-forest transition hover:border-gold hover:bg-gold/10"
@@ -405,6 +503,7 @@ export function AdminTopicsPage() {
           </button>
 
           <button
+            type="button"
             onClick={() => setAddOpen(true)}
             title={t("admin.assignTopicSubtitle")}
             className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-forest-deep shadow-sm transition hover:bg-gold-soft"
@@ -414,6 +513,14 @@ export function AdminTopicsPage() {
           </button>
         </div>
       </div>
+
+      {/*
+        The year's settings in one line — the proposal period, the selection
+        deadline, the team size — for the year in view: the page's year, else
+        the current one. In full, and edited, on their own page. Once the
+        years are in — before, "no current year" would flash while they load.
+      */}
+      {years && <TopicSettingsStrip yearId={yearInView} />}
 
       {/* Filters */}
       <div className="mb-6 overflow-hidden rounded-2xl border border-forest/10 bg-cream-card shadow-[0_4px_20px_rgba(38,66,61,0.05)]">
@@ -491,7 +598,7 @@ export function AdminTopicsPage() {
           </div>
 
           {/* Academic Filters */}
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <Select
               value={facultyId}
               onChange={(v) => {
@@ -531,6 +638,22 @@ export function AdminTopicsPage() {
               options={[
                 { value: "", label: t("admin.allFilieres") },
                 ...filiereOptions.map((f) => ({ value: f.id, label: f.name })),
+              ]}
+            />
+
+            {/* The level, before the specialization it narrows: a licence one is not a master's. */}
+            <Select
+              value={level}
+              onChange={(v) => {
+                setLevel(v as SpecLevel | "");
+                // A specialization of another level no longer fits.
+                const sp = specList.find((s) => s.id === specializationId);
+                if (v && sp && sp.level !== v) setSpecializationId("");
+              }}
+              aria-label={t("admin.allLevels")}
+              options={[
+                { value: "", label: t("admin.allLevels") },
+                ...SPEC_LEVELS.map((lv) => ({ value: lv, label: t(SPEC_LEVEL_KEY[lv]) })),
               ]}
             />
 
@@ -597,7 +720,7 @@ export function AdminTopicsPage() {
               {t("admin.unpublish")} ({unpublishable.length})
             </button>
             <button
-              onClick={() => setConfirmRejectOpen(true)}
+              onClick={() => setBulkDialog("reject")}
               disabled={bulkBusy || rejectable.length === 0}
               className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 px-3.5 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-40"
             >
@@ -622,7 +745,7 @@ export function AdminTopicsPage() {
               {unarchivable.length})
             </button>
             <button
-              onClick={() => setConfirmDeleteOpen(true)}
+              onClick={() => setBulkDialog("delete")}
               disabled={bulkBusy || deletable.length === 0}
               className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
             >
@@ -649,8 +772,8 @@ export function AdminTopicsPage() {
             <div className="h-full w-1/3 animate-[bulkSweep_1s_ease-in-out_infinite] bg-gold" />
           )}
         </div>
-        <div className="max-h-[70vh] overflow-auto">
-          <table className="w-full text-start">
+        <div className="max-h-[70dvh] overflow-auto">
+          <table ref={stackOnPhone} className="stack-sm w-full text-start">
             <thead className="sticky top-0 z-10">
               <tr className="bg-forest text-cream">
                 <th className="w-10 px-4 py-3">
@@ -838,6 +961,7 @@ export function AdminTopicsPage() {
             <button
               disabled={page <= 1}
               onClick={() => setPage((p) => p - 1)}
+              aria-label={t("admin.proj.prev")}
               className="grid size-8 place-items-center rounded-lg border border-forest/15 text-forest transition hover:bg-forest/5 disabled:opacity-40"
             >
               {"\u2039"}
@@ -848,6 +972,7 @@ export function AdminTopicsPage() {
             <button
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
+              aria-label={t("admin.proj.next")}
               className="grid size-8 place-items-center rounded-lg border border-forest/15 text-forest transition hover:bg-forest/5 disabled:opacity-40"
             >
               {"\u203a"}
@@ -858,6 +983,8 @@ export function AdminTopicsPage() {
 
       {/* Create-topic dialog — the topic alone, no group */}
       <TopicDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <TopicImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
+      <AssignedTopicImportDialog open={assignedImportOpen} onClose={() => setAssignedImportOpen(false)} />
 
       {/* Assign-topic dialog */}
       <AssignedTopicDialog
@@ -871,133 +998,25 @@ export function AdminTopicsPage() {
         onClose={() => setEditId(null)}
       />
 
-      {/* Bulk reject confirm — the reason reaches the professors, so it is
-          collected here instead of sending an empty rejection. */}
-      <ConfirmDialog
-        open={confirmRejectOpen}
-        tone="danger"
-        title={t("admin.bulkRejectTitle")}
-        message={t("admin.bulkRejectMessage", { n: rejectable.length })}
-        confirmLabel={t("admin.reject")}
-        cancelLabel={t("admin.cancel")}
-        loading={bulkBusy}
-        onConfirm={bulkReject}
-        onClose={() => {
-          setConfirmRejectOpen(false);
-          setRejectReason("");
-        }}
-      >
-        <textarea
-          value={rejectReason}
-          onChange={(e) => setRejectReason(e.target.value)}
-          rows={3}
-          placeholder={t("admin.rejectReasonPlaceholder")}
-          className="w-full resize-none rounded-xl border border-forest/15 bg-cream-2 px-3 py-2.5 text-sm text-forest outline-none transition focus:border-gold focus:ring-2 focus:ring-gold/30"
-        />
-        <p className="mt-2 text-[11px] text-clay">
-          {t("admin.rejectReasonToProf")}
-        </p>
-      </ConfirmDialog>
-
       {/*
-        الحذف بالجملة كان عدداً مجرَّداً: «سيُحذف ٧ مواضيع». والعدد لا يُراجَع
-        — الإدارية حدّدت صفوفاً في جدولٍ مفلتَر، وقد يكون بينها ما لم تقصده.
-        فصارت النافذة تسمّي ما سيُحذف.
-
-        وما لا يلزم لا يُعرض: الأعداد الثلاثة (المحدَّد، وسيُحذف، ويُستثنى)
-        كانت تُعرض دائماً، وهي في الحال الغالبة رقمٌ واحدٌ مكرَّرٌ ثلاثاً —
-        فلا تُعرض إلا حين يفترق ما حُدِّد عمّا سيقع. والتحذير الطويل الذي
-        كان يُعيد العدد ويعدّد ما يسقط صار سطراً واحداً، وما يسقط انتقل إلى
-        قائمة «سيُحذف معه» حيث يُقرأ مفصَّلاً.
+        الحذف والرفض على المحدَّد نافذةٌ واحدة بخطوتين: مراجعة ما سيقع عليه
+        الإجراء وما يُستثنى، ثمّ التأكيد. وتُركَّب عند الفتح فقط، فتبدأ نظيفة.
       */}
-      <DangerConfirm
-        open={confirmDeleteOpen}
-        onClose={() => setConfirmDeleteOpen(false)}
-        onConfirm={bulkDelete}
-        loading={bulkBusy}
-        title={t("admin.deleteTopicsTitle")}
-        name={t("admin.topicsSelectedForDelete", { count: deletable.length })}
-        facts={
-          excludedTopics.length > 0
-            ? [
-                {
-                  icon: Trash2,
-                  label: t("admin.willBeDeleted"),
-                  value: deletable.length,
-                  dir: "ltr",
-                },
-                {
-                  icon: Ban,
-                  label: t("admin.excludedByServer"),
-                  value: excludedTopics.length,
-                  dir: "ltr",
-                },
-              ]
-            : []
-        }
-        block={
-          deletable.length === 0
-            ? {
-                message: t("admin.blockNothingDeletable"),
-                hint: t("admin.blockNothingDeletableHint"),
-              }
-            : null
-        }
-        impacts={[
-          {
-            icon: Inbox,
-            label: t("admin.impactTopicRequests"),
-            value: deletableRequests,
-            heavy: deletableRequests > 0,
-          },
-          { icon: FileText, label: t("admin.impactTopicApplications") },
-        ]}
-        warning={t("admin.irreversibleWarning")}
-        confirmLabel={t("admin.confirmDelete")}
-        cancelLabel={t("admin.cancel")}
-      >
-        {deletable.length > 0 && (
-          <ol className="max-h-44 divide-y divide-forest/8 overflow-y-auto rounded-xl border border-forest/10 bg-cream-2/60">
-            {deletable.map((tp: any, i: number) => (
-              <li
-                key={tp.id}
-                className="flex items-center gap-2.5 px-3 py-2 text-[13px] text-forest"
-              >
-                <span
-                  dir="ltr"
-                  className="grid size-5 shrink-0 place-items-center rounded-full bg-forest/8 text-[10px] font-bold text-clay"
-                >
-                  {i + 1}
-                </span>
-                <span className="min-w-0 truncate">{tp.title}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-
-        {/* المستثنى وسببه — معلومةٌ لا غنى عنها: هي الفرق بين ما حُدِّد وما يقع. */}
-        {excludedTopics.length > 0 && (
-          <ul className="mt-2 max-h-32 space-y-1.5 overflow-y-auto rounded-xl border border-brick/20 bg-brick/8 p-2">
-            {excludedTopics.map((tp: any) => (
-              <li key={tp.id} className="px-1 py-0.5 text-[12px]">
-                <span className="flex items-center gap-2 text-brick">
-                  <Ban size={12} className="shrink-0" />
-                  <span className="min-w-0 truncate font-medium">
-                    {tp.title}
-                  </span>
-                </span>
-                {blockReason(tp, "delete", t) && (
-                  <span className="mt-0.5 block pe-5 text-[11px] leading-relaxed text-clay">
-                    {blockReason(tp, "delete", t)}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </DangerConfirm>
+      {bulkDialog && (
+        <BulkTopicsDialog
+          mode={bulkDialog}
+          topics={selectedTopics}
+          busy={bulkBusy}
+          progress={bulkProgress}
+          onClose={() => setBulkDialog(null)}
+          onConfirm={(reason) =>
+            bulkDialog === "delete" ? bulkDelete() : bulkReject(reason)
+          }
+        />
+      )}
 
       {scanOpen && <ScanDialog onClose={() => setScanOpen(false)} />}
+      {typesOpen && <TopicTypesDialog departmentId={departmentId || undefined} onClose={() => setTypesOpen(false)} />}
       {titlesOpen && (
         <TopicTitlesDialog
           scope={{
@@ -1007,9 +1026,44 @@ export function AdminTopicsPage() {
             departmentId: departmentId || undefined,
             filiereId: filiereId || undefined,
             specializationId: specializationId || undefined,
+            level: level || undefined,
           }}
           years={years ?? []}
           onClose={() => setTitlesOpen(false)}
+        />
+      )}
+
+      {exportOpen && (
+        <TopicExportDialog
+          scope={{
+            search: debouncedSearch || undefined,
+            status: status || undefined,
+            professorId: professorId || undefined,
+            academicYearId: academicYearId || undefined,
+            facultyId: facultyId || undefined,
+            departmentId: departmentId || undefined,
+            filiereId: filiereId || undefined,
+            specializationId: specializationId || undefined,
+            level: level || undefined,
+          }}
+          chips={
+            [
+              facultyById.get(facultyId)?.name,
+              deptOptions.find((d) => d.id === departmentId)?.name,
+              filiereOptions.find((f) => f.id === filiereId)?.name,
+              level ? t(SPEC_LEVEL_KEY[level]) : undefined,
+              specList.find((s) => s.id === specializationId)?.name,
+              status ? t(`status.${status}`) : undefined,
+              (() => {
+                const p = professors.find((x: any) => x.id === professorId);
+                return p ? personName(p.user) || p.universityEmail : undefined;
+              })(),
+              debouncedSearch ? t("admin.topicExport.searchChip", { q: debouncedSearch }) : undefined,
+            ].filter(Boolean) as string[]
+          }
+          count={data?.total}
+          yearTitle={(years ?? []).find((y) => y.id === academicYearId)?.title}
+          onClose={() => setExportOpen(false)}
         />
       )}
 

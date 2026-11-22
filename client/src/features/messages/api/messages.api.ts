@@ -22,6 +22,14 @@ export interface MessageRecipientEntry {
   user: MessageUserLite;
 }
 
+/** A file sent with a message — opened through the API only (Backend modules/messages/attachments). */
+export interface MessageAttachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+}
+
 /** One message as the current user may see it (see `shapeMany` server-side). */
 export interface ThreadMessage {
   id: string;
@@ -32,6 +40,8 @@ export interface ThreadMessage {
   threadId: string | null;
   replyToId: string | null;
   createdAt: string;
+  /** Its sender changed its text after sending. */
+  editedAt?: string | null;
   sender: MessageUserLite;
   /** I wrote it. */
   mine: boolean;
@@ -42,6 +52,7 @@ export interface ThreadMessage {
   readCount?: number;
   /** Mine: everyone with read times. Received direct: the other recipients. */
   recipients?: MessageRecipientEntry[];
+  attachments?: MessageAttachment[];
   /** Client-only: an optimistic reply still on its way, or one that failed. */
   pending?: "sending" | "failed";
 }
@@ -67,7 +78,9 @@ export interface InboxItem {
     threadId: string | null;
     replyToId: string | null;
     createdAt: string;
+    editedAt?: string | null;
     sender: MessageUserLite;
+    attachments?: MessageAttachment[];
   };
 }
 
@@ -83,6 +96,7 @@ export interface SentItem {
   recipients: MessageRecipientEntry[];
   _count: { recipients: number };
   readCount: number;
+  attachments?: MessageAttachment[];
 }
 
 /** Kept for older imports. */
@@ -133,6 +147,8 @@ export interface SendMessageInput {
   recipientIds: string[];
   subject?: string;
   body: string;
+  /** Drafts uploaded first with `uploadAttachment`. */
+  attachmentIds?: string[];
 }
 
 export interface AudienceInput {
@@ -149,6 +165,7 @@ export interface AudienceInput {
 export interface BroadcastInput extends AudienceInput {
   subject?: string;
   body: string;
+  attachmentIds?: string[];
 }
 
 /* ── chats ─────────────────────────────────────────────────── */
@@ -169,6 +186,8 @@ export interface Conversation {
     id: string;
     subject: string | null;
     preview: string;
+    /** The first file of a message — named when it has no text. */
+    file?: { fileName: string; mimeType: string; count: number } | null;
     broadcast: string | null;
     createdAt: string;
     mine: boolean;
@@ -189,6 +208,8 @@ export interface ChatMessage {
   /** Mine: when they read it. Theirs: when I did. */
   readAt: string | null;
   recipientsCount: number;
+  editedAt?: string | null;
+  attachments?: MessageAttachment[];
   /** Client-only, for a message still on its way or one that failed. */
   pending?: "sending" | "failed";
 }
@@ -233,7 +254,7 @@ export const messagesApi = {
   sendMessage: (data: SendMessageInput) =>
     client.post<{ message: ThreadMessage }>(`${BASE}`, data).then((r) => r.data.message),
 
-  reply: (id: string, data: { body: string; all?: boolean }) =>
+  reply: (id: string, data: { body: string; all?: boolean; attachmentIds?: string[] }) =>
     client.post<{ message: ThreadMessage }>(`${BASE}/${id}/reply`, data).then((r) => r.data.message),
 
   broadcast: (data: BroadcastInput) =>
@@ -259,4 +280,32 @@ export const messagesApi = {
 
   /** Removes it from my inbox only; the sender's copy stays. */
   deleteFromInbox: (id: string) => client.delete(`${BASE}/${id}`).then((r) => r.data),
+
+  /** New text for a message I sent, within a few minutes of sending it. */
+  editMessage: (id: string, body: string) =>
+    client.patch<{ message: ThreadMessage }>(`${BASE}/${id}`, { body }).then((r) => r.data.message),
+
+  /** The administration deletes a message it sent, for everyone, without a trace. */
+  deleteForEveryone: (id: string) => client.delete(`${BASE}/${id}/for-everyone`).then((r) => r.data),
+
+  /** One file, kept as a draft of mine until a message carries it. */
+  uploadAttachment: (file: File, opts: { onProgress?: (fraction: number) => void; signal?: AbortSignal } = {}) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return client
+      .post<{ attachment: MessageAttachment }>(`${BASE}/attachments`, fd, {
+        signal: opts.signal,
+        onUploadProgress: (e) => e.total && opts.onProgress?.(e.loaded / e.total),
+      })
+      .then((r) => r.data.attachment);
+  },
+
+  /** A draft taken back before sending. */
+  deleteAttachment: (id: string) => client.delete(`${BASE}/attachments/${id}`).then((r) => r.data),
+
+  /** The file itself — private, so fetched with the session, never by a plain link. */
+  attachmentBlob: (id: string, inline = false) =>
+    client
+      .get<Blob>(`${BASE}/attachments/${id}`, { params: inline ? { inline: 1 } : undefined, responseType: "blob" })
+      .then((r) => r.data),
 };

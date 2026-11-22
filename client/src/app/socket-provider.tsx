@@ -1,7 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { toast } from "sonner";
+import { t } from "i18next";
 import { useAuthStore } from "../store/auth.store";
 import { createSocket } from "../lib/socket/socket";
-import { ensureAccessToken } from "../lib/api/client";
+import {
+  ensureAccessToken,
+  refreshAccessToken,
+  SESSION_EXPIRED_EVENT,
+  type SessionEndReason,
+} from "../lib/api/client";
 import { SocketContext } from "./socket-context";
 
 export function SocketProvider({ children }: { children: ReactNode }) {
@@ -17,6 +24,42 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isAuthenticated && !hasToken) void ensureAccessToken();
   }, [isAuthenticated, hasToken]);
+
+  // Signed out from elsewhere. The server says so on the socket the instant it
+  // happens, so this page ends its session now rather than at its next
+  // request — which, on an idle screen, could be many minutes away.
+  useEffect(() => {
+    const onRevoked = () => {
+      if (!useAuthStore.getState().isAuthenticated) return; // our own sign-out
+      useAuthStore.getState().logout();
+      // Signing out sends the page straight to the login screen, taking the
+      // session dialog with it; the toaster lives above the routes and stays.
+      toast.warning(t("session.titleRevoked"), {
+        description: t("session.descRevoked"),
+        duration: 12_000,
+      });
+      window.dispatchEvent(
+        new CustomEvent<SessionEndReason>(SESSION_EXPIRED_EVENT, { detail: "revoked" }),
+      );
+    };
+    // The server cut the line without a word (the notice can be lost with the
+    // connection). Ask it: a refused refresh ends the session through the
+    // usual path; an accepted one means the line can simply come back.
+    const onDisconnect = (why: string) => {
+      if (why !== "io server disconnect") return;
+      if (!useAuthStore.getState().isAuthenticated) return;
+      refreshAccessToken().then(
+        () => socket.connect(),
+        () => undefined,
+      );
+    };
+    socket.on("session:revoked", onRevoked);
+    socket.on("disconnect", onDisconnect);
+    return () => {
+      socket.off("session:revoked", onRevoked);
+      socket.off("disconnect", onDisconnect);
+    };
+  }, [socket]);
 
   useEffect(() => {
     if (!isAuthenticated || !user || !hasToken) return;

@@ -80,7 +80,7 @@ export function MessagesPage() {
       <section className="forest-glow relative mb-4 overflow-hidden rounded-3xl px-5 py-4 text-cream shadow-[0_14px_40px_-20px_rgba(22,36,31,0.6)] lg:px-6">
         <div className="dot-matrix pointer-events-none absolute inset-0 opacity-50" />
         <div className="relative flex flex-wrap items-center gap-4">
-          <span className="grid size-12 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft">
+          <span className="hidden size-12 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft sm:grid">
             <Mail size={22} />
           </span>
           <div className="min-w-0 flex-1">

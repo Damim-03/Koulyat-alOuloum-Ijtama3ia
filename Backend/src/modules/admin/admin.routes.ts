@@ -57,9 +57,23 @@ import {
   updateAcademicYearController,
   activateAcademicYearController,
   deleteAcademicYearController,
+  proposalWindowController,
+  setProposalWindowController,
+  clearProposalWindowController,
+  selectionWindowController,
+  setSelectionWindowController,
+  clearSelectionWindowController,
+  teamSizeController,
+  teamSizePreviewController,
+  setTeamSizeController,
+  clearTeamSizeController,
+  topicQuotaController,
+  setTopicQuotaController,
+  clearTopicQuotaController,
   // topics
   listTopicsController,
   topicTitlesListController,
+  exportTopicsController,
   getTopicController,
   approveTopicController,
   rejectTopicController,
@@ -69,6 +83,7 @@ import {
   deleteTopicController,
   unarchiveTopicController,
   listGroupRequestsController,
+  listGroupRequestsByTopicController,
   getGroupRequestController,
   acceptGroupRequestController,
   rejectGroupRequestController,
@@ -120,7 +135,50 @@ import {
   cardImageUpload,
   xlsxFileUpload,
 } from "../../core/middleware/upload.middleware";
-import { writeLimiter } from "../../core/middleware/rateLimit.middleware";
+import { mailTestLimiter, writeLimiter } from "../../core/middleware/rateLimit.middleware";
+import { auditBefore, auditWrites } from "../../core/audit/audit";
+import {
+  auditSummaryController,
+  listAuditActorsController,
+  listAuditCountriesController,
+  listAuditLogsController,
+} from "./audit-log";
+import {
+  listTopicTypesController,
+  createTopicTypeController,
+  updateTopicTypeController,
+  deleteTopicTypeController,
+} from "./topic-types";
+import { previewTopicsExportController } from "./topic-export.preview";
+import {
+  getSupervisionSheetController,
+  resetSupervisionSheetController,
+  saveSupervisionSheetController,
+} from "../site/supervision-sheet";
+import {
+  getMailTemplatesController,
+  previewMailTemplateController,
+  saveMailTemplatesController,
+  testMailTemplateController,
+} from "../site/mail-templates";
+import {
+  deskLookupController,
+  deskProfileController,
+  deskSettingsController,
+  deskStudentsController,
+} from "./activation-desk";
+import {
+  activationPhotoController,
+  approveActivationRequestController,
+  listActivationRequestsController,
+  rejectActivationRequestController,
+} from "../activation/activation-request";
+import {
+  approvePasswordRequestController,
+  listPasswordRequestsController,
+  passwordRequestPhotoController,
+  rejectPasswordRequestController,
+} from "../password-request/password-request";
 import {
   listHomeSlidesController,
   createHomeSlideController,
@@ -138,6 +196,8 @@ import {
   saveAboutPageController,
   getLoginPageController,
   saveLoginPageController,
+  getSiteTextsController,
+  saveSiteTextsController,
 } from "../site/site.controller";
 import {
   studentImportController,
@@ -150,6 +210,16 @@ import {
   professorImportPreviewController,
   professorImportTemplateController,
 } from "./professor-import/controller";
+import {
+  topicImportController,
+  topicImportPreviewController,
+  topicImportTemplateController,
+} from "./topic-import/controller";
+import {
+  assignedTopicImportController,
+  assignedTopicImportPreviewController,
+  assignedTopicImportTemplateController,
+} from "./assigned-topic-import/controller";
 
 const adminRoutes = Router();
 
@@ -160,6 +230,38 @@ const adminRoutes = Router();
 // للحارس العامّ يُوهم بمستوىً ثانٍ لا وجود له.
 adminRoutes.use(authMiddleware);
 adminRoutes.use(adminOnly());
+// Every change made here is written to the audit log (core/audit), with the
+// item it was made to read before the change and after it.
+adminRoutes.use(auditWrites);
+adminRoutes.param("id", auditBefore);
+
+//
+// ─── AUDIT LOG (read-only) ────────────────────────────────────
+//
+adminRoutes.get("/audit-logs", listAuditLogsController);
+// What the log's filters offer: who appears in it, from which countries, and the last day.
+adminRoutes.get("/audit-logs/actors", listAuditActorsController);
+adminRoutes.get("/audit-logs/summary", auditSummaryController);
+adminRoutes.get("/audit-logs/countries", listAuditCountriesController);
+
+//
+// ─── ACTIVATION (./activation-desk) ───────────────────────────
+//
+adminRoutes.get("/activation/settings", deskSettingsController);
+adminRoutes.get("/activation/student", deskLookupController);
+adminRoutes.get("/activation/students", deskStudentsController);
+adminRoutes.get("/activation/students/:id", deskProfileController);
+// The requests to review (../activation/activation-request): photos and a password.
+adminRoutes.get("/activation/requests", listActivationRequestsController);
+adminRoutes.get("/activation/requests/:id/card", activationPhotoController("card"));
+adminRoutes.get("/activation/requests/:id/selfie", activationPhotoController("selfie"));
+adminRoutes.post("/activation/requests/:id/approve", approveActivationRequestController);
+adminRoutes.post("/activation/requests/:id/reject", rejectActivationRequestController);
+// «نسيت كلمة المرور» لطالبٍ بلا بريد (../password-request): البطاقة، ثمّ كلمة مرورٍ يكتبها المسؤول — أو الرفض.
+adminRoutes.get("/password-requests", listPasswordRequestsController);
+adminRoutes.get("/password-requests/:id/card", passwordRequestPhotoController);
+adminRoutes.post("/password-requests/:id/approve", approvePasswordRequestController);
+adminRoutes.post("/password-requests/:id/reject", rejectPasswordRequestController);
 
 //
 // ─── STATS ────────────────────────────────────────────────────
@@ -228,6 +330,7 @@ adminRoutes.delete("/students/:id", deleteStudentController);
 
 adminRoutes.post(
   "/uploads/image",
+  writeLimiter,
   cardImageUpload,
   uploadImageController,
 );
@@ -283,6 +386,11 @@ adminRoutes.get("/departments", listDepartmentsController);
 adminRoutes.post("/departments", createDepartmentController);
 adminRoutes.patch("/departments/:id", updateDepartmentController);
 adminRoutes.delete("/departments/:id", deleteDepartmentController);
+// أنواع مواضيع القسم (محاورها): رمزٌ ولونٌ لكلٍّ منها في قائمة المواضيع.
+adminRoutes.get("/topic-types", listTopicTypesController);
+adminRoutes.post("/topic-types", createTopicTypeController);
+adminRoutes.patch("/topic-types/:id", updateTopicTypeController);
+adminRoutes.delete("/topic-types/:id", deleteTopicTypeController);
 
 //
 // ─── DOMAINS ──────────────────────────────────────────────────
@@ -319,6 +427,23 @@ adminRoutes.patch(
   activateAcademicYearController,
 );
 adminRoutes.delete("/academic-years/:id", deleteAcademicYearController);
+// فترة اقتراح المواضيع: لكلّ سنةٍ فترةٌ واحدة لكلّ الأساتذة.
+adminRoutes.get("/academic-years/:id/proposal-window", proposalWindowController);
+adminRoutes.put("/academic-years/:id/proposal-window", setProposalWindowController);
+adminRoutes.delete("/academic-years/:id/proposal-window", clearProposalWindowController);
+// ومهلة اختيار المواضيع: لكلّ سنةٍ مهلةٌ واحدة لكلّ طلبتها.
+adminRoutes.get("/academic-years/:id/selection-window", selectionWindowController);
+adminRoutes.put("/academic-years/:id/selection-window", setSelectionWindowController);
+adminRoutes.delete("/academic-years/:id/selection-window", clearSelectionWindowController);
+// The number of students in every topic of the year — and what it would do to them, before it is saved.
+adminRoutes.get("/academic-years/:id/team-size", teamSizeController);
+adminRoutes.get("/academic-years/:id/team-size/preview", teamSizePreviewController);
+adminRoutes.put("/academic-years/:id/team-size", setTeamSizeController);
+adminRoutes.delete("/academic-years/:id/team-size", clearTeamSizeController);
+// The most topics a professor sends for the year — and how the professors stand to it.
+adminRoutes.get("/academic-years/:id/topic-quota", topicQuotaController);
+adminRoutes.put("/academic-years/:id/topic-quota", setTopicQuotaController);
+adminRoutes.delete("/academic-years/:id/topic-quota", clearTopicQuotaController);
 
 //
 // ─── THE ARCHIVE ──────────────────────────────────────────────
@@ -333,10 +458,41 @@ adminRoutes.post("/archive/years/:id/reopen", writeLimiter, reopenYearController
 // ─── TOPICS ───────────────────────────────────────────────────
 //
 adminRoutes.get("/topics", listTopicsController);
-// Before `/topics/:id`, or "titles-list" would be read as an id.
+// Before `/topics/:id`, or "titles-list" and "export" would be read as ids.
 adminRoutes.get("/topics/titles-list", topicTitlesListController);
+adminRoutes.get("/topics/export", exportTopicsController);
+// The file before it is downloaded: its first rows, as it will draw them.
+adminRoutes.get("/topics/export/preview", previewTopicsExportController);
 adminRoutes.post("/topics", createTopicController);
+// الاستيراد قبل `/topics/:id`: وإلّا قُرئت «import» معرّفَ موضوع.
+adminRoutes.get("/topics/import/template", topicImportTemplateController);
+adminRoutes.post(
+  "/topics/import/preview",
+  writeLimiter,
+  xlsxFileUpload,
+  topicImportPreviewController,
+);
+adminRoutes.post(
+  "/topics/import",
+  writeLimiter,
+  xlsxFileUpload,
+  topicImportController,
+);
 adminRoutes.post("/topics/assigned", createAssignedTopicController);
+// المواضيع المُسنَدة من Excel — استيرادٌ مستقلّ بنموذجه، قبل `/topics/:id`.
+adminRoutes.get("/topics/assigned/import/template", assignedTopicImportTemplateController);
+adminRoutes.post(
+  "/topics/assigned/import/preview",
+  writeLimiter,
+  xlsxFileUpload,
+  assignedTopicImportPreviewController,
+);
+adminRoutes.post(
+  "/topics/assigned/import",
+  writeLimiter,
+  xlsxFileUpload,
+  assignedTopicImportController,
+);
 adminRoutes.patch("/topics/:id/assignment", updateAssignedTopicController);
 adminRoutes.patch("/topics/:id/unarchive", unarchiveTopicController);
 adminRoutes.delete("/topics/:id", deleteTopicController);
@@ -353,6 +509,8 @@ adminRoutes.patch("/topics/:id/unpublish", unpublishTopicController);
 
 // group requests (team submissions — admin decides)
 adminRoutes.get("/group-requests", listGroupRequestsController);
+// The same requests under their topics. Before `/:id`, which would take it.
+adminRoutes.get("/group-requests/by-topic", listGroupRequestsByTopicController);
 adminRoutes.get("/group-requests/:id", getGroupRequestController);
 adminRoutes.patch("/group-requests/:id/accept", acceptGroupRequestController);
 adminRoutes.patch("/group-requests/:id/reject", rejectGroupRequestController);
@@ -439,5 +597,23 @@ adminRoutes.put("/about-page", saveAboutPageController);
 // لوحة الترحيب في صفحة الدخول — نصوصها؛ وخلفيتها من `/home-slides?placement=login`.
 adminRoutes.get("/login-page", getLoginPageController);
 adminRoutes.put("/login-page", saveLoginPageController);
+
+// ورقة «طلب الموافقة على الإشراف» — نصوصها وشعاراها؛ وكلّ وثيقةٍ تصدر تحمل
+// ما كانت عليه يومها (modules/site/supervision-sheet).
+adminRoutes.get("/supervision-sheet", getSupervisionSheetController);
+adminRoutes.put("/supervision-sheet", saveSupervisionSheetController);
+adminRoutes.delete("/supervision-sheet", resetSupervisionSheetController);
+
+// نصوص الموقع — عباراتٌ تحلّ محلّ نصوص الواجهة بمفاتيحها، لكلّ لغة:
+// الصفحة الرئيسية والقوائم والتذييل والقوائم الجانبية.
+adminRoutes.get("/site-texts", getSiteTextsController);
+adminRoutes.put("/site-texts", saveSiteTextsController);
+
+// رسائل البريد — نصوصها بكلّ لغة، ولونا الرأس والزرّ، والختم (modules/site/mail-templates):
+// المعاينة تُرسم ممّا يُكتب ولا تُحفظ، والتجربة تذهب إلى بريد المسؤول المؤكَّد وحده.
+adminRoutes.get("/mail-templates", getMailTemplatesController);
+adminRoutes.put("/mail-templates", saveMailTemplatesController);
+adminRoutes.post("/mail-templates/preview", previewMailTemplateController);
+adminRoutes.post("/mail-templates/test", mailTestLimiter, testMailTemplateController);
 
 export default adminRoutes;

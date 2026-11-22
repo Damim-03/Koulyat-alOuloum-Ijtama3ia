@@ -2,7 +2,22 @@ import { Request, Response, NextFunction } from "express";
 import { HTTPSTATUS } from "../../core/config/http/http.config";
 import { verifyUploadedImage } from "../../core/middleware/upload.middleware";
 import { exportStudentsService } from "./student-export.service";
-import { exportStudentsSchema, type ExportStudentsDTO } from "./admin.validation";
+import { exportTopicsService } from "./topic-export.service";
+import * as proposals from "./proposal-window.service";
+import * as selection from "./selection-window.service";
+import * as teamSize from "./team-size.service";
+import * as topicQuota from "./topic-quota.service";
+import {
+  exportStudentsSchema,
+  exportTopicsSchema,
+  proposalWindowSchema,
+  teamSizePreviewSchema,
+  teamSizeSchema,
+  topicQuotaSchema,
+  type ExportStudentsDTO,
+  type ExportTopicsDTO,
+  type ProposalWindowDTO,
+} from "./admin.validation";
 import { BadRequestException } from "../../core/utils/appErros";
 import { ErrorCodeEnum } from "../../core/enums/error-code.enum";
 import {
@@ -33,6 +48,7 @@ import {
   listTopicsSchema,
   topicTitlesListSchema,
   rejectTopicSchema,
+  rejectGroupRequestSchema,
   changeSupervisorSchema,
   assignStudentSchema,
   createDefenseSchema,
@@ -71,6 +87,7 @@ import {
   markNotificationReadService,
   markAllNotificationsReadService,
 } from "../notification/notification.service";
+import { issuesMessage, tr } from "../../core/i18n";
 
 // Small helper: validate body and throw a uniform error on failure.
 function parseBody<T>(
@@ -79,11 +96,8 @@ function parseBody<T>(
 ) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i: any) => `${i.path.join(".") || "(root)"}: ${i.message}`)
-      .join(" | ");
     throw new BadRequestException(
-      `Validation error → ${issues}`,
+      issuesMessage(parsed.error.issues),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
@@ -194,6 +208,7 @@ export const updateUserStatusController = async (
     const user = await svc.updateUserStatusService(
       req.params.id as string,
       data as never,
+      req.user!.userId,
     );
     return res.status(HTTPSTATUS.OK).json({ message: "Status updated", user });
   } catch (e) {
@@ -243,7 +258,7 @@ export const deleteUserController = async (
   next: NextFunction,
 ) => {
   try {
-    const result = await svc.deleteUserService(req.params.id as string);
+    const result = await svc.deleteUserService(req.params.id as string, req.user!.userId);
     return res.status(HTTPSTATUS.OK).json(result);
   } catch (e) {
     next(e);
@@ -336,7 +351,7 @@ export const deleteStudentController = async (
 export const uploadImageController = (req: Request, res: Response) => {
   if (!req.file)
     throw new BadRequestException(
-      "لم يُرفَع أي ملفّ",
+      tr("upload.none"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
 
@@ -344,7 +359,7 @@ export const uploadImageController = (req: Request, res: Response) => {
   // that was claimed before we hand out a URL for it. Deletes on mismatch.
   if (!verifyUploadedImage(req.file.path)) {
     throw new BadRequestException(
-      "الملفّ ليس صورة صالحة",
+      tr("upload.notImage"),
       ErrorCodeEnum.VALIDATION_ERROR,
     );
   }
@@ -904,6 +919,138 @@ export const updateAcademicYearController = async (
   }
 };
 
+/** فترة اقتراح المواضيع لسنةٍ جامعية، وحالها، ومن اقترح من الأساتذة. */
+export const proposalWindowController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    return res
+      .status(HTTPSTATUS.OK)
+      .json(await proposals.proposalWindowService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const setProposalWindowController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = parseBody<ProposalWindowDTO>(proposalWindowSchema, req.body);
+    return res
+      .status(HTTPSTATUS.OK)
+      .json(await proposals.setProposalWindowService(req.params.id as string, data));
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const clearProposalWindowController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    return res
+      .status(HTTPSTATUS.OK)
+      .json(await proposals.clearProposalWindowService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** مهلة اختيار المواضيع لسنةٍ جامعية، وحالها، ومن طلب من الطلبة. */
+export const selectionWindowController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    return res.status(HTTPSTATUS.OK).json(await selection.selectionWindowService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const setSelectionWindowController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = parseBody<ProposalWindowDTO>(proposalWindowSchema, req.body);
+    return res.status(HTTPSTATUS.OK).json(await selection.setSelectionWindowService(req.params.id as string, data));
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const clearSelectionWindowController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    return res.status(HTTPSTATUS.OK).json(await selection.clearSelectionWindowService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
+// ── عدد الطلبة في كلّ موضوع ──
+export const teamSizeController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    return res.status(HTTPSTATUS.OK).json(await teamSize.teamSizeService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const teamSizePreviewController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const query = parseBody<Record<string, { n: number; mode: "exact" | "max" } | undefined>>(teamSizePreviewSchema, req.query);
+    const rules = Object.fromEntries(Object.entries(query).filter(([, r]) => r));
+    return res.status(HTTPSTATUS.OK).json(await teamSize.teamSizeImpact(req.params.id as string, rules));
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const setTeamSizeController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = parseBody<Parameters<typeof teamSize.setTeamSizeService>[1]>(teamSizeSchema, req.body);
+    return res.status(HTTPSTATUS.OK).json(await teamSize.setTeamSizeService(req.params.id as string, data));
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const clearTeamSizeController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    return res.status(HTTPSTATUS.OK).json(await teamSize.clearTeamSizeService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
+// ── حدّ المواضيع لكلّ أستاذ ──
+export const topicQuotaController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    return res.status(HTTPSTATUS.OK).json(await topicQuota.topicQuotaService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const setTopicQuotaController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = parseBody<{ max: number }>(topicQuotaSchema, req.body);
+    return res.status(HTTPSTATUS.OK).json(await topicQuota.setTopicQuotaService(req.params.id as string, data));
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const clearTopicQuotaController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    return res.status(HTTPSTATUS.OK).json(await topicQuota.clearTopicQuotaService(req.params.id as string));
+  } catch (e) {
+    next(e);
+  }
+};
+
 export const activateAcademicYearController = async (
   req: Request,
   res: Response,
@@ -1040,6 +1187,27 @@ export const topicTitlesListController = async (
     const q = parseBody(topicTitlesListSchema, req.query);
     const data = await svc.topicTitlesListService(q as never);
     return res.status(HTTPSTATUS.OK).json(data);
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** المواضيع بفلاتر صفحتها — ملفّ Excel، بطلبتها أو بدونهم. */
+export const exportTopicsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const q = parseBody<ExportTopicsDTO>(exportTopicsSchema, req.query);
+    const buf = await exportTopicsService(q);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", 'attachment; filename="topics.xlsx"');
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(HTTPSTATUS.OK).send(buf);
   } catch (e) {
     next(e);
   }
@@ -1467,6 +1635,20 @@ export const listGroupRequestsController = async (
   }
 };
 
+export const listGroupRequestsByTopicController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const q = parseBody(listQuerySchema, req.query);
+    const data = await svc.listGroupRequestsByTopicService(q as never);
+    return res.status(HTTPSTATUS.OK).json(data);
+  } catch (e) {
+    next(e);
+  }
+};
+
 export const getGroupRequestController = async (
   req: Request,
   res: Response,
@@ -1505,9 +1687,10 @@ export const rejectGroupRequestController = async (
   next: NextFunction,
 ) => {
   try {
+    const { reason } = parseBody<{ reason?: string }>(rejectGroupRequestSchema, req.body ?? {});
     const groupRequest = await svc.rejectGroupRequestService(
       req.params.id as string,
-      (req.body?.reason as string) ?? undefined,
+      reason || undefined,
     );
     return res
       .status(HTTPSTATUS.OK)
@@ -1538,18 +1721,8 @@ export const deleteGroupRequestController = async (
 // ─── NOTIFICATIONS (admin's own bell) ─────────────────────────
 //
 
-// عدِّل هذا إن كان وسيط المصادقة يخزّن المستخدم بمفتاح مختلف
-// (مثل req.userId أو req.user.userId).
-const getAuthUserId = (req: Request): string => {
-  const id =
-    (req as any).user?.id ?? (req as any).user?.userId ?? (req as any).userId;
-  if (!id)
-    throw new BadRequestException(
-      "Authenticated user not found",
-      ErrorCodeEnum.VALIDATION_ERROR,
-    );
-  return id as string;
-};
+// authMiddleware يضع `req.user` على كلّ مسارات الإدارة، كما يقرؤه سائر الملف.
+const getAuthUserId = (req: Request): string => req.user!.userId;
 
 export const listMyNotificationsController = async (
   req: Request,

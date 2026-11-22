@@ -4,6 +4,8 @@ import { ErrorCodeEnum, ErrorCodeEnumType } from "../enums/error-code.enum";
 export class AppError extends Error {
   public statusCode: HttpStatusCodeType;
   public errorCode?: ErrorCodeEnumType;
+  /** حقولٌ تُضاف إلى الردّ كما هي — لما تقرؤه الواجهة رقماً لا نصّاً. */
+  public extra?: Record<string, unknown>;
 
   constructor(
     message: string,

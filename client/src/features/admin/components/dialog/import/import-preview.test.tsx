@@ -135,6 +135,82 @@ describe("المعاينة", () => {
   });
 });
 
+describe("المعاينة: ملفٌّ لا يُقرأ، وملفٌّ كبير", () => {
+  it("أخطاء الملف نفسه ⇒ تُعرض وحدها، ولا جدول", () => {
+    render(<ImportPreview report={report([], { fileErrors: ["الورقة فارغة.", "لا صفّ عناوين."] })} profile={profile} />);
+    const box = within(screen.getByTestId("import-file-errors"));
+    expect(box.getByText("الورقة فارغة.")).toBeInTheDocument();
+    expect(box.getByText("لا صفّ عناوين.")).toBeInTheDocument();
+    expect(screen.queryByTestId("import-table")).not.toBeInTheDocument();
+  });
+
+  it("مئةٌ وعشرون صفّاً ⇒ خمسون في الصفحة، والتالي والسابق، ولوحة الصفّ تعبر الحدّ", async () => {
+    const user = userEvent.setup({ delay: null });
+    const rows = Array.from({ length: 120 }, (_, i) => row(i + 3));
+    render(<ImportPreview report={report(rows)} profile={profile} />);
+    const prev = screen.getByRole("button", { name: "admin.import.prev" });
+    const next = screen.getByRole("button", { name: "admin.import.next" });
+    expect(screen.getByText('admin.import.range:{"from":1,"to":50,"total":120}')).toBeInTheDocument();
+    expect(prev).toBeDisabled();
+    await user.click(next);
+    await user.click(next);
+    expect(screen.getByText('admin.import.range:{"from":101,"to":120,"total":120}')).toBeInTheDocument();
+    expect(next).toBeDisabled();
+    await user.click(prev);
+    await user.click(prev);
+
+    // آخر صفٍّ في الصفحة الأولى ⇒ «التالي» في لوحته يقلب الصفحة.
+    await user.click(screen.getByTestId("import-row-52"));
+    const panel = within(screen.getByTestId("import-row-panel"));
+    expect(panel.getByText("50 / 120")).toBeInTheDocument();
+    await user.click(panel.getByLabelText("admin.import.next"));
+    expect(screen.getByTestId("import-row-53")).toBeInTheDocument();
+    expect(screen.getByText('admin.import.range:{"from":51,"to":100,"total":120}')).toBeInTheDocument();
+    await user.click(within(screen.getByTestId("import-row-panel")).getByLabelText("admin.import.prev"));
+    expect(screen.getByTestId("import-row-52")).toBeInTheDocument();
+  }, 30_000);
+
+  it("بحثٌ بلا نتيجة ⇒ «لا تطابق» في الجدول؛ و«كلّ الأعمدة» تُلغي حصر العمود", async () => {
+    const user = userEvent.setup();
+    render(<ImportPreview report={mixed()} profile={profile} />);
+    await user.click(screen.getByTestId("import-filter-all"));
+    await user.click(screen.getByTestId("import-col-email"));
+    expect(screen.getByTestId("import-col-email")).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByText("admin.import.allColumns"));
+    expect(screen.getByTestId("import-col-email")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("import-row-3")).toBeInTheDocument();
+
+    await user.type(screen.getByTestId("import-search"), "لا أحد بهذا الاسم");
+    expect(within(screen.getByTestId("import-table")).getByText("admin.import.noMatch")).toBeInTheDocument();
+  });
+
+  it("بطاقات الأرقام فلاتر، والأقسام تُطوى، وEscape يغلق لوحة الصفّ، و«جارٍ الاستيراد» يقال", async () => {
+    const user = userEvent.setup();
+    render(<ImportPreview report={mixed()} profile={profile} importing />);
+    expect(screen.getByText("admin.import.importing")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("import-valid"));
+    expect(screen.getByTestId("import-row-3")).toBeInTheDocument();
+    expect(screen.queryByTestId("import-row-4")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("import-warned"));
+    expect(screen.getByTestId("import-row-5")).toBeInTheDocument();
+    expect(screen.queryByTestId("import-row-3")).not.toBeInTheDocument();
+
+    const toggle = within(screen.getByTestId("import-file-info")).getAllByRole("button")[0]!;
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    // Escape يصل اللوحة من زرٍّ فيها: «السابق» بعد العودة إلى الكلّ.
+    await user.click(screen.getByTestId("import-filter-all"));
+    await user.click(screen.getByTestId("import-row-5"));
+    await user.click(within(screen.getByTestId("import-row-panel")).getByLabelText("admin.import.prev"));
+    expect(screen.getByText('admin.import.rowTitle:{"n":4}')).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("import-row-panel")).not.toBeInTheDocument();
+  });
+});
+
 describe("حسابات المعاينة", () => {
   it("التصفية الأولى: الأخطاء، ثم التنبيهات، ثم الكلّ", () => {
     expect(initialFilter(mixed())).toBe("errors");

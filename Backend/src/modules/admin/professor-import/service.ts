@@ -1,4 +1,5 @@
 import { prisma } from "../../../core/prisma/client";
+import { tr } from "../../../core/i18n";
 import { config } from "../../../core/config/app.config";
 import { randomEmployeeNumber } from "../admin.service";
 import { PROFESSOR_COLUMNS, PROFESSOR_SPEC, type ProfessorKey } from "./columns";
@@ -111,8 +112,9 @@ export async function validateProfessorImport(
 /**
  * أرقامٌ وظيفية لمن لم يُكتب رقمه: فريدةٌ فيما بينها، وفيما كُتب في الملف،
  * وفي المنصّة — بنداءٍ واحد لكلّ جولة، لا بنداءٍ لكلّ رقم.
+ * (مُصدَّرة لاختبارها: التصادم لا يُصنع بمولّدٍ عشوائيٍّ حقيقيّ.)
  */
-async function freshEmployeeNumbers(count: number, reserved: Set<string>): Promise<string[]> {
+export async function freshEmployeeNumbers(count: number, reserved: Set<string>): Promise<string[]> {
   const out = new Set<string>();
   for (let round = 0; out.size < count && round < 10; round++) {
     const batch = new Set<string>();
@@ -127,7 +129,7 @@ async function freshEmployeeNumbers(count: number, reserved: Set<string>): Promi
     const used = new Set(taken.map((t) => t.employeeNumber));
     for (const n of batch) if (!used.has(n)) out.add(n);
   }
-  if (out.size < count) throw new Error("تعذّر توليد أرقامٍ وظيفية فريدة — أعد المحاولة.");
+  if (out.size < count) throw new Error(tr("imp.emp.generateFailed"));
   return [...out];
 }
 
@@ -136,8 +138,9 @@ export interface ImportedProfessor {
   universityEmail: string;
   firstName: string | null;
   lastName: string | null;
-  firstNameLatin: string | null;
-  lastNameLatin: string | null;
+  /** إلزاميّان: الصفّ الذي يُنشأ بلا خطأ فيه، فله الاثنان. */
+  firstNameLatin: string;
+  lastNameLatin: string;
   /** المولَّدة وحدها — ما كُتب في الملف عند المسؤول أصلاً. */
   password: string | null;
 }
@@ -181,6 +184,8 @@ export async function importProfessors(buffer: Buffer): Promise<ProfessorImportO
               gender: p.gender,
               isVerified: p.isVerified,
               password: hashes[i]!,
+              // Handed out with the import: replaced by its owner before use.
+              mustChangePassword: true,
               role: "professor",
             },
           },
@@ -195,8 +200,8 @@ export async function importProfessors(buffer: Buffer): Promise<ProfessorImportO
     universityEmail: p.universityEmail,
     firstName: p.firstName || null,
     lastName: p.lastName || null,
-    firstNameLatin: p.firstNameLatin ?? null,
-    lastNameLatin: p.lastNameLatin ?? null,
+    firstNameLatin: p.firstNameLatin!,
+    lastNameLatin: p.lastNameLatin!,
     password: p.password ? null : passwords[i]!,
   }));
   const file = await buildAccountsFile(

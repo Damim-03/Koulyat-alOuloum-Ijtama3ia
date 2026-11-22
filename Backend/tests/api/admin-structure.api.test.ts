@@ -20,6 +20,7 @@
 import request from "supertest";
 import app from "../../src/app";
 import { prisma } from "../../src/core/prisma/client";
+import { tr } from "../../src/core/i18n";
 import {
   seed,
   teardown,
@@ -277,13 +278,15 @@ describe("تعديل عناصر الشجرة", () => {
 //
 
 describe("لا يُحذف ما تحته شيء", () => {
+  // العدد بصيغة الفهرس نفسها («قسمٌ واحد»، «٦ طلاب»): ما يُحرَس أن الرسالة
+  // تقول كم بالضبط، لا أن رقماً ما ظهر فيها.
   it("كلّية عليها أقسام ⇒ 400، والرسالة تقول كم", async () => {
     const tree = await emptyTree();
 
     const res = await as(
       request(app).delete(`/api/admin/faculties/${tree.faculty.id}`),
     ).expect(400);
-    expect(res.body.message).toMatch(/\d+\s*قسم/);
+    expect(res.body.message).toContain(tr("count.departments", { count: 1 }));
 
     expect(
       await prisma.faculty.findUnique({ where: { id: tree.faculty.id } }),
@@ -295,7 +298,7 @@ describe("لا يُحذف ما تحته شيء", () => {
     const res = await as(
       request(app).delete(`/api/admin/departments/${tree.department.id}`),
     ).expect(400);
-    expect(res.body.message).toMatch(/\d+\s*شعبة/);
+    expect(res.body.message).toContain(tr("count.filieres", { count: 1 }));
   });
 
   it("وقسمٌ عليه ميدانٌ وأستاذ ⇒ الرسالة تجمع الأسباب لا تكتفي بأوّلها", async () => {
@@ -321,14 +324,15 @@ describe("لا يُحذف ما تحته شيء", () => {
     const res = await as(
       request(app).delete(`/api/admin/filieres/${tree.filiere.id}`),
     ).expect(400);
-    expect(res.body.message).toMatch(/\d+\s*تخصص/);
+    expect(res.body.message).toContain(tr("count.specializations", { count: 1 }));
   });
 
   it("وتخصّصٌ عليه طلبة ⇒ 400 مع ذكر الطلبة", async () => {
     const res = await as(
       request(app).delete(`/api/admin/specializations/${f.specialization.id}`),
     ).expect(400);
-    expect(res.body.message).toContain("طالب");
+    const count = await prisma.student.count({ where: { specializationId: f.specialization.id } });
+    expect(res.body.message).toContain(tr("count.students", { count }));
   });
 
   it("وتخصّصٌ عليه مواضيع ⇒ 400 مع ذكر المواضيع", async () => {
@@ -583,7 +587,8 @@ describe("السنوات الدراسية", () => {
     const res = await as(
       request(app).delete(`/api/admin/academic-years/${f.academicYear.id}`),
     ).expect(400);
-    expect(res.body.message).toContain("طالب");
+    const count = await prisma.student.count({ where: { academicYearId: f.academicYear.id } });
+    expect(res.body.message).toContain(tr("count.students", { count }));
   });
 
   it("وعنوانٌ مكرّر يُرفض بسببٍ مذكور", async () => {
@@ -958,5 +963,41 @@ describe("قوائم الشجرة", () => {
 
     expect(row!.filiere.id).toBe(t.filiere.id);
     expect(row!.filiere.department.id).toBe(t.department.id);
+  });
+});
+
+//
+// ═══ القوائم والتعديل ═══
+//
+
+describe("السنوات، وتعديل القسم والتخصّص والميدان", () => {
+  it("GET /academic-years يعدّ السنوات", async () => {
+    const y = await newYear();
+    const res = await as(request(app).get("/api/admin/academic-years")).expect(200);
+    expect(ids(res.body.academicYears)).toContain(y.id);
+  });
+
+  it("PATCH القسم والتخصّص والميدان ⇒ يُحفظ ما عُدّل", async () => {
+    const tree = await emptyTree();
+    const dep = await as(
+      request(app).patch(`/api/admin/departments/${tree.department.id}`).send({ name: `${TAG} قسمٌ معدَّل` }),
+    ).expect(200);
+    expect(dep.body.department.name).toBe(`${TAG} قسمٌ معدَّل`);
+
+    const spec = await as(
+      request(app).patch(`/api/admin/specializations/${tree.specialization.id}`).send({ level: "licence" }),
+    ).expect(200);
+    expect(spec.body.specialization.level).toBe("licence");
+
+    const domain = (
+      await as(
+        request(app).post("/api/admin/domains").send({ name: `${TAG} ميدان`, code: uniq(), departmentId: tree.department.id }),
+      ).expect(201)
+    ).body.domain;
+    const dm = await as(
+      request(app).patch(`/api/admin/domains/${domain.id}`).send({ name: `${TAG} ميدانٌ معدَّل` }),
+    ).expect(200);
+    expect(dm.body.domain.name).toBe(`${TAG} ميدانٌ معدَّل`);
+    await as(request(app).delete(`/api/admin/domains/${domain.id}`)).expect(200);
   });
 });

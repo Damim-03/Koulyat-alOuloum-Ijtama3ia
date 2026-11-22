@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Landmark, Type, Hash, Save } from "lucide-react";
+import { Landmark, Type, Hash, Save, Languages } from "lucide-react";
 import type { Department } from "../../../../../types/admin";
 import {
   useCreateDepartment,
@@ -33,6 +33,7 @@ export function DepartmentFormDialog({
   const { data: departments } = useDepartments();
 
   const [name, setName] = useState("");
+  const [nameLatin, setNameLatin] = useState("");
   const [code, setCode] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +44,7 @@ export function DepartmentFormDialog({
     if (open) {
       /* eslint-disable react-hooks/set-state-in-effect */
       setName(department?.name ?? "");
+      setNameLatin(department?.nameLatin ?? "");
       // الرمز يُصكّ عند الفتح لا عند أوّل حرفٍ من الاسم: هو ختمُ وقتٍ لا
       // يشتقّ من الاسم في شيء، فلا معنى لانتظاره — والحقل مقفل، فالفراغ
       // فيه يسأل المستعمل عمّا لا يملك جوابه.
@@ -71,6 +73,8 @@ export function DepartmentFormDialog({
 
     const payload = {
       name: trimmedName,
+      // Empty clears it (the server stores none).
+      nameLatin: nameLatin.trim(),
       code: trimmedCode,
       coverUrl,
       facultyId,
@@ -136,6 +140,17 @@ export function DepartmentFormDialog({
             onChange={(e) => setName(e.target.value)}
             className={inputClass}
             placeholder={t("admin.departmentName")}
+          />
+        </Field>
+
+        <Field label={t("nameLatin.label")} icon={Languages} note={t("admin.optional")} hint={t("nameLatin.hint")}>
+          <input
+            value={nameLatin}
+            onChange={(e) => setNameLatin(e.target.value)}
+            dir="ltr"
+            maxLength={191}
+            className={inputClass}
+            placeholder={t("nameLatin.departmentPlaceholder")}
           />
         </Field>
 

@@ -5,7 +5,7 @@
  * يُرى في شاشة — لا رسالة ولا خطأ — ويبقى ثغرةً صامتة: من أنشأ نفقاً باسمٍ
  * عشوائيّ صار أصلاً موثوقاً عند الخادم، يقرأ ردوداً تحمل اعتماداً.
  */
-import { isOriginAllowed } from "./origins";
+import { isOriginAllowed, isSecureContextOrigin, normalizeOrigin } from "./origins";
 
 const dev = { allowList: ["http://localhost:5173"], isProduction: false };
 const prod = { allowList: ["https://app.univ-eloued.dz"], isProduction: true };
@@ -71,5 +71,40 @@ describe("أنفاق التطوير", () => {
     expect(
       isOriginAllowed("https://abc-5173.uks1.devtunnels.ms/path", dev),
     ).toBe(false);
+  });
+});
+
+describe("normalizeOrigin", () => {
+  it.each([
+    ["https://memoires.univ-eloued.dz", "https://memoires.univ-eloued.dz"],
+    ["https://memoires.univ-eloued.dz/", "https://memoires.univ-eloued.dz"],
+    ["  https://memoires.univ-eloued.dz/ar/login ", "https://memoires.univ-eloued.dz"],
+    ["http://10.0.0.5:8080/", "http://10.0.0.5:8080"],
+    ["HTTPS://Memoires.Univ-Eloued.DZ", "https://memoires.univ-eloued.dz"],
+  ])("«%s» → «%s»", (input, expected) => {
+    expect(normalizeOrigin(input)).toBe(expected);
+  });
+
+  it.each(["memoires.univ-eloued.dz", "ftp://site.dz", "", "*"])("«%s» ليس أصلاً", (input) => {
+    expect(normalizeOrigin(input)).toBeNull();
+  });
+});
+
+describe("isSecureContextOrigin — أين يعمل تحقّق الدخول", () => {
+  it("HTTPS والجهاز نفسه ⇒ نعم", () => {
+    for (const o of [
+      "https://memoires.univ-eloued.dz",
+      "https://10.0.0.5",
+      "http://localhost:5173",
+      "http://app.localhost:5173",
+      "http://127.0.0.1:5173",
+      "http://[::1]:5173",
+    ])
+      expect(isSecureContextOrigin(o)).toBe(true);
+  });
+
+  it("HTTP على الشبكة، أو ما ليس عنواناً ⇒ لا", () => {
+    for (const o of ["http://10.0.0.5", "http://memoires.univ-eloued.dz", "http://localhost.evil.dz", "ftp://localhost", "nope"])
+      expect(isSecureContextOrigin(o)).toBe(false);
   });
 });

@@ -1,14 +1,36 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { CalendarRange, ClipboardList, FileText, Printer, RectangleHorizontal, RectangleVertical, Users, X, type LucideIcon } from "lucide-react";
+import {
+  CalendarRange,
+  Check,
+  ClipboardList,
+  Columns3,
+  FileText,
+  Languages,
+  Info,
+  Printer,
+  TriangleAlert,
+  Users,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import type { AcademicYear, TitlesListMode, TitlesListParams, TopicTitlesList } from "../../../../../types/admin";
 import { useTopicTitlesList } from "../../../hooks/admin-hook";
 import { Select } from "../../../../../components/ui/select";
 import { LoadingArea } from "../../../../../components/ui/loading-area";
 import { ErrorRetry } from "../../../../../components/ui/error-retry";
 import { TitlesListSheet } from "./titles-list-sheet";
-import { paperWidthPx, type Orientation } from "./titles-list-utils";
+import {
+  PAPER_WIDTH_PX,
+  SHEET_COLUMNS,
+  SHEET_TEXT,
+  columnsWithData,
+  latinGaps,
+  sheetHeading,
+  type SheetColumn,
+  type SheetLang,
+} from "./titles-list-utils";
 
 /**
  * قائمةُ عناوين المذكرات: معاينةٌ ثمّ طباعة.
@@ -17,7 +39,11 @@ import { paperWidthPx, type Orientation } from "./titles-list-utils";
  * أو **بعده** (المذكرات وطلبتها) — والسنةَ واتجاهَ الورقة، والنطاقُ نطاقُ
  * الفلاتر في الصفحة. والعددُ على كلّ خيارٍ قبل اختياره، فيُرى أيّهما فيه شيء.
  *
- * والطباعة طباعةُ الورقة وحدها: يُخفى كلّ ما في الصفحة سواها، كورقة الإشراف.
+ * والطباعة طباعةُ الورقة وحدها: يُخفى كلّ ما في الصفحة سواها، كورقة الإشراف،
+ * وفي أسفل كلّ صفحةٍ رقمُها من عددها.
+ *
+ * ولغةُ الورقة تُختار هنا (العربية، أو الإنجليزية أو الفرنسية بترويسةٍ
+ * باللغتين)، وأعمدتُها: يظهر منها ما في المواضيع شيءٌ له، ويُخفى ما شاء.
  */
 export function TopicTitlesDialog({
   scope,
@@ -32,7 +58,9 @@ export function TopicTitlesDialog({
   const { t } = useTranslation();
   const [mode, setMode] = useState<TitlesListMode>("after");
   const [yearId, setYearId] = useState(() => scope.academicYearId || years.find((y) => y.isActive)?.id || "");
-  const [orientation, setOrientation] = useState<Orientation>("portrait");
+  const [lang, setLang] = useState<SheetLang>("ar");
+  // The columns the administrator turned on or off; the rest follow the data.
+  const [picked, setPicked] = useState<Partial<Record<SheetColumn, boolean>>>({});
 
   const params = { ...scope, academicYearId: yearId || undefined };
   const afterQ = useTopicTitlesList({ ...params, mode: "after" });
@@ -41,6 +69,13 @@ export function TopicTitlesDialog({
   const count = (d?: TopicTitlesList) => d?.groups.reduce((n, g) => n + g.rows.length, 0);
   const total = count(q.data) ?? 0;
   const scoped = !!(scope.professorId || scope.facultyId || scope.departmentId || scope.filiereId || scope.specializationId);
+  // The saved file's name: the sheet's own title, not the page's address.
+  const first = q.data?.groups[0];
+  const fileTitle = first ? sheetHeading(mode, first.specialization.level, lang, q.data?.year?.title) : t("admin.titlesList.title");
+  const defaults = useMemo(() => columnsWithData(q.data?.groups ?? []), [q.data]);
+  const columns = new Set(SHEET_COLUMNS.filter((c) => picked[c] ?? defaults.has(c)));
+  // The header is in both scripts on every sheet: a place without a Latin name is said, whatever the language.
+  const gaps = q.data ? latinGaps(q.data.groups) : [];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -48,7 +83,8 @@ export function TopicTitlesDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const { ref, zoom } = useFitWidth(paperWidthPx(orientation));
+  // A landscape sheet, as the department's list: its table needs the width.
+  const { ref, zoom } = useFitWidth(PAPER_WIDTH_PX);
 
   const modes: { key: TitlesListMode; icon: LucideIcon; n: number | undefined }[] = [
     { key: "before", icon: ClipboardList, n: count(beforeQ.data) },
@@ -57,10 +93,10 @@ export function TopicTitlesDialog({
 
   return createPortal(
     <div className="tl-print-root fixed inset-0 z-[95] grid place-items-center p-3 sm:p-5" role="dialog" aria-modal="true" aria-label={t("admin.titlesList.title")}>
-      <style>{shellCss(orientation)}</style>
+      <style>{shellCss(lang)}</style>
       <div className="tl-print-hide absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="tl-print-pass relative z-10 flex h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-cream-card shadow-[0_24px_70px_rgba(0,0,0,0.4)] ring-1 ring-forest/10">
+      <div className="tl-print-pass relative z-10 flex h-[94dvh] w-full max-w-[1560px] flex-col overflow-hidden rounded-3xl bg-cream-card shadow-[0_24px_70px_rgba(0,0,0,0.4)] ring-1 ring-forest/10">
         {/* ── head ── */}
         <header className="tl-print-hide forest-glow relative flex shrink-0 items-center gap-4 px-5 py-4 text-cream sm:px-6">
           <div className="dot-matrix pointer-events-none absolute inset-0 opacity-50" />
@@ -125,38 +161,80 @@ export function TopicTitlesDialog({
             ]}
           />
 
-          <div className="flex items-center gap-1 rounded-xl bg-cream-2 p-1 ring-1 ring-forest/10" role="group" aria-label={t("admin.titlesList.orientation")}>
-            {(
-              [
-                ["portrait", RectangleVertical],
-                ["landscape", RectangleHorizontal],
-              ] as const
-            ).map(([o, Icon]) => (
-              <button
-                key={o}
-                type="button"
-                aria-pressed={orientation === o}
-                title={t(`admin.titlesList.${o}`)}
-                onClick={() => setOrientation(o)}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition ${
-                  orientation === o ? "bg-cream-card text-forest shadow-sm ring-1 ring-gold/40" : "text-clay hover:text-forest"
-                }`}
-              >
-                <Icon size={15} />
-                <span className="hidden sm:inline">{t(`admin.titlesList.${o}`)}</span>
-              </button>
-            ))}
-          </div>
-
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => printSheet(fileTitle)}
             disabled={!total}
             className="inline-flex items-center gap-2 rounded-xl bg-linear-to-l from-gold to-gold-soft px-4 py-2.5 text-sm font-bold text-[#1a312d] shadow-[0_10px_24px_-12px_rgba(193,150,90,0.9)] transition hover:-translate-y-0.5 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
             <Printer size={16} />
             {t("admin.titlesList.print")}
           </button>
+        </div>
+
+        {/* ── the paper's language and its columns ── */}
+        <div className="tl-print-hide flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-forest/10 bg-cream px-5 py-3 sm:px-6">
+          <div className="flex items-center gap-2" role="radiogroup" aria-label={t("admin.titlesList.language")}>
+            <Languages size={15} className="text-clay" />
+            <span className="text-[12px] font-medium text-clay">{t("admin.titlesList.language")}</span>
+            <div className="flex items-center gap-1 rounded-xl bg-cream-2 p-1 ring-1 ring-forest/10">
+              {(["ar", "en", "fr"] as const).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  role="radio"
+                  aria-checked={lang === l}
+                  data-testid={`titles-lang-${l}`}
+                  onClick={() => setLang(l)}
+                  className={`rounded-lg px-2.5 py-1 text-[12px] font-semibold transition ${
+                    lang === l ? "bg-cream-card text-forest shadow-sm ring-1 ring-gold/40" : "text-clay hover:text-forest"
+                  }`}
+                >
+                  {t(`admin.titlesList.lang_${l}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label={t("admin.titlesList.columns")}>
+            <Columns3 size={15} className="text-clay" />
+            <span className="me-0.5 text-[12px] font-medium text-clay">{t("admin.titlesList.columns")}</span>
+            {SHEET_COLUMNS.map((c) => {
+              const on = columns.has(c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  aria-pressed={on}
+                  data-testid={`titles-col-${c}`}
+                  onClick={() => setPicked((p) => ({ ...p, [c]: !on }))}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11.5px] font-medium transition ${
+                    on ? "border-gold/50 bg-gold/12 text-forest" : "border-forest/15 text-clay hover:border-forest/30"
+                  }`}
+                >
+                  {on && <Check size={11} className="text-gold" />}
+                  {t(`admin.titlesList.col_${c}`)}
+                </button>
+              );
+            })}
+          </div>
+
+          {/*
+            A printer whose paper stands upright («Microsoft Print to PDF») turns
+            the landscape sheet on its side; the browser's own «Save as PDF»
+            keeps it as it is.
+          */}
+          <p className="flex basis-full items-start gap-1.5 text-[11.5px] leading-relaxed text-clay" data-testid="titles-save-hint">
+            <Info size={14} className="mt-0.5 shrink-0 text-gold" />
+            {t("admin.titlesList.saveHint")}
+          </p>
+
+          {gaps.length > 0 && (
+            <p className="flex basis-full items-start gap-1.5 text-[11.5px] leading-relaxed text-amber-700 dark:text-amber-400" data-testid="titles-latin-gaps">
+              <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+              {t("admin.titlesList.latinMissing", { names: gaps.join("، ") })}
+            </p>
+          )}
         </div>
 
         {/* ── the paper ── */}
@@ -177,7 +255,7 @@ export function TopicTitlesDialog({
             </div>
           ) : (
             <div className="tl-print-pass tl-zoom" style={{ zoom }}>
-              <TitlesListSheet data={q.data!} orientation={orientation} />
+              <TitlesListSheet data={q.data!} lang={lang} columns={columns} />
             </div>
           )}
         </section>
@@ -211,10 +289,44 @@ function useFitWidth(paperPx: number) {
  * (an invisible box keeps its room, and blank pages come out before the list),
  * and every box between the root and the paper flattened — no height, scroll,
  * frame or preview zoom. The page takes the margins; the paper none of its own.
+ *
+ * Each page carries its number at its foot, in the sheet's language — a
+ * margin box of the page, so the browser counts the pages. And every other
+ * margin box is the sheet's too, empty: none is left for the browser's own
+ * header and footer (the page's title at the top, its address at the foot).
  */
-const shellCss = (orientation: Orientation) => `
+const MARGIN_BOXES = ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"] as const;
+
+/** «Page 1» on the reading end: the right in English or French, the left in Arabic. */
+const pageBox = (lang: SheetLang) => (lang === "ar" ? "bottom-left" : "bottom-right");
+
+const marginBoxes = (lang: SheetLang) =>
+  MARGIN_BOXES.map((box) => {
+    const content = box === pageBox(lang) ? `"${SHEET_TEXT[lang].page} " counter(page)` : `"\\a0"`;
+    return `    @${box} { content: ${content}; font-family: Arial, "Liberation Sans", sans-serif; font-size: 9pt; color: #000; }`;
+  }).join("\n");
+
+/**
+ * Prints the sheet under its own title meanwhile: the name «Save as PDF»
+ * proposes for the file, instead of the page's address.
+ */
+function printSheet(fileTitle: string) {
+  const title = document.title;
+  document.title = fileTitle;
+  try {
+    window.print();
+  } finally {
+    document.title = title;
+  }
+}
+
+const shellCss = (lang: SheetLang) => `
 @media print {
-  @page { size: A4 ${orientation}; margin: 12mm 14mm; }
+  @page {
+    size: A4 landscape;
+    margin: 11mm 13mm 14mm;
+${marginBoxes(lang)}
+  }
   html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; height: auto !important; }
   body > *:not(.tl-print-root) { display: none !important; }
   .tl-print-hide { display: none !important; }

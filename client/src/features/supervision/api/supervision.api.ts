@@ -1,4 +1,5 @@
 import { client } from "../../../lib/api/client";
+import type { SupervisionTemplate } from "../lib/sheet-template";
 
 /** لقطةُ ما وقّع عليه الأستاذ — تُقرأ ولا تُكتب من الواجهة. */
 export interface SupervisionSnapshot {
@@ -9,6 +10,8 @@ export interface SupervisionSnapshot {
   specialization: string;
   students: { fullName: string; registrationNumber: string }[];
   issuedAt: string;
+  /** The sheet's text as it was when the document was issued; none on older documents. */
+  template?: SupervisionTemplate;
 }
 
 export interface SupervisionDocument {
@@ -19,9 +22,19 @@ export interface SupervisionDocument {
   barcode: string | null;
   topicId: string;
   status: "active" | "revoked";
+  /** Up to date with its topic and the sheet's text until the first print; fixed from then on. */
   snapshot: SupervisionSnapshot;
   createdAt: string;
   revokedAt: string | null;
+  /** The first print — `null` while it was never printed. */
+  printedAt: string | null;
+  /** Who printed it first; the name is `null` for an employee of the administration, to anyone but the administration. */
+  printedByRole: "admin" | "professor" | "student" | null;
+  printedByName: string | null;
+  printCount: number;
+  lastPrintedAt: string | null;
+  /** What the screen shows of it, in a word: the first print sends it back, and is refused (409) if it changed since. */
+  version: string;
 }
 
 export interface VerificationResult {
@@ -55,6 +68,12 @@ export const supervisionApi = {
         `${BASE}/topics/${topicId}`,
       )
       .then((r) => r.data),
+
+  /** The print window opened on it: the first print fixes it, and says who. */
+  print: (id: string, version: string) =>
+    client
+      .post<{ document: SupervisionDocument }>(`${BASE}/${id}/print`, { version })
+      .then((r) => r.data.document),
 
   get: (id: string) =>
     client

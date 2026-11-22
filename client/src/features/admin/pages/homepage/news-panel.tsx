@@ -202,6 +202,7 @@ export function NewsPanel() {
       <NewsDialog open={dialogOpen} item={editing} onClose={() => setDialogOpen(false)} />
 
       <ConfirmDialog
+        icon={Trash2}
         open={!!removing}
         tone="danger"
         title={t("admin.news.deleteTitle")}

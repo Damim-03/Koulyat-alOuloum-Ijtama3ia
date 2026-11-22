@@ -11,11 +11,13 @@
  */
 import {
   decisionOf,
+  occupancyFromRelations,
   projectTopicStatus,
   topicActions,
   type TopicDecision,
 } from "./topic-status";
 import type { TopicStatus } from "../../generated/prisma";
+import { tr } from "../i18n";
 
 const ALL_STATUSES: TopicStatus[] = [
   "pending",
@@ -217,8 +219,72 @@ describe("topicActions", () => {
     const a = topicActions({ status: "open" }, waiting);
     expect(a.blockedCodes.delete).toEqual({
       code: "teamWaiting",
-      params: { count: 3 },
+      params: { count: 3, teams: 1 },
     });
     expect(a.blockedReasons.delete).toContain("3");
+  });
+
+  /**
+   * الموضوعُ المنشور تتقدّم إليه عدّة فرقٍ معاً حتى سقفه. والسببُ يقول كم
+   * فريقاً ينتظر — لا «فريقٌ من ٣ طلاب» عن أوّلهم وحده.
+   */
+  it("وعدّة فرقٍ تنتظر معاً: السببُ بعددها", () => {
+    const a = topicActions({ status: "open" }, { ...waiting, pendingRequestCount: 3 });
+    expect(a.canArchive).toBe(false);
+    expect(a.blockedCodes.archive).toEqual({
+      code: "teamWaiting",
+      params: { count: 3, teams: 3 },
+    });
+    expect(a.blockedReasons.archive).toContain("3 فرق تنتظر");
+  });
+
+  /** والعدد بصيغة كلّ لغة: «3 teams are waiting»، «3 équipes attendent» — ولفريقٍ واحد صيغته. */
+  it("وبالإنجليزية والفرنسية كذلك، والمفرد بصيغته", () => {
+    const say = (lang: "en" | "fr", teams?: number) =>
+      tr("gate.archiveWaiting", { count: 3, ...(teams === undefined ? {} : { teams }) }, lang);
+    expect(say("en", 3)).toContain("3 teams are waiting");
+    expect(say("fr", 3)).toContain("3 équipes attendent");
+    expect(say("en", 1)).toContain("a team of 3 students is waiting");
+    expect(say("fr", 1)).toContain("une équipe de 3 étudiants attend");
+    // بلا عدد الفرق (رسالةٌ قديمة): صيغة الفريق الواحد.
+    expect(say("en")).toContain("a team of 3 students is waiting");
+    expect(tr("gate.archiveWaiting", { count: 3 }, "ar")).toContain("فريقٌ من 3 طلاب ينتظر");
+  });
+});
+
+describe("occupancyFromRelations", () => {
+  /** صفٌّ حُمّل بلا علاقاته (استعلامٌ لم يطلب `OCCUPANCY_INCLUDE`) يُقرأ فارغاً، لا يرمي. */
+  it("صفٌّ بلا طلباتٍ ولا مجموعة ⇒ إشغالٌ فارغ، والعدّاد صفر", () => {
+    expect(occupancyFromRelations({})).toMatchObject({
+      hasGroup: false,
+      groupMemberCount: 0,
+      pendingRequestId: null,
+      pendingRequestMemberCount: 0,
+      pendingRequestCount: 0,
+      acceptedRequestId: null,
+      hasLiveRequest: false,
+      hasPendingRequest: false,
+      hasAcceptedRequest: false,
+    });
+  });
+
+  it("يعدّ المعلّق كلّه، ويجد المقبول، ويقرأ أعضاء المجموعة", () => {
+    const occ = occupancyFromRelations({
+      projectGroup: { _count: { members: 3 } },
+      groupRequests: [
+        { id: "p1", status: "pending", _count: { members: 2 } },
+        { id: "p2", status: "pending", _count: { members: 4 } },
+        { id: "a1", status: "accepted", _count: { members: 3 } },
+      ],
+    });
+    expect(occ).toMatchObject({
+      hasGroup: true,
+      groupMemberCount: 3,
+      pendingRequestId: "p1",
+      pendingRequestMemberCount: 2,
+      pendingRequestCount: 2,
+      acceptedRequestId: "a1",
+      hasLiveRequest: true,
+    });
   });
 });

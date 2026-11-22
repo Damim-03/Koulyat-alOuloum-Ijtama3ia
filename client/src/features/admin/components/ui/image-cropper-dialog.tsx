@@ -191,7 +191,9 @@ function Cropper({
             <p className="text-[11px] text-cream/70">{t("admin.adjustImageHint")}</p>
           </div>
           <button
+            type="button"
             onClick={() => !busy && onCancel()}
+            aria-label={t("admin.close")}
             className="grid size-8 place-items-center rounded-lg text-cream/80 transition hover:bg-cream/15"
           >
             <X size={16} />
@@ -254,6 +256,7 @@ function Cropper({
             <button
               type="button"
               onClick={() => changeZoom(zoom - 0.2)}
+              aria-label={t("admin.zoomOut")}
               className="grid size-8 shrink-0 place-items-center rounded-lg border border-forest/15 text-clay transition hover:border-gold hover:text-forest"
             >
               <ZoomOut size={15} />
@@ -265,11 +268,13 @@ function Cropper({
               step={0.01}
               value={zoom}
               onChange={(e) => changeZoom(Number(e.target.value))}
+              aria-label={t("admin.zoom")}
               className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-forest/15 accent-gold"
             />
             <button
               type="button"
               onClick={() => changeZoom(zoom + 0.2)}
+              aria-label={t("admin.zoomIn")}
               className="grid size-8 shrink-0 place-items-center rounded-lg border border-forest/15 text-clay transition hover:border-gold hover:text-forest"
             >
               <ZoomIn size={15} />

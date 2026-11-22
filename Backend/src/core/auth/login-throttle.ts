@@ -2,6 +2,7 @@ import { prisma } from "../prisma/client";
 import { HttpException } from "../utils/appErros";
 import { HTTPSTATUS } from "../config/http/http.config";
 import { ErrorCodeEnum } from "../enums/error-code.enum";
+import { tr } from "../i18n";
 
 /**
  * ============================================================
@@ -44,11 +45,14 @@ export const throttleKey = (kind: ThrottleKind, identifier: string) =>
 
 const lockedError = (until: Date) => {
   const minutes = Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000));
-  return new HttpException(
-    `Too many failed attempts on this account. Try again in ${minutes} minute(s).`,
+  const error = new HttpException(
+    tr("auth.locked", { minutes }),
     HTTPSTATUS.TOO_MANY_REQUESTS,
     ErrorCodeEnum.AUTH_TOO_MANY_ATTEMPTS,
   );
+  // رقماً لا نصّاً: الواجهة تقول المدّة بلغتها وبصيغة جمعها.
+  error.extra = { retryAfterMinutes: minutes };
+  return error;
 };
 
 /** Throws 429 while the identifier is locked. Call before anything else. */
@@ -92,6 +96,21 @@ export async function recordFailure(key: string): Promise<Date | null> {
   if (Math.random() < 0.05) void pruneThrottle();
 
   return lockedUntil;
+}
+
+/**
+ * Where the identifier stands now: the failures still counting against it,
+ * and whether it was locked within the day. Read by the sign-in check
+ * (modules/auth/captcha), which asks for proof of a person past a few.
+ */
+export async function standingOf(key: string): Promise<{ failures: number; locked: boolean }> {
+  const row = await prisma.loginThrottle.findUnique({ where: { key } });
+  if (!row) return { failures: 0, locked: false };
+  const quietFor = Date.now() - row.lastFailureAt.getTime();
+  return {
+    failures: quietFor < FAILURE_WINDOW_MS ? row.failures : 0,
+    locked: quietFor < LOCK_MEMORY_MS && row.lockCount > 0,
+  };
 }
 
 /** A successful sign-in, or an administrator's reset, forgets everything. */

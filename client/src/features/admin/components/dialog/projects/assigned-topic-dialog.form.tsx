@@ -36,6 +36,11 @@ import {
 } from "../../ui/student-seat";
 import { Select } from "../../../../../components/ui/select";
 import { personName } from "../../../../../lib/person-name";
+import { TopicExtrasFields } from "../../../../../components/topic/topic-extras-fields";
+import { EMPTY_EXTRAS, extrasPayload } from "../../../../../lib/topic-extras";
+import { levelName } from "../../../../../lib/spec-level";
+import { ruleOf, seatsFor } from "../../../../../lib/team-size";
+import { TeamSizeRuled } from "../../../../../components/topic/team-size-ruled";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -69,7 +74,8 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
   // ── step 1: the topic ──
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [maxStudents, setMaxStudents] = useState(1);
+  // The number typed — used only while the year has no number of its own (lib/team-size).
+  const [chosenMax, setChosenMax] = useState(1);
   const [maxRequests, setMaxRequests] = useState<CapValue>("");
   const [requirements, setRequirements] = useState<string[]>([]);
   const [objectives, setObjectives] = useState<string[]>([]);
@@ -88,6 +94,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
   const [seatText, setSeatText] = useState<string[]>([]);
   const [seatHit, setSeatHit] = useState<(SeatStudent | null)[]>([]);
   const [leaderPick, setLeaderPick] = useState("");
+  const [extras, setExtras] = useState(EMPTY_EXTRAS);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -97,7 +104,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
       setStep(1);
       setTitle("");
       setDescription("");
-      setMaxStudents(1);
+      setChosenMax(1);
       setRequirements([]);
       setObjectives([]);
       setProfessorId("");
@@ -109,6 +116,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
       setSeatText([]);
       setSeatHit([]);
       setLeaderPick("");
+      setExtras(EMPTY_EXTRAS);
       setError(null);
     }
   }, [open]);
@@ -167,6 +175,11 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
       }),
     [specs, filiereId, departmentId, facultyId, departments],
   );
+  /** The chosen specialization's level — the topic's — shown beside it. */
+  const chosenLevel = levelName((specs ?? []).find((sp: any) => sp.id === specializationId)?.level, t);
+  // The number of students the administration set for the year and this level, if any: the seats follow it.
+  const teamRule = ruleOf(years, academicYearId, (specs ?? []).find((sp: any) => sp.id === specializationId)?.level);
+  const maxStudents = seatsFor(teamRule, chosenMax);
 
   const professorName = useMemo(() => {
     const p = professors.find((x: any) => x.id === professorId);
@@ -249,6 +262,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
         academicYearId,
         memberStudentIds: picked.map((p) => p.id),
         leaderStudentId: leaderId,
+        ...extrasPayload(extras),
       },
       {
         onSuccess: () => {
@@ -358,6 +372,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                     label={t("admin.requirements")}
                     note={t("admin.optional")}
                     hint={t("admin.requirementsHint")}
+                  group
                   >
                     <ListInput
                     value={requirements}
@@ -369,6 +384,7 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                     label={t("admin.objectives")}
                     note={t("admin.optional")}
                     hint={t("admin.objectivesHint")}
+                  group
                   >
                     <ListInput
                     value={objectives}
@@ -377,6 +393,15 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                   />
                   </Field>
                 </div>
+
+                {/* ── its type, its co-supervisor, its short description ── */}
+                <SectionHead title={t("topicExtras.section")} hint={t("topicExtras.sectionHint")} />
+                <TopicExtrasFields
+                  value={extras}
+                  onChange={setExtras}
+                  specializationId={specializationId || undefined}
+                  supervisorId={professorId || undefined}
+                />
               </section>
 
               {/* ── where the topic sits ── */}
@@ -405,25 +430,21 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                     />
                   </Field>
 
-                  <Field label={t("admin.maxStudents")}>
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={maxStudents}
-                      onChange={(e) => {
-                        const v = Math.max(
-                          1,
-                          Math.min(10, Number(e.target.value) || 1),
-                        );
-                        setMaxStudents(v);
+                  {/* Set by the administration for the level — shown, never typed. */}
+                  <Field label={t("admin.maxStudents")} group>
+                    <TeamSizeRuled
+                      rule={teamRule}
+                      seats={maxStudents}
+                      year={yearName}
+                      level={chosenLevel}
+                      admin
+                      onChoose={(v) => {
+                        setChosenMax(v);
                         // تقليص السعة يُلغي المقاعد الزائدة نصّاً وإصابةً،
                         // فلا يبقى طالبٌ مسنَدٌ في مقعدٍ لم يعد موجوداً.
                         setSeatText((prev) => prev.slice(0, v));
                         setSeatHit((prev) => prev.slice(0, v));
                       }}
-                      className={inputCls}
-                      dir="ltr"
                     />
                   </Field>
 
@@ -509,6 +530,19 @@ export function AssignedTopicDialog({ open, onClose, onCreated }: Props) {
                         ...specOptions.map((sp: any) => ({ value: sp.id, label: sp.name })),
                       ]}
                     />
+                  </Field>
+                  {/*
+                    The level is the specialization's: shown, never chosen. A text in a
+                    field's frame, not a field — and not in a <label>, which would hand a
+                    click to it — so nothing takes the focus: no ring, no caret.
+                  */}
+                  <Field label={t("admin.level")} note={t("admin.levelAuto")} group>
+                    <div
+                      data-testid="topic-level"
+                      className={`w-full cursor-default rounded-xl border border-forest/15 bg-forest/5 px-3.5 py-2.5 text-sm select-none ${chosenLevel ? "font-semibold text-forest" : "text-clay"}`}
+                    >
+                      {chosenLevel || t("admin.levelFromSpec")}
+                    </div>
                   </Field>
                 </div>
               </section>

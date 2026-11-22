@@ -3,11 +3,13 @@ import { Router } from "express";
 import { authMiddleware } from "../../core/middleware/auth.middleware";
 import { verifyLimiter } from "../../core/middleware/rateLimit.middleware";
 import { adminOnly } from "../../core/utils/roleGuard";
+import { auditBefore, auditWrites } from "../../core/audit/audit";
 import {
   getSupervisionDocumentController,
   issueSupervisionDocumentController,
   listSupervisionDocumentsController,
   previewSupervisionDocumentController,
+  printSupervisionDocumentController,
   revokeSupervisionDocumentController,
   verifySupervisionDocumentController,
 } from "./supervision.controller";
@@ -22,6 +24,9 @@ import {
 const supervisionRoutes: Router = Router();
 
 supervisionRoutes.use(authMiddleware);
+// Issuing, printing and revoking a document is in the audit log (core/audit).
+supervisionRoutes.use(auditWrites);
+supervisionRoutes.param("id", auditBefore);
 
 // قائمة الإدارة وإلغاؤها — قبل `/:id` كي لا يبتلعها المسار المتغيّر.
 supervisionRoutes.get("/", adminOnly(), listSupervisionDocumentsController);
@@ -39,6 +44,9 @@ supervisionRoutes.post(
   "/topics/:topicId",
   issueSupervisionDocumentController,
 );
+
+// The print window opened on it: its first print fixes it, and says who (supervision.service).
+supervisionRoutes.post("/:id/print", printSupervisionDocumentController);
 
 supervisionRoutes.get("/:id", getSupervisionDocumentController);
 

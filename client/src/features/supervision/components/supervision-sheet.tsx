@@ -2,20 +2,10 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 import facultyLogo from "../../../assets/Faculty.png";
 import universityLogo from "../../../assets/university-logo.png";
+import { assetUrl } from "../../../lib/asset-url";
 import type { SupervisionSnapshot } from "../api/supervision.api";
+import { SHEET_DEGREES, legacyTemplate } from "../lib/sheet-template";
 import { Ean13Barcode } from "./barcode";
-
-/**
- * ترويسةُ الورقة الرسمية.
- *
- * نصٌّ إداريٌّ ثابت لا تُترجمه الواجهة: الورقة تُطبع وتُودَع بالعربية
- * وحدها مهما كانت لغة الشاشة التي أصدرتها، وترجمتُها تُخرجها عن صفتها.
- */
-const HEADER = [
-  "الجمهورية الجزائرية الديمقراطية الشعبية",
-  "وزارة التعليم العالي والبحث العلمي",
-  "جامعة الشهيد حمه لخضر الوادي",
-];
 
 /** أدنى تصغيرٍ مسموح: دونه تصير الورقة غير مقروءة، فالصفحةُ الثانية أهون. */
 const MIN_FIT = 0.62;
@@ -37,6 +27,12 @@ const MIN_FIT = 0.62;
  *
  * والألوان سوداء على أبيض صراحةً، لا من رموز السمة: الوثيقة لا وضع داكن
  * لها، ولو تبعت السمة لخرجت من الطابعة بخلفيةٍ سوداء.
+ *
+ * **ونصّها من قالبها** (`snapshot.template`) — الترويسة والعبارات وأسماء
+ * الشهادات والشعاران، كما حفظتها الإدارة يوم صدرت الوثيقة — وإلّا فالنصّ
+ * الأصليّ. وكلّ عبارةٍ فيه اختيارية: الفارغة لا تُطبع، وتبقى البيانات التي
+ * تليها. وهو عربيٌّ لا تُترجمه الواجهة: الورقة تُطبع وتُودَع بالعربية
+ * وحدها مهما كانت لغة الشاشة التي أصدرتها، وترجمتُها تُخرجها عن صفتها.
  */
 export function SupervisionSheet({
   snapshot,
@@ -50,7 +46,11 @@ export function SupervisionSheet({
   barcode: string | null;
   revoked?: boolean;
 }) {
+  // A document without a template was issued with the original text; one whose template has no
+  // specialization line was printed before it existed — neither has it.
+  const tpl = snapshot.template ?? legacyTemplate();
   const { fit, pageRef, bodyRef } = useFitToPage([
+    JSON.stringify(tpl),
     snapshot.topicTitle,
     snapshot.supervisorName,
     snapshot.specialization ?? "",
@@ -59,8 +59,14 @@ export function SupervisionSheet({
     barcode ?? "",
   ].join("|"));
 
-  const isMaster = snapshot.level === "master";
-  const isLicence = snapshot.level === "licence";
+  const department =
+    tpl.department.show && snapshot.specialization
+      ? [tpl.department.prefix.trim(), snapshot.specialization].filter(Boolean).join(" ")
+      : "";
+  // A degree with no name is not printed (the doctorate, by default).
+  const degrees = SHEET_DEGREES.filter((d) => tpl.degrees[d].trim());
+  // Under the degrees' boxes, the topic's specialization.
+  const specialization = tpl.specialization?.show && snapshot.specialization ? snapshot.specialization : "";
 
   return (
     <div
@@ -81,57 +87,68 @@ export function SupervisionSheet({
           {/* ── الترويسة ── */}
           <header className="sup-head">
             {/* في RTL: الأوّل يمينُ الورقة — شعار الجامعة — والثاني يسارُها. */}
-            <img className="sup-logo" src={universityLogo} alt="" />
-            <div className="sup-head-text">
-              {HEADER.map((line) => (
-                <p key={line}>{line}</p>
-              ))}
-              {snapshot.specialization && <p>قسم {snapshot.specialization}</p>}
+            <img className="sup-logo" src={assetUrl(tpl.universityLogo) ?? universityLogo} alt="" />
+            <div className="sup-head-text" data-testid="sup-header">
+              {tpl.header
+                .filter((line) => line.trim())
+                .map((line, i) => (
+                  <p key={i}>{line}</p>
+                ))}
+              {department && <p>{department}</p>}
             </div>
             <img
-              className="sup-logo sup-logo-faculty"
-              src={facultyLogo}
+              className={`sup-logo ${tpl.facultyLogo ? "sup-logo-own" : "sup-logo-faculty"}`}
+              src={assetUrl(tpl.facultyLogo) ?? facultyLogo}
               alt=""
             />
           </header>
 
           <hr className="sup-rule" />
 
-          <h1 className="sup-title">طلب الموافقة على الإشراف</h1>
+          {tpl.title ? <h1 className="sup-title">{tpl.title}</h1> : <div className="sup-title-gap" />}
 
           {/* ── المشرف ── */}
           <section className="sup-block">
-            <p className="sup-lead">أنا الأستاذ الممضي أسفله:</p>
+            {tpl.supervisorLead && <p className="sup-lead">{tpl.supervisorLead}</p>}
             <p className="sup-filled">{snapshot.supervisorName}</p>
           </section>
 
           {/* ── عنوان المذكّرة ── */}
           <section className="sup-block">
-            <p className="sup-lead">أعلمكم بأني صادقت على عنوان المذكرة:</p>
+            {tpl.topicLead && <p className="sup-lead">{tpl.topicLead}</p>}
             <p className="sup-filled sup-topic">{snapshot.topicTitle}</p>
           </section>
 
           {/* ── الشهادة ── */}
-          <section className="sup-block">
-            <p className="sup-lead">لنيل شهادة:</p>
-            <p className="sup-degrees">
-              <span className="sup-choice">
-                <span className="sup-box">{isLicence ? "✕" : ""}</span> الليسانس
-              </span>
-              <span className="sup-choice">
-                <span className="sup-box">{isMaster ? "✕" : ""}</span> الماستر
-              </span>
-            </p>
-          </section>
+          {(degrees.length > 0 || specialization) && (
+            <section className="sup-block">
+              {tpl.degreeLead && degrees.length > 0 && <p className="sup-lead">{tpl.degreeLead}</p>}
+              {degrees.length > 0 && (
+                <p className="sup-degrees">
+                  {degrees.map((d) => (
+                    <span key={d} className="sup-choice" data-degree={d}>
+                      <span className="sup-box">{snapshot.level === d ? "✕" : ""}</span> {tpl.degrees[d]}
+                    </span>
+                  ))}
+                </p>
+              )}
+              {specialization && (
+                <p className="sup-spec" data-testid="sup-specialization">
+                  {tpl.specialization!.label.trim() && <span className="sup-spec-label">{tpl.specialization!.label.trim()} </span>}
+                  <span className="sup-spec-name">{specialization}</span>
+                </p>
+              )}
+            </section>
+          )}
 
           {/* ── الطلبة ── */}
           <section className="sup-block">
-            <p className="sup-lead">من إعداد الطلبة الآتية أسماؤهم:</p>
+            {tpl.studentsLead && <p className="sup-lead">{tpl.studentsLead}</p>}
             <ol className="sup-students">
               {snapshot.students.map((s, i) => (
                 <li key={s.registrationNumber}>
                   <span className="sup-student-label">
-                    {i + 1}) الطالب (ة):{" "}
+                    {i + 1}) {tpl.studentLabel && `${tpl.studentLabel} `}
                     <span className="sup-student-name">{s.fullName}</span>
                   </span>
                   <span className="sup-dots" aria-hidden />
@@ -143,11 +160,14 @@ export function SupervisionSheet({
             </ol>
           </section>
 
-          <p className="sup-year">السنة الجامعية: {snapshot.academicYear}</p>
+          <p className="sup-year">
+            {tpl.yearLabel && `${tpl.yearLabel} `}
+            {snapshot.academicYear}
+          </p>
 
           {/* ── الإمضاء ── */}
           <section className="sup-sign">
-            <p>إمضاء الأستاذ:</p>
+            {tpl.signLabel && <p>{tpl.signLabel}</p>}
             <div className="sup-sign-space" />
           </section>
 
@@ -285,6 +305,8 @@ const SHEET_CSS = `
   (٣٧٫٥مم) لا الشعارات، فكلاهما يتوسّطها بما دون ذلك.
 */
 .sup-logo-faculty { width: 44mm; height: 33mm; }
+/* شعارٌ رفعته الإدارة: لا يُعرف فراغُه، فصندوقٌ أعرض قليلاً يتّسع للمستطيل والمربّع معاً. */
+.sup-logo-own { width: 33mm; height: 27mm; }
 .sup-head-text { flex: 1; text-align: center; }
 .sup-head-text p { margin: 0; font-weight: 700; font-size: 14pt; }
 .sup-rule { border: none; border-top: 1px solid #000; margin: 4mm 0 0; }
@@ -296,6 +318,8 @@ const SHEET_CSS = `
   text-decoration: underline;
   text-underline-offset: 4px;
 }
+/* Without a title: the space it held, so the sheet keeps its rhythm. */
+.sup-title-gap { height: 7mm; }
 .sup-block { margin-bottom: 5mm; }
 .sup-lead { margin: 0 0 1.5mm; font-weight: 700; }
 .sup-filled {
@@ -307,6 +331,17 @@ const SHEET_CSS = `
 .sup-topic { font-weight: 700; overflow-wrap: anywhere; }
 .sup-degrees { margin: 0; display: flex; gap: 18mm; padding: 0 6mm; }
 .sup-choice { display: inline-flex; align-items: center; gap: 2mm; }
+/* Under the boxes: the specialization on a dotted line, as the names filled in above. */
+.sup-spec { margin: 3mm 0 0; padding: 0 6mm; display: flex; align-items: baseline; gap: 2.5mm; }
+.sup-spec-label { font-weight: 700; white-space: nowrap; }
+.sup-spec-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0 2mm 1mm;
+  border-bottom: 1px dotted #000;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
 .sup-box {
   display: inline-grid;
   place-items: center;

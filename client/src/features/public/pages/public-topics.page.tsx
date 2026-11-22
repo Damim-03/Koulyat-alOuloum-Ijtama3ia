@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  FolderKanban,
   GraduationCap,
   Layers,
   Loader2,
@@ -28,6 +29,7 @@ import {
   Users,
   X,
   type LucideIcon,
+  Inbox,
 } from "lucide-react";
 import {
   usePublicTopics,
@@ -51,6 +53,10 @@ import { STATUS_TONE } from "../../../lib/status-tone";
 import { noneText } from "../../../lib/none-text";
 import { ReservedTopicDialog } from "../components/reserved-topic";
 import { personName } from "../../../lib/person-name";
+import { useShown } from "../../../i18n/site-visibility";
+import { SelectionBanner } from "../../student/components/selection-banner";
+import { useMyProject } from "../../student/hooks/Student-hook";
+import { TopicTypeBadge } from "../../../components/topic/topic-type-badge";
 
 const PAGE_SIZE = 9;
 const FILTERS_OPEN_KEY = "topics.filtersOpen";
@@ -160,8 +166,12 @@ export function PublicTopicsPage() {
    * والخادم يرفض صفحته لمن جاءها بالرابط. والأستاذ والمسؤول يفتحانه كما هو.
    */
   const [lockedTopic, setLockedTopic] = useState<PublicTopic | null>(null);
+  // وطالبٌ له مذكرة لا يفتح إلّا موضوعها: بطاقاتُ غيرها مقفلةٌ عليه، بقفلٍ يسمّي مذكرته.
+  const { data: myProject } = useMyProject(role === "student");
+  const placedIn = myProject ? (myProject.topic?.title ?? "—") : null;
+  const placedElsewhere = (tp: PublicTopic) => !!myProject && myProject.topic?.id !== tp.id;
   const isLockedFor = (tp: PublicTopic) =>
-    role === "student" && !!tp.isReserved && !tp.isMine;
+    role === "student" && ((!!tp.isReserved && !tp.isMine) || placedElsewhere(tp));
   const { localePath } = useLanguage();
 
   useEffect(() => {
@@ -388,6 +398,10 @@ export function PublicTopicsPage() {
         status={filters.status}
         onStatus={(s) => update({ status: s })}
       />
+
+      {/* A student's deadline to choose, above what there is to choose from —
+          always; and, for one already in a project, that these are to read. */}
+      {role === "student" && <StudentChoosing />}
 
       {/* ══════════ البحث والفلاتر ══════════ */}
       <section className={CARD} aria-label={t("public.browse.filters")}>
@@ -695,6 +709,7 @@ export function PublicTopicsPage() {
                 // صفحة الموضوع تعود إلى القائمة بفلاترها، لا إلى أوّلها.
                 state={{ listSearch: location.search }}
                 onLocked={isLockedFor(tp) ? () => setLockedTopic(tp) : undefined}
+                lockNote={placedElsewhere(tp) ? t("public.placedDialog.title") : undefined}
               />
             </li>
           ))}
@@ -703,6 +718,8 @@ export function PublicTopicsPage() {
 
       <ReservedTopicDialog
         topic={lockedTopic}
+        placedIn={lockedTopic && placedElsewhere(lockedTopic) ? placedIn : null}
+        onOpenProject={() => navigate(`/${lang}/student/project`)}
         onClose={() => setLockedTopic(null)}
         onBrowseAvailable={() => {
           setLockedTopic(null);
@@ -744,6 +761,7 @@ function Hero({
   onStatus: (s: Status) => void;
 }) {
   const { t } = useTranslation();
+  const shown = useShown();
   const tiles: { key: Status; label: string; count?: number; dot: string }[] = [
     { key: "", label: t("public.browse.statAll"), count: counts?.all, dot: "bg-gold" },
     {
@@ -782,20 +800,24 @@ function Hero({
 
       <div className="relative grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
         <div className="flex items-start gap-5">
-          <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-gold-soft to-gold text-[var(--t-brand-deep)] shadow-[0_8px_24px_rgba(193,150,90,0.35)]">
+          <span className="hidden size-16 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-gold-soft to-gold text-[var(--t-brand-deep)] shadow-[0_8px_24px_rgba(193,150,90,0.35)] sm:grid">
             <BookOpenText size={30} />
           </span>
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-gold-soft">
-              <Sparkles size={13} />
-              {t("public.browse.kicker")}
-            </p>
+            {shown("topics.kicker") && (
+              <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-gold-soft">
+                <Sparkles size={13} />
+                {t("public.browse.kicker")}
+              </p>
+            )}
             <h1 className="mt-1 font-serif text-3xl leading-tight font-bold text-cream sm:text-4xl">
               {t("public.topicsTitle")}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-soft-sage">
-              {t("public.topicsSubtitle")}
-            </p>
+            {shown("topics.subtitle") && (
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-soft-sage">
+                {t("public.topicsSubtitle")}
+              </p>
+            )}
           </div>
         </div>
 
@@ -814,7 +836,7 @@ function Hero({
                 aria-pressed={active}
                 data-testid={`topics-tab-${tile.key || "all"}`}
                 onClick={() => onStatus(active ? "" : tile.key)}
-                className={`rounded-2xl border px-3 py-3 text-start transition sm:px-4 sm:py-4 ${
+                className={`rounded-2xl border px-2.5 py-3 text-start transition min-[360px]:px-3 sm:px-4 sm:py-4 ${
                   active
                     ? "border-gold/70 bg-white/12 shadow-[0_0_0_1px_rgba(217,174,114,0.35)]"
                     : "border-white/10 bg-white/5 hover:border-gold/40 hover:bg-white/8"
@@ -823,7 +845,8 @@ function Hero({
                 {/* سطران لا قصّ: في الهاتف ثلاثة أعمدة ضيّقة، و«متاحة لل…»
                     لا تُقرأ. */}
                 <span className="flex items-start gap-2 text-[11px] font-medium text-soft-sage sm:text-xs">
-                  <span className={`mt-1 size-2 shrink-0 rounded-full ${tile.dot}`} />
+                  {/* Under 360px the dot costs "المواضيع" its last letters. */}
+                  <span className={`mt-1 hidden size-2 shrink-0 rounded-full min-[360px]:block ${tile.dot}`} />
                   <span className="line-clamp-2 leading-snug">{tile.label}</span>
                 </span>
                 <span className="mt-1.5 block font-serif text-2xl font-bold text-cream tabular-nums sm:text-3xl">
@@ -859,6 +882,7 @@ function TopicCard({
   to,
   state,
   onLocked,
+  lockNote,
 }: {
   topic: PublicTopic;
   words: string[];
@@ -866,6 +890,8 @@ function TopicCard({
   state: unknown;
   /** يُمرَّر للمحجوز لغير فريق القارئ: النقر يفتح النافذة لا الصفحة. */
   onLocked?: () => void;
+  /** Why the card is locked, said on its lock: reserved, unless told otherwise. */
+  lockNote?: string;
 }) {
   const { t } = useTranslation();
   const mine = !!topic.isReserved && !!topic.isMine;
@@ -897,7 +923,9 @@ function TopicCard({
           {mine ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-gold/15 px-2.5 py-1 text-[11px] font-bold text-gold ring-1 ring-gold/35">
               <Sparkles size={11} />
-              {t("public.browse.reservedForYou")}
+              {topic.myRequestPending
+                ? t("public.browse.yourRequestPending")
+                : t("public.browse.reservedForYou")}
             </span>
           ) : (
             <span
@@ -918,11 +946,13 @@ function TopicCard({
         <h3 className="line-clamp-2 font-serif text-xl leading-snug font-bold break-words text-forest transition-colors group-hover:text-gold">
           <Highlight text={topic.title} words={words} />
         </h3>
+        {/* The short description when there is one: written for exactly this. */}
         <p className="mt-2.5 line-clamp-3 text-sm leading-relaxed break-words text-clay">
-          <Highlight text={topic.description} words={words} />
+          <Highlight text={topic.summary || topic.description} words={words} />
         </p>
 
         <div className="mt-auto flex flex-wrap gap-1.5 pt-5">
+          {topic.type && <TopicTypeBadge type={topic.type} className="py-1" />}
           {topic.specialization?.name && (
             <Meta icon={Layers}>
               <Highlight text={topic.specialization.name} words={words} />
@@ -931,6 +961,14 @@ function TopicCard({
           {levelKey && <Meta icon={GraduationCap}>{t(levelKey)}</Meta>}
           {topic.academicYear?.title && (
             <Meta icon={CalendarDays}>{topic.academicYear.title}</Meta>
+          )}
+          {/* Teams ask together up to the cap: how full it is, before asking. */}
+          {topic.isAvailable && topic.requests && (topic.requests.max !== null || topic.requests.pending > 0) && (
+            <Meta icon={Inbox}>
+              {topic.requests.max !== null
+                ? t("public.requestsCount", { pending: topic.requests.pending, max: topic.requests.max })
+                : t("public.requestsCountOpen", { pending: topic.requests.pending })}
+            </Meta>
           )}
         </div>
       </div>
@@ -953,7 +991,7 @@ function TopicCard({
         </span>
         {onLocked ? (
           <span
-            title={t("public.browse.reservedNote")}
+            title={lockNote ?? t("public.browse.reservedNote")}
             className="grid size-9 shrink-0 place-items-center rounded-full bg-forest/5 text-clay transition group-hover:bg-gold/15 group-hover:text-gold"
           >
             <Lock size={15} />
@@ -1247,5 +1285,39 @@ function Pagination({
         <ChevronLeft size={18} className="ltr:rotate-180" />
       </button>
     </nav>
+  );
+}
+
+/**
+ * What a student sees above the topics: the deadline to choose, in every case
+ * — and, once a request was accepted, their project beneath it, and that one
+ * student has one project.
+ */
+function StudentChoosing() {
+  const { t } = useTranslation();
+  const { lang } = useParams();
+  const { data: project } = useMyProject();
+  return (
+    <>
+      <SelectionBanner />
+      {project && <PlacedNotice title={project.topic?.title ?? "—"} lang={lang} t={t} />}
+    </>
+  );
+}
+
+function PlacedNotice({ title, lang, t }: { title: string; lang?: string; t: (k: string, o?: Record<string, unknown>) => string }) {
+  return (
+    <div role="status" data-testid="placed-notice" className="flex flex-wrap items-center gap-3 rounded-2xl border border-gold/30 bg-gold/8 px-4 py-3">
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold">
+        <FolderKanban size={18} />
+      </span>
+      <p className="min-w-0 flex-1 basis-56 text-sm text-forest">{t("public.placedNotice", { title })}</p>
+      <Link
+        to={`/${lang}/student/project`}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-[13px] font-bold text-[var(--t-brand-deep)] transition hover:bg-gold-soft"
+      >
+        {t("public.panel.placedAction")}
+      </Link>
+    </div>
   );
 }

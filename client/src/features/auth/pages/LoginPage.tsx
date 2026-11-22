@@ -15,7 +15,7 @@ import { useLoginTexts } from "../hooks/use-login-texts";
 import { AdminLoginForm } from "../components/form/admin-login-form";
 import { useTranslation } from "react-i18next";
 
-const FORMS: Record<LoginRole, (p: { onSuccess?: () => void }) => ReactNode> = {
+const FORMS: Record<LoginRole, (p: { onSuccess?: () => void; recovered?: string }) => ReactNode> = {
   student: StudentLoginForm,
   professor: ProfessorLoginForm,
   admin: AdminLoginForm,
@@ -28,6 +28,8 @@ export function LoginPage() {
   const { localePath } = useLanguage();
   const [role, setRole] = useState<LoginRole>("student");
   const [helpOpen, setHelpOpen] = useState(false);
+  // Back from «نسيت كلمة المرور», the password the administration wrote just copied.
+  const recovered = (location.state as { recovered?: { registrationNumber?: string } } | null)?.recovered?.registrationNumber;
   const { texts, ready } = useLoginTexts();
   const cfg = ROLES[role];
   const ActiveForm = FORMS[role];
@@ -44,18 +46,22 @@ export function LoginPage() {
     <div
       className="auth-bg relative grid min-h-svh w-full text-forest lg:grid-cols-2"
     >
-      {/* back to homepage — pinned top-left */}
+      {/* back to homepage — pinned to the form's top corner, on the side away
+          from the hero (end): left in Arabic, right in English and French.
+          A fixed `left` sat on the hero's language switcher once the page
+          turned LTR and the hero moved to the left. */}
       <button
         type="button"
         onClick={() => navigate(localePath(PATHS.home))}
-        className="absolute left-5 top-5 z-20 inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-forest/10 bg-cream-card/70 px-3 py-1.5 text-[12.5px] font-semibold text-clay shadow-sm backdrop-blur-sm transition hover:border-forest/20 hover:text-forest"
+        className="absolute end-5 top-5 z-20 inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-forest/10 bg-cream-card/70 px-3 py-1.5 text-[12.5px] font-semibold text-clay shadow-sm backdrop-blur-sm transition hover:border-forest/20 hover:text-forest"
       >
         <ArrowRight size={15} className="ltr:rotate-180" />{t("auth.backHome")}</button>
       {/* LEFT: hero panel (desktop) */}
       <AuthHero />
 
-      {/* RIGHT: form panel */}
-      <section className="flex items-center justify-center p-6 sm:p-10">
+      {/* RIGHT: form panel — below lg the hero is gone and the mini-brand
+          rises to the top, so it starts under the back button (pt-20). */}
+      <section className="flex items-center justify-center px-6 pb-6 pt-20 sm:px-10 sm:pb-10 lg:p-10">
         <div className="w-full max-w-110 animate-[fadeUp_0.6s_0.12s_both]">
           {/* mobile mini-brand (hero is hidden on small) */}
           <div className="mb-6 flex items-center gap-4 lg:hidden">
@@ -91,7 +97,7 @@ export function LoginPage() {
               <span>{t("auth.viaUniversityCredentials")}</span>
             </div>
 
-            <ActiveForm key={role} onSuccess={handleLoginSuccess} />
+            <ActiveForm key={role} onSuccess={handleLoginSuccess} recovered={role === "student" ? recovered : undefined} />
           </div>
         </div>
       </section>

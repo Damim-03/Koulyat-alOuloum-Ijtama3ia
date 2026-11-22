@@ -2,6 +2,8 @@ import { Router } from "express";
 import { authMiddleware } from "../../core/middleware/auth.middleware";
 import { roleGuard, requireRole } from "../../core/utils/roleGuard";
 import { Permissions } from "../../core/enums/role.enum";
+import { lookupLimiter, writeLimiter } from "../../core/middleware/rateLimit.middleware";
+import { auditBefore, auditWrites } from "../../core/audit/audit";
 import {
   browseTopicsController,
   getTopicByIdController,
@@ -11,12 +13,16 @@ import {
   cancelGroupRequestController,
   getMyProjectController,
   getStudentDashboardController,
+  selectionWindowController,
 } from "./student.controller";
 
 const studentRoutes = Router();
 
 studentRoutes.use(authMiddleware);
 studentRoutes.use(requireRole("student"));
+// What a student changes — their group requests — is in the audit log (core/audit).
+studentRoutes.use(auditWrites);
+studentRoutes.param("id", auditBefore);
 
 //
 // Dashboard — one read for the whole first screen
@@ -35,6 +41,12 @@ studentRoutes.get(
   roleGuard([Permissions.VIEW_TOPICS]),
   browseTopicsController,
 );
+// The deadline to choose topics for the student's year (core/academic/selection-window).
+studentRoutes.get(
+  "/selection-window",
+  roleGuard([Permissions.VIEW_TOPICS]),
+  selectionWindowController,
+);
 studentRoutes.get(
   "/topics/:id",
   roleGuard([Permissions.VIEW_TOPICS]),
@@ -47,6 +59,7 @@ studentRoutes.get(
 studentRoutes.get(
   "/students/lookup",
   roleGuard([Permissions.APPLY_TO_TOPIC]),
+  lookupLimiter,
   lookupStudentController,
 );
 
@@ -56,6 +69,7 @@ studentRoutes.get(
 studentRoutes.post(
   "/group-requests",
   roleGuard([Permissions.APPLY_TO_TOPIC]),
+  writeLimiter,
   createGroupRequestController,
 );
 studentRoutes.get(

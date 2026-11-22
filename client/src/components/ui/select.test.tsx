@@ -100,4 +100,54 @@ describe("Select", () => {
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("listbox")).toBeNull();
   });
+
+  describe("لائحةٌ قصيرة بلا بحث — كلّها بلوحة المفاتيح", () => {
+    const short: SelectOption[] = [
+      { value: "", label: "الكلّ" },
+      { value: "a", label: "أ" },
+      { value: "b", label: "ب" },
+      { value: "c", label: "ج" },
+    ];
+
+    it("السهم يفتح، وEnd ثمّ Home ثمّ المسافة تختار الأوّل", async () => {
+      const onChange = vi.fn();
+      render(<Harness options={short} onChange={onChange} />);
+      screen.getByRole("combobox").focus();
+      await userEvent.keyboard("{ArrowDown}");
+      expect(screen.getByRole("listbox")).toBeTruthy();
+      await userEvent.keyboard("{End}{Enter}");
+      expect(onChange).toHaveBeenLastCalledWith("c");
+      await userEvent.keyboard("{ArrowUp}{Home} ");
+      expect(onChange).toHaveBeenLastCalledWith("");
+    });
+
+    it("Enter والمسافة يفتحان؛ وTab يغلق بلا اختيار؛ وEscape يعيد التركيز إلى الزرّ", async () => {
+      const onChange = vi.fn();
+      render(<Harness options={short} onChange={onChange} />);
+      const box = screen.getByRole("combobox");
+      box.focus();
+      await userEvent.keyboard("{Enter}");
+      await userEvent.keyboard("{ArrowDown}{ArrowDown}{Tab}");
+      expect(screen.queryByRole("listbox")).toBeNull();
+      expect(onChange).not.toHaveBeenCalled();
+
+      box.focus();
+      await userEvent.keyboard(" ");
+      expect(screen.getByRole("listbox")).toBeTruthy();
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("listbox")).toBeNull();
+      expect(document.activeElement).toBe(box);
+    });
+
+    it("النقر خارجها يغلقها، والمطفأة لا تُفتح", async () => {
+      const { rerender } = render(<Harness options={short} />);
+      await userEvent.click(screen.getByRole("combobox"));
+      await userEvent.click(document.body);
+      expect(screen.queryByRole("listbox")).toBeNull();
+
+      rerender(<Select value="" options={short} onChange={() => {}} disabled aria-label="off" />);
+      await userEvent.click(screen.getByRole("combobox", { name: "off" }));
+      expect(screen.queryByRole("listbox")).toBeNull();
+    });
+  });
 });

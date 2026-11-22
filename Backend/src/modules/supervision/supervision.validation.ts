@@ -29,4 +29,7 @@ export const listDocumentsSchema = z.object({
   search: z.string().trim().min(1).max(120).optional(),
 });
 
+/** The document's version as the screen showed it (`version` in its answers): the first print checks it. */
+export const printBodySchema = z.object({ version: z.string().trim().min(1).max(64).optional() });
+
 export type ListDocumentsDTO = z.infer<typeof listDocumentsSchema>;

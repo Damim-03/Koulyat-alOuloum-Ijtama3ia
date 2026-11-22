@@ -3,13 +3,16 @@ import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   ExternalLink,
+  FileSignature,
   Images,
   Info,
   LayoutTemplate,
   LogIn,
+  Mail,
   Newspaper,
   Quote,
   Sparkles,
+  Type,
   type LucideIcon,
 } from "lucide-react";
 import { useAdminHomeSlides } from "../../hooks/home-slides-hook";
@@ -20,14 +23,19 @@ import { NewsPanel } from "./news-panel";
 import { DirectorPanel } from "./director-panel";
 import { AboutPanel } from "./about-panel";
 import { LoginPanel } from "./login-panel";
+import { TextsPanel } from "./texts-panel";
+import { SupervisionSheetPanel } from "./supervision-sheet-panel";
+import { MailPanel } from "./mail-panel";
 
-type Tab = "slides" | "news" | "director" | "about" | "login";
-const TABS: Tab[] = ["slides", "news", "director", "about", "login"];
+type Tab = "slides" | "news" | "director" | "about" | "login" | "texts" | "supervision" | "mail";
+const TABS: Tab[] = ["slides", "news", "director", "about", "login", "texts", "supervision", "mail"];
 
 /**
  * واجهة الموقع — كلّ ما يراه الزائر أوّلاً، من مكانٍ واحد: الصور المتعاقبة
  * خلف العنوان، وشريط آخر الأخبار، وكلمة رئيس القسم، وصفحة «عن المنصة»،
- * وخلفية لوحة الترحيب في صفحة الدخول.
+ * وخلفية لوحة الترحيب في صفحة الدخول — وعبارات الموقع كلّها («النصوص»)،
+ * ونصّ ورقة «طلب الموافقة على الإشراف» التي يطبعها الأساتذة، ورسائل البريد
+ * التي ترسلها المنصة («رسائل البريد»).
  *
  * والتبويب في الرابط (`?tab=news`)، فيُفتح من حيث تُرك ويُشارَك. والتبويب
  * الذي زير يبقى مرسوماً مخفيّاً لا يُهدم: نصٌّ في «كلمة رئيس القسم» لم يُحفظ
@@ -84,6 +92,9 @@ export function AdminHomepagePage() {
       label: t("admin.site.tabLogin"),
       badge: loginSlides ? String(loginSlides.filter((s) => s.isActive).length) : undefined,
     },
+    { id: "texts", icon: Type, label: t("admin.site.tabTexts") },
+    { id: "supervision", icon: FileSignature, label: t("admin.site.tabSupervision") },
+    { id: "mail", icon: Mail, label: t("admin.site.tabMail") },
   ];
 
   return (
@@ -95,7 +106,7 @@ export function AdminHomepagePage() {
         <div className="relative">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-4">
-              <span className="grid size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft">
+              <span className="hidden size-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-cream/10 text-gold-soft sm:grid">
                 <LayoutTemplate size={26} />
               </span>
               <div>
@@ -175,6 +186,21 @@ export function AdminHomepagePage() {
       {mounted("login") && (
         <div role="tabpanel" hidden={tab !== "login"}>
           <LoginPanel />
+        </div>
+      )}
+      {mounted("texts") && (
+        <div role="tabpanel" hidden={tab !== "texts"}>
+          <TextsPanel />
+        </div>
+      )}
+      {mounted("supervision") && (
+        <div role="tabpanel" hidden={tab !== "supervision"}>
+          <SupervisionSheetPanel />
+        </div>
+      )}
+      {mounted("mail") && (
+        <div role="tabpanel" hidden={tab !== "mail"}>
+          <MailPanel />
         </div>
       )}
     </div>

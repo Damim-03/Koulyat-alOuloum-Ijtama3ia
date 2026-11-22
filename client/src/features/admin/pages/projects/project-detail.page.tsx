@@ -77,6 +77,7 @@ import {
   relative,
   type ProjectAlert,
 } from "./project-utils";
+import { stackOnPhone } from "../../../../lib/stack-table";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -319,7 +320,7 @@ export function AdminProjectDetailPage() {
               {supervisor?.id && (
                 <Link
                   to={to(`/admin/professors/${supervisor.id}`)}
-                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-gold-soft transition hover:text-gold"
+                  className="mt-1 inline-flex items-center gap-1 py-1 text-[11px] font-semibold text-gold-soft transition hover:text-gold"
                 >
                   {t("admin.proj.openProfile")}
                   <ArrowUpLeft size={12} className="ltr:-scale-x-100" />
@@ -407,7 +408,7 @@ export function AdminProjectDetailPage() {
               <div className="overflow-x-auto">
                 {/* Compact enough for the main column: the actions must be in
                     view, not behind a horizontal scroll. */}
-                <table className="w-full min-w-[560px] text-start" data-testid="project-members-table">
+                <table ref={stackOnPhone} className="stack-sm w-full min-w-[560px] text-start" data-testid="project-members-table">
                   <thead>
                     <tr className="bg-forest/5 text-clay">
                       <th className="px-5 py-3 text-start text-[11px] font-semibold">{t("admin.proj.memberCol.student")}</th>
@@ -789,6 +790,7 @@ export function AdminProjectDetailPage() {
         blockers={actions.dissolveBlockers}
       />
       <ConfirmDialog
+        icon={Trash2}
         open={deleteDefenseOpen}
         tone="danger"
         title={t("admin.proj.deleteDefense")}
@@ -800,6 +802,7 @@ export function AdminProjectDetailPage() {
         onClose={() => setDeleteDefenseOpen(false)}
       />
       <ConfirmDialog
+        icon={UserMinus}
         open={!!removing}
         tone="danger"
         title={t("admin.proj.removeMember")}

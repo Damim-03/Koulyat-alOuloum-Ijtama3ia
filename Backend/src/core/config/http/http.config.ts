@@ -12,6 +12,8 @@ const httpConfig = () => ({
     METHOD_NOT_ALLOWED: 405,
     CONFLICT: 409,
     UNPROCESSABLE_ENTITY: 422,
+    /** The request needs something first — a solved sign-in check. */
+    PRECONDITION_REQUIRED: 428,
     TOO_MANY_REQUESTS: 429,
 
     // Server error responses
